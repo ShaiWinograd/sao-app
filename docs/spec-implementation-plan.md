@@ -3,9 +3,9 @@
 Date: 2026-07-11
 
 Execution mode update:
-- This plan is executed as small, deployable PR batches (not sprint-based).
-- Each PR must pass typecheck, unit tests, and Playwright smoke before merge.
-- Sequence/dependencies remain the same; delivery cadence is incremental.
+- This plan is executed as larger, themed PR batches (not sprint-based) to speed delivery.
+- Each batch PR runs one full validation gate (typecheck, unit tests, Playwright smoke) before merge.
+- Sequence/dependencies remain the same; delivery cadence is incremental by theme.
 
 ## Specs Reviewed
 

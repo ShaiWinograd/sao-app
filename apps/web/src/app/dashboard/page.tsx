@@ -150,7 +150,7 @@ function getShiftTypeCardClasses(jobType: JobType) {
 const caseStatusMeta: Record<CaseStatus, { label: string; className: string }> = {
   DRAFT: { label: 'משוריין', className: 'border-amber-200 bg-amber-50 text-amber-700' },
   ACTIVE: { label: 'עבודה אושרה', className: 'border-blue-200 bg-blue-50 text-blue-700' },
-  READY_FOR_REVIEW: { label: 'עבודה הסתיימה', className: 'border-purple-200 bg-purple-50 text-purple-700' },
+  READY_FOR_REVIEW: { label: 'עבודה הסתיימה', className: 'border-amber-200 bg-amber-50 text-amber-700' },
   COMPLETED: { label: 'עבודה שולמה', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
 };
 
@@ -1059,7 +1059,7 @@ export default function DashboardPage() {
       <div className="bg-white rounded-lg border border-gray-200 p-2 space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <span className="inline-flex mt-1.5 px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[11px] font-semibold">
+            <span className="inline-flex mt-1.5 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-semibold">
               תצוגה פעילה: {selectedRangeLabel}
             </span>
           </div>
@@ -1079,7 +1079,7 @@ export default function DashboardPage() {
                   }}
                   className={`px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
                     isActive
-                      ? 'bg-purple-600 text-white shadow-sm ring-2 ring-purple-200'
+                      ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200'
                       : 'text-gray-600 hover:text-gray-900 hover:bg-white'
                   }`}
                 >
@@ -1109,7 +1109,7 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={jumpToToday}
-                className="inline-flex items-center rounded-lg border border-purple-200 bg-purple-50 px-2.5 py-1.5 text-[11px] font-medium text-purple-700 hover:bg-purple-100"
+                className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100"
               >
                 היום
               </button>
@@ -1171,7 +1171,7 @@ export default function DashboardPage() {
               </h2>
               <Link
                 href={{ pathname: '/jobs', query: { range: selectedRange, view: 'shifts' } }}
-                className="text-purple-600 text-xs font-medium hover:text-purple-700"
+                className="text-emerald-600 text-xs font-medium hover:text-emerald-700"
               >
                 הצג הכל →
               </Link>
@@ -1191,12 +1191,12 @@ export default function DashboardPage() {
                     day.isNonWorkingDay ? (
                       <div
                         key={`daily-${day.dateKey}`}
-                        className={`min-w-0 border-l border-gray-200 px-2 py-2 text-center ${day.dateKey === todayDateKey ? 'bg-purple-100' : 'bg-gray-100'}`}
+                        className={`min-w-0 border-l border-gray-200 px-2 py-2 text-center ${day.dateKey === todayDateKey ? 'bg-emerald-100' : 'bg-gray-100'}`}
                       >
                         <div className="text-right">
                           <div className="flex items-center justify-between gap-1">
                             {day.dateKey === todayDateKey && (
-                              <span className="rounded-full bg-purple-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>
+                              <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>
                             )}
                             <div className="text-right">
                               <p className="text-[11px] text-gray-500 leading-4">{day.dayLabel}</p>
@@ -1211,14 +1211,14 @@ export default function DashboardPage() {
                         key={`daily-${day.dateKey}`}
                         type="button"
                         onClick={() => openDayJobsFromSummary(day.dateKey)}
-                        className={`min-w-0 border-l border-gray-200 px-2 py-2 text-center hover:bg-purple-50 ${day.dateKey === todayDateKey ? 'bg-purple-50' : ''}`}
+                        className={`min-w-0 border-l border-gray-200 px-2 py-2 text-center hover:bg-emerald-50 ${day.dateKey === todayDateKey ? 'bg-emerald-50' : ''}`}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-[11px] font-semibold text-gray-700">{day.assigned}/{day.required || 0}</p>
                           <div className="text-right">
                             <div className="flex items-center justify-end gap-1">
                               {day.dateKey === todayDateKey && (
-                                <span className="rounded-full bg-purple-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>
+                                <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>
                               )}
                               <p className="text-[11px] text-gray-700 leading-4">{day.dayLabel}</p>
                             </div>
@@ -1245,9 +1245,9 @@ export default function DashboardPage() {
                   const isNonWorkingDay = isWorkCreationBlockedDay(dateKey);
                   const isToday = dateKey === todayDateKey;
                   return isNonWorkingDay ? (
-                    <div key={`head-${dateKey}`} className={`min-w-0 border-l border-gray-200 p-2.5 text-center text-gray-500 ${isToday ? 'bg-purple-100' : 'bg-gray-200'}`}>
+                    <div key={`head-${dateKey}`} className={`min-w-0 border-l border-gray-200 p-2.5 text-center text-gray-500 ${isToday ? 'bg-emerald-100' : 'bg-gray-200'}`}>
                       <div className="flex items-center justify-center gap-1">
-                        {isToday && <span className="rounded-full bg-purple-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>}
+                        {isToday && <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>}
                         <div className="text-xs">{date.toLocaleDateString('he-IL', { weekday: 'short' })}</div>
                       </div>
                       <div className="text-xs font-semibold">{date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}</div>
@@ -1258,10 +1258,10 @@ export default function DashboardPage() {
                       key={`head-${dateKey}`}
                       type="button"
                       onClick={() => openCreateModal(dateKey)}
-                      className={`min-w-0 p-2.5 text-center border-l border-gray-200 text-gray-700 hover:bg-purple-50 ${isToday ? 'bg-purple-50 text-purple-700' : ''}`}
+                      className={`min-w-0 p-2.5 text-center border-l border-gray-200 text-gray-700 hover:bg-emerald-50 ${isToday ? 'bg-emerald-50 text-emerald-700' : ''}`}
                     >
                       <div className="flex items-center justify-center gap-1">
-                        {isToday && <span className="rounded-full bg-purple-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>}
+                        {isToday && <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>}
                         <div className="text-xs">{date.toLocaleDateString('he-IL', { weekday: 'short' })}</div>
                       </div>
                       <div className="text-xs font-semibold">{date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}</div>
@@ -1296,7 +1296,7 @@ export default function DashboardPage() {
                     return (
                       <div
                         key={`${worker.id}-${dateKey}`}
-                        className={`min-h-[70px] border-l border-gray-100 p-1.5 ${isNonWorkingDay ? (isToday ? 'bg-purple-100' : 'bg-gray-100') : isToday ? 'bg-purple-50/50' : 'bg-white'}`}
+                        className={`min-h-[70px] border-l border-gray-100 p-1.5 ${isNonWorkingDay ? (isToday ? 'bg-emerald-100' : 'bg-gray-100') : isToday ? 'bg-emerald-50/50' : 'bg-white'}`}
                       >
                         {isNonWorkingDay ? (
                           <p className="mt-5 text-center text-[11px] text-gray-500">{nonWorkingLabel}</p>
@@ -1333,7 +1333,7 @@ export default function DashboardPage() {
                                     {isUrgentCase ? 'דחוף: ממתין לאישור לקוח' : caseMeta.label}
                                   </p>
                                   {shift.actualTeamLeadName === worker.name && (
-                                    <p className="text-[11px] text-purple-700 font-medium mt-0.5">ראש צוות</p>
+                                    <p className="text-[11px] text-emerald-700 font-medium mt-0.5">ראש צוות</p>
                                   )}
                                 </button>
                               );
@@ -1437,7 +1437,7 @@ export default function DashboardPage() {
                     </div>
                     <Link
                       href={editingWork.caseId ? { pathname: '/cases', query: { caseId: editingWork.caseId } } : '/cases'}
-                      className="inline-flex items-center rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs font-medium text-purple-700 hover:bg-purple-100"
+                      className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
                     >
                       מעבר לפרוייקט
                     </Link>
@@ -1507,7 +1507,7 @@ export default function DashboardPage() {
                       />
                     </div>
                     {customerSuggestions.length > 0 && (
-                      <div className="rounded-lg border border-purple-100 bg-purple-50 p-2 space-y-1">
+                      <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-2 space-y-1">
                         {customerSuggestions.map((customer) => (
                           <button
                             key={`customer-suggestion-${customer.id}`}
@@ -1525,7 +1525,7 @@ export default function DashboardPage() {
                               setAddressMode('existing');
                               setNewAddressSelection(null);
                             }}
-                            className="w-full rounded-md border border-purple-200 bg-white px-3 py-1.5 text-right text-xs text-gray-700 hover:bg-purple-100"
+                            className="w-full rounded-md border border-emerald-200 bg-white px-3 py-1.5 text-right text-xs text-gray-700 hover:bg-emerald-100"
                           >
                             {customer.fullName} • {customer.phone}
                           </button>
@@ -1574,7 +1574,7 @@ export default function DashboardPage() {
                                   setSelectedAddress(address);
                                   setExistingAddressQuery(address);
                                 }}
-                                className={`w-full px-3 py-2 text-right text-xs hover:bg-purple-50 ${selectedAddress === address ? 'bg-purple-50 text-purple-700' : 'text-gray-700'}`}
+                                className={`w-full px-3 py-2 text-right text-xs hover:bg-emerald-50 ${selectedAddress === address ? 'bg-emerald-50 text-emerald-700' : 'text-gray-700'}`}
                               >
                                 {address}
                               </button>
@@ -1613,7 +1613,7 @@ export default function DashboardPage() {
                         href={`https://www.bing.com/maps?q=${encodeURIComponent((customerMode === 'existing' ? selectedAddress : newAddress) || '')}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-purple-700 hover:text-purple-800 underline"
+                        className="text-emerald-700 hover:text-emerald-800 underline"
                       >
                         בדיקה במפה
                       </a>
@@ -1690,7 +1690,7 @@ export default function DashboardPage() {
                         <label
                           key={`assign-${worker.id}`}
                           className={`inline-flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs ${
-                            checked ? 'border-purple-300 bg-purple-50 text-purple-800' : 'border-gray-200 text-gray-700'
+                            checked ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-gray-200 text-gray-700'
                           } ${disableUnchecked ? 'opacity-50' : ''}`}
                         >
                           <input
@@ -1738,7 +1738,7 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   onClick={saveNewWorkFromDashboard}
-                  className="px-4 py-2 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700 inline-flex items-center gap-1.5"
+                  className="px-4 py-2 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 inline-flex items-center gap-1.5"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   {editingWorkId ? 'שמירת שינויים' : 'יצירת עבודה'}
@@ -1795,7 +1795,7 @@ export default function DashboardPage() {
                     setDayJobsPickerDateKey(null);
                     openWorkModal(work);
                   }}
-                  className="w-full rounded-lg border border-gray-200 bg-white hover:bg-purple-50 hover:border-purple-300 px-3 py-2 text-right"
+                  className="w-full rounded-lg border border-gray-200 bg-white hover:bg-emerald-50 hover:border-emerald-300 px-3 py-2 text-right"
                 >
                   <p className="text-sm font-semibold text-gray-900">{work.customerName}</p>
                   <p className="text-xs text-gray-600 mt-0.5">{work.assignedWorkers.length}/{work.requiredWorkers} משובצות</p>
@@ -1840,7 +1840,7 @@ export default function DashboardPage() {
                   key={item.id}
                   href={item.href}
                   onClick={() => setActiveTaskItem(null)}
-                  className="block w-full rounded-lg border border-gray-200 bg-white hover:bg-purple-50 hover:border-purple-300 px-3 py-2 text-right text-sm text-gray-900"
+                  className="block w-full rounded-lg border border-gray-200 bg-white hover:bg-emerald-50 hover:border-emerald-300 px-3 py-2 text-right text-sm text-gray-900"
                 >
                   {item.name}
                 </Link>

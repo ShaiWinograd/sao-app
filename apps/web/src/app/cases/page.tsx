@@ -1036,7 +1036,7 @@ export default function CasesPage() {
         <button
           type="button"
           onClick={openCreate}
-          className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white hover:bg-purple-700"
+          className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700"
         >
           <Plus className="w-4 h-4" />
           פרוייקט חדש
@@ -1111,10 +1111,10 @@ export default function CasesPage() {
             <option value="status_flow">מיון: לפי רצף סטטוסים</option>
           </select>
           <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
-            <button type="button" onClick={() => setViewMode('cards')} className={`px-3 py-2 text-xs ${viewMode === 'cards' ? 'bg-purple-50 text-purple-700' : 'bg-white text-gray-700'}`}>
+            <button type="button" onClick={() => setViewMode('cards')} className={`px-3 py-2 text-xs ${viewMode === 'cards' ? 'bg-emerald-50 text-emerald-700' : 'bg-white text-gray-700'}`}>
               תצוגת כרטיסים
             </button>
-            <button type="button" onClick={() => setViewMode('board')} className={`px-3 py-2 text-xs border-r border-gray-300 ${viewMode === 'board' ? 'bg-purple-50 text-purple-700' : 'bg-white text-gray-700'}`}>
+            <button type="button" onClick={() => setViewMode('board')} className={`px-3 py-2 text-xs border-r border-gray-300 ${viewMode === 'board' ? 'bg-emerald-50 text-emerald-700' : 'bg-white text-gray-700'}`}>
               תצוגת עמודות
             </button>
           </div>
@@ -1125,7 +1125,7 @@ export default function CasesPage() {
             <button
               type="button"
               onClick={() => setStatusFilter('all')}
-              className={`rounded-full border px-3 py-1 text-xs ${statusFilter === 'all' ? 'border-purple-300 bg-purple-50 text-purple-700' : 'border-gray-300 bg-white text-gray-700'}`}
+              className={`rounded-full border px-3 py-1 text-xs ${statusFilter === 'all' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-gray-300 bg-white text-gray-700'}`}
             >
               כל הפרוייקטים
             </button>
@@ -1153,7 +1153,7 @@ export default function CasesPage() {
                 onClick={() => openCase(item, recommendedAction.focus)}
                 data-case-link-target={item.id}
                 className={`text-right rounded-lg border border-amber-300 bg-white px-3 py-2 hover:bg-amber-100/40 ${
-                  highlightedCaseId === item.id ? 'ring-2 ring-purple-400 ring-offset-2' : ''
+                  highlightedCaseId === item.id ? 'ring-2 ring-emerald-400 ring-offset-2' : ''
                 }`}
               >
                 <p className="text-sm font-semibold text-gray-900">{item.caseName}</p>
@@ -1187,8 +1187,8 @@ export default function CasesPage() {
                 type="button"
                 onClick={() => openCase(item, recommendedAction.focus)}
                 data-case-link-target={item.id}
-                className={`text-right bg-white rounded-lg border border-gray-200 p-4 hover:border-purple-300 hover:bg-purple-50/30 transition-colors ${
-                  highlightedCaseId === item.id ? 'ring-2 ring-purple-400 ring-offset-2' : ''
+                className={`text-right bg-white rounded-lg border border-gray-200 p-4 hover:border-emerald-300 hover:bg-emerald-50/30 transition-colors ${
+                  highlightedCaseId === item.id ? 'ring-2 ring-emerald-400 ring-offset-2' : ''
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -1250,7 +1250,7 @@ export default function CasesPage() {
                   </div>
                 </div>
 
-                <div className="mt-3 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-900">
+                <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
                   <span className="font-semibold">הפעולה הבאה:</span> {recommendedAction.label}
                 </div>
               </button>
@@ -1278,7 +1278,7 @@ export default function CasesPage() {
                 handleBoardDrop(columnStatus);
               }}
               className={`rounded-lg border bg-white p-3 space-y-2 transition-colors ${
-                dragOverStatus === columnStatus ? 'border-purple-400 bg-purple-50/40' : 'border-gray-200'
+                dragOverStatus === columnStatus ? 'border-emerald-400 bg-emerald-50/40' : 'border-gray-200'
               }`}
             >
               <div className="flex items-center justify-between">
@@ -1303,9 +1303,9 @@ export default function CasesPage() {
                     }}
                     className={`rounded-lg border p-2 text-right cursor-grab active:cursor-grabbing ${
                       highlightedCaseId === item.id
-                        ? 'border-purple-300 bg-purple-50 ring-2 ring-purple-400 ring-offset-2'
+                        ? 'border-emerald-300 bg-emerald-50 ring-2 ring-emerald-400 ring-offset-2'
                         : draggedCaseId === item.id
-                          ? 'border-purple-300 bg-purple-50'
+                          ? 'border-emerald-300 bg-emerald-50'
                           : 'border-gray-200'
                     }`}
                   >
@@ -1318,7 +1318,7 @@ export default function CasesPage() {
                         </span>
                       ) : null}
                     </button>
-                    <div className="mt-2 rounded-md border border-purple-200 bg-purple-50 px-2 py-1 text-[11px] text-purple-900">
+                    <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-900">
                       <span className="font-medium">הפעולה הבאה:</span> {recommendedAction.label}
                     </div>
                     <p className="mt-2 text-[11px] text-gray-500">גררו לעמודת סטטוס אחרת כדי לעדכן.</p>
@@ -1366,7 +1366,7 @@ export default function CasesPage() {
 
             <div className="p-6 space-y-4 text-right">
               {!isCreating && openedCase && caseActionFocus ? (
-                <div className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-900" data-case-section="details">
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900" data-case-section="details">
                   <span className="font-semibold">מומלץ עכשיו:</span> {getRecommendedNextAction(openedCase).label}
                 </div>
               ) : null}
@@ -1376,35 +1376,35 @@ export default function CasesPage() {
                   <button
                     type="button"
                     onClick={() => setCaseActionFocus('details')}
-                    className={`rounded-full border px-3 py-1 text-xs ${caseActionFocus === 'details' ? 'border-purple-300 bg-purple-50 text-purple-700' : 'border-gray-300 bg-white text-gray-700'}`}
+                    className={`rounded-full border px-3 py-1 text-xs ${caseActionFocus === 'details' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-gray-300 bg-white text-gray-700'}`}
                   >
                     פרטי פרוייקט
                   </button>
                   <button
                     type="button"
                     onClick={() => setCaseActionFocus('quote')}
-                    className={`rounded-full border px-3 py-1 text-xs ${caseActionFocus === 'quote' ? 'border-purple-300 bg-purple-50 text-purple-700' : 'border-gray-300 bg-white text-gray-700'}`}
+                    className={`rounded-full border px-3 py-1 text-xs ${caseActionFocus === 'quote' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-gray-300 bg-white text-gray-700'}`}
                   >
                     הצעת מחיר
                   </button>
                   <button
                     type="button"
                     onClick={() => setCaseActionFocus('jobs')}
-                    className={`rounded-full border px-3 py-1 text-xs ${caseActionFocus === 'jobs' ? 'border-purple-300 bg-purple-50 text-purple-700' : 'border-gray-300 bg-white text-gray-700'}`}
+                    className={`rounded-full border px-3 py-1 text-xs ${caseActionFocus === 'jobs' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-gray-300 bg-white text-gray-700'}`}
                   >
                     עבודות
                   </button>
                   <button
                     type="button"
                     onClick={() => setCaseActionFocus('reports')}
-                    className={`rounded-full border px-3 py-1 text-xs ${caseActionFocus === 'reports' ? 'border-purple-300 bg-purple-50 text-purple-700' : 'border-gray-300 bg-white text-gray-700'}`}
+                    className={`rounded-full border px-3 py-1 text-xs ${caseActionFocus === 'reports' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-gray-300 bg-white text-gray-700'}`}
                   >
                     דוחות וסגירה
                   </button>
                   <button
                     type="button"
                     onClick={() => setCaseActionFocus('payment')}
-                    className={`rounded-full border px-3 py-1 text-xs ${caseActionFocus === 'payment' ? 'border-purple-300 bg-purple-50 text-purple-700' : 'border-gray-300 bg-white text-gray-700'}`}
+                    className={`rounded-full border px-3 py-1 text-xs ${caseActionFocus === 'payment' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-gray-300 bg-white text-gray-700'}`}
                   >
                     תשלום
                   </button>
@@ -1499,7 +1499,7 @@ export default function CasesPage() {
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                     />
                   </label>
-                  <div className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-800">
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
                     <p>סה״כ הצעה</p>
                     <p className="text-base font-semibold mt-1">{formatCurrency(quoteTotal)}</p>
                   </div>
@@ -1716,7 +1716,7 @@ export default function CasesPage() {
                             );
                             setCaseMessage('דוח סופי ללקוח סומן כנשלח מתוך הפרוייקט.');
                           }}
-                          className="px-3 py-1.5 text-xs rounded-lg border border-purple-300 text-purple-700 hover:bg-purple-50"
+                          className="px-3 py-1.5 text-xs rounded-lg border border-emerald-300 text-emerald-700 hover:bg-emerald-50"
                         >
                           שליחת דוח סופי ללקוח
                         </button>
@@ -1890,7 +1890,7 @@ export default function CasesPage() {
               )}
 
               <div className="flex items-center gap-2">
-                <button type="button" onClick={saveCase} className="px-4 py-2 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700 inline-flex items-center gap-1.5">
+                <button type="button" onClick={saveCase} className="px-4 py-2 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 inline-flex items-center gap-1.5">
                   <Pencil className="w-4 h-4" />
                   {isCreating ? 'יצירת פרוייקט' : 'שמירת עדכון'}
                 </button>
