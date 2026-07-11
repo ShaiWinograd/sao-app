@@ -80,10 +80,10 @@ jobs:
       - name: Deploy web app to production
         run: |
           set -euo pipefail
-          publish_url="$(az webapp deployment list-publishing-profiles -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP_NAME" --query "[?publishMethod=='ZipDeploy'].publishUrl | [0]" -o tsv | sed 's/:443$//')"
-          creds="$(az webapp deployment list-publishing-credentials -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP_NAME" -o json)"
-          deploy_user="$(printf '%s' "$creds" | jq -r '.publishingUserName')"
-          deploy_pass="$(printf '%s' "$creds" | jq -r '.publishingPassword')"
+          profile="$(az webapp deployment list-publishing-profiles -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP_NAME" --xml)"
+          publish_url="$(printf '%s' "$profile" | perl -ne 'if (/publishMethod="ZipDeploy".*?publishUrl="([^"]+)"/) { $u=$1; $u =~ s/:443$//; print $u; exit }')"
+          deploy_user="$(printf '%s' "$profile" | perl -ne 'if (/publishMethod="ZipDeploy".*?userName="([^"]+)"/) { print $1; exit }')"
+          deploy_pass="$(printf '%s' "$profile" | perl -ne 'if (/publishMethod="ZipDeploy".*?userPWD="([^"]+)"/) { print $1; exit }')"
           echo "::add-mask::$deploy_user"
           echo "::add-mask::$deploy_pass"
           az webapp deploy \
@@ -109,6 +109,9 @@ jobs:
                 cat "$RUNNER_TEMP/web-deploy.json"
                 exit 1
               fi
+            elif [ "$http_code" = "401" ]; then
+              echo "::error::Web deployment polling failed with HTTP 401 from Kudu."
+              exit 1
             else
               echo "Web deployment poll returned HTTP $http_code; waiting for Kudu to finish..."
             fi
@@ -123,10 +126,10 @@ jobs:
       - name: Deploy API app to production
         run: |
           set -euo pipefail
-          publish_url="$(az webapp deployment list-publishing-profiles -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP_NAME" --query "[?publishMethod=='ZipDeploy'].publishUrl | [0]" -o tsv | sed 's/:443$//')"
-          creds="$(az webapp deployment list-publishing-credentials -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP_NAME" -o json)"
-          deploy_user="$(printf '%s' "$creds" | jq -r '.publishingUserName')"
-          deploy_pass="$(printf '%s' "$creds" | jq -r '.publishingPassword')"
+          profile="$(az webapp deployment list-publishing-profiles -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP_NAME" --xml)"
+          publish_url="$(printf '%s' "$profile" | perl -ne 'if (/publishMethod="ZipDeploy".*?publishUrl="([^"]+)"/) { $u=$1; $u =~ s/:443$//; print $u; exit }')"
+          deploy_user="$(printf '%s' "$profile" | perl -ne 'if (/publishMethod="ZipDeploy".*?userName="([^"]+)"/) { print $1; exit }')"
+          deploy_pass="$(printf '%s' "$profile" | perl -ne 'if (/publishMethod="ZipDeploy".*?userPWD="([^"]+)"/) { print $1; exit }')"
           echo "::add-mask::$deploy_user"
           echo "::add-mask::$deploy_pass"
           az webapp deploy \
@@ -152,6 +155,9 @@ jobs:
                 cat "$RUNNER_TEMP/api-deploy.json"
                 exit 1
               fi
+            elif [ "$http_code" = "401" ]; then
+              echo "::error::API deployment polling failed with HTTP 401 from Kudu."
+              exit 1
             else
               echo "API deployment poll returned HTTP $http_code; waiting for Kudu to finish..."
             fi
