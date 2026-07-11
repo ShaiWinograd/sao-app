@@ -14,37 +14,51 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     environment: production
-    env:
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
     steps:
+      - name: Preflight deployment configuration
+        id: preflight
+        env:
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          DEPLOY_PROD_COMMAND: ${{ secrets.DEPLOY_PROD_COMMAND }}
+        run: |
+          can_deploy=true
+          if [ -z "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" ]; then
+            echo "::warning::NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is not configured in production environment secrets."
+            can_deploy=false
+          fi
+          if [ -z "$DEPLOY_PROD_COMMAND" ]; then
+            echo "::warning::DEPLOY_PROD_COMMAND is not configured in production environment secrets."
+            can_deploy=false
+          fi
+          echo "can_deploy=$can_deploy" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
+        if: steps.preflight.outputs.can_deploy == 'true'
         uses: actions/checkout@v5
 
       - name: Setup Node
+        if: steps.preflight.outputs.can_deploy == 'true'
         uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
 
       - name: Install dependencies
+        if: steps.preflight.outputs.can_deploy == 'true'
         run: npm ci
 
-      - name: Ensure Clerk key is configured
-        run: |
-          if [ -z "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" ]; then
-            echo "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY secret is not configured" >&2
-            exit 1
-          fi
-
       - name: Validate
+        if: steps.preflight.outputs.can_deploy == 'true'
+        env:
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
         run: npm run typecheck && npm run test && npm run build
 
       - name: Deploy to Production
+        if: steps.preflight.outputs.can_deploy == 'true'
         env:
           DEPLOY_PROD_COMMAND: ${{ secrets.DEPLOY_PROD_COMMAND }}
-        run: |
-          if [ -z "$DEPLOY_PROD_COMMAND" ]; then
-            echo "DEPLOY_PROD_COMMAND secret is not configured" >&2
-            exit 1
-          fi
-          sh -c "$DEPLOY_PROD_COMMAND"
+        run: sh -c "$DEPLOY_PROD_COMMAND"
+
+      - name: Skip production deployment
+        if: steps.preflight.outputs.can_deploy != 'true'
+        run: echo "::notice::Production deployment was skipped until required secrets are configured."

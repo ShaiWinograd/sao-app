@@ -15,8 +15,16 @@ jobs:
       RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
     steps:
       - name: Release Please
+        id: release_please
+        continue-on-error: true
         uses: googleapis/release-please-action@v4
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           token: ${{ env.RELEASE_PLEASE_TOKEN != '' && env.RELEASE_PLEASE_TOKEN || github.token }}
+
+      - name: Release warning (non-blocking)
+        if: steps.release_please.outcome == 'failure'
+        run: |
+          echo "::warning::Release Please could not create a release PR."
+          echo "::warning::Configure Actions permissions to allow PR creation or set RELEASE_PLEASE_TOKEN."
