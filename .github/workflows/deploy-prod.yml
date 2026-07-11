@@ -12,18 +12,27 @@ jobs:
   deploy-prod:
     runs-on: ubuntu-latest
     environment: production
+    env:
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Ensure Clerk key is configured
+        run: |
+          if [ -z "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" ]; then
+            echo "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY secret is not configured" >&2
+            exit 1
+          fi
 
       - name: Validate
         run: npm run typecheck && npm run test && npm run build

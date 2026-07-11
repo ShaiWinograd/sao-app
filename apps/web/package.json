@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "npm run build && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "e2e": "playwright test",
     "e2e:ci": "playwright test --reporter=github,line"
   },
