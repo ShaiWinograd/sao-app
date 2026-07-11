@@ -1,0 +1,159 @@
+name: Deploy Production Containers
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to deploy (branch, tag, or commit SHA)
+        required: true
+        default: main
+      target:
+        description: Which service to deploy
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - web
+          - api
+      reason:
+        description: Why this production container deployment is being run
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  AZURE_RESOURCE_GROUP: workforce-rg
+  AZURE_WEB_APP_NAME: spaceorder-web-app-poc2
+  AZURE_API_APP_NAME: spaceorder-api-app-poc
+  AZURE_API_HEALTH_URL: https://spaceorder-api-app-poc-h7hef6a2gtd5euhq.israelcentral-01.azurewebsites.net/health
+  IMAGE_NAME_PREFIX: spaceorder
+
+jobs:
+  deploy-prod-containers:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      CONTAINER_REGISTRY_SERVER: ${{ vars.CONTAINER_REGISTRY_SERVER }}
+      CONTAINER_REGISTRY_USERNAME: ${{ secrets.CONTAINER_REGISTRY_USERNAME }}
+      CONTAINER_REGISTRY_PASSWORD: ${{ secrets.CONTAINER_REGISTRY_PASSWORD }}
+    steps:
+      - name: Validate deployment configuration
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$AZURE_CREDENTIALS" ]; then
+            echo "::error::AZURE_CREDENTIALS is not configured in production environment secrets."
+            exit 1
+          fi
+          if [ -z "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" ]; then
+            echo "::error::NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is not configured in production environment secrets."
+            exit 1
+          fi
+          if [ -z "${CONTAINER_REGISTRY_SERVER}" ]; then
+            echo "::error::CONTAINER_REGISTRY_SERVER must be configured as a production environment variable."
+            exit 1
+          fi
+          if [ -z "${CONTAINER_REGISTRY_USERNAME}" ] || [ -z "${CONTAINER_REGISTRY_PASSWORD}" ]; then
+            echo "::error::CONTAINER_REGISTRY_USERNAME and CONTAINER_REGISTRY_PASSWORD must be configured in production environment secrets."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Deployment context
+        run: |
+          echo "Deploy requested by: ${{ github.actor }}"
+          echo "Deploy ref: ${{ github.event.inputs.ref }}"
+          echo "Deploy target: ${{ github.event.inputs.target }}"
+          echo "Reason: ${{ github.event.inputs.reason }}"
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set image metadata
+        run: |
+          set -euo pipefail
+          echo "IMAGE_TAG=sha-${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+
+      - name: Authenticate container registry
+        run: |
+          set -euo pipefail
+          echo "$CONTAINER_REGISTRY_PASSWORD" | docker login "$CONTAINER_REGISTRY_SERVER" --username "$CONTAINER_REGISTRY_USERNAME" --password-stdin
+
+      - name: Build and push web image
+        if: github.event.inputs.target == 'all' || github.event.inputs.target == 'web'
+        run: |
+          set -euo pipefail
+          WEB_IMAGE="$CONTAINER_REGISTRY_SERVER/$IMAGE_NAME_PREFIX-web:$IMAGE_TAG"
+          echo "WEB_IMAGE=$WEB_IMAGE" >> "$GITHUB_ENV"
+          docker build -f apps/web/Dockerfile -t "$WEB_IMAGE" .
+          docker push "$WEB_IMAGE"
+
+      - name: Build and push API image
+        if: github.event.inputs.target == 'all' || github.event.inputs.target == 'api'
+        run: |
+          set -euo pipefail
+          API_IMAGE="$CONTAINER_REGISTRY_SERVER/$IMAGE_NAME_PREFIX-api:$IMAGE_TAG"
+          echo "API_IMAGE=$API_IMAGE" >> "$GITHUB_ENV"
+          docker build -f packages/api/Dockerfile -t "$API_IMAGE" .
+          docker push "$API_IMAGE"
+
+      - name: Deploy web container
+        if: github.event.inputs.target == 'all' || github.event.inputs.target == 'web'
+        run: |
+          set -euo pipefail
+          az webapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEB_APP_NAME" \
+            --settings WEBSITES_PORT=8080 >/dev/null
+
+          az webapp config container set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEB_APP_NAME" \
+            --container-image-name "$WEB_IMAGE" \
+            --container-registry-url "https://$CONTAINER_REGISTRY_SERVER" \
+            --container-registry-user "$CONTAINER_REGISTRY_USERNAME" \
+            --container-registry-password "$CONTAINER_REGISTRY_PASSWORD"
+
+          az webapp restart \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEB_APP_NAME"
+
+      - name: Deploy API container
+        if: github.event.inputs.target == 'all' || github.event.inputs.target == 'api'
+        run: |
+          set -euo pipefail
+          az webapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_API_APP_NAME" \
+            --settings WEBSITES_PORT=3001 >/dev/null
+
+          az webapp config container set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_API_APP_NAME" \
+            --container-image-name "$API_IMAGE" \
+            --container-registry-url "https://$CONTAINER_REGISTRY_SERVER" \
+            --container-registry-user "$CONTAINER_REGISTRY_USERNAME" \
+            --container-registry-password "$CONTAINER_REGISTRY_PASSWORD"
+
+          az webapp restart \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_API_APP_NAME"
+
+      - name: Verify production API health
+        if: github.event.inputs.target == 'all' || github.event.inputs.target == 'api'
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error "$AZURE_API_HEALTH_URL"
