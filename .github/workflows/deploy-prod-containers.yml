@@ -38,8 +38,6 @@ jobs:
     environment: production
     env:
       CONTAINER_REGISTRY_SERVER: ${{ vars.CONTAINER_REGISTRY_SERVER }}
-      CONTAINER_REGISTRY_USERNAME: ${{ secrets.CONTAINER_REGISTRY_USERNAME }}
-      CONTAINER_REGISTRY_PASSWORD: ${{ secrets.CONTAINER_REGISTRY_PASSWORD }}
     steps:
       - name: Validate deployment configuration
         env:
@@ -58,10 +56,6 @@ jobs:
           fi
           if [ -z "${CONTAINER_REGISTRY_SERVER}" ]; then
             echo "::error::CONTAINER_REGISTRY_SERVER must be configured as a production environment variable."
-            exit 1
-          fi
-          if [ -z "${CONTAINER_REGISTRY_USERNAME}" ] || [ -z "${CONTAINER_REGISTRY_PASSWORD}" ]; then
-            echo "::error::CONTAINER_REGISTRY_USERNAME and CONTAINER_REGISTRY_PASSWORD must be configured in production environment secrets."
             exit 1
           fi
 
@@ -86,6 +80,17 @@ jobs:
         run: |
           set -euo pipefail
           echo "IMAGE_TAG=sha-${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+
+      - name: Resolve registry credentials from Azure
+        run: |
+          set -euo pipefail
+          acr_name="${CONTAINER_REGISTRY_SERVER%%.*}"
+          acr_username="$(az acr credential show --name "$acr_name" --query username -o tsv)"
+          acr_password="$(az acr credential show --name "$acr_name" --query 'passwords[0].value' -o tsv)"
+          echo "::add-mask::$acr_username"
+          echo "::add-mask::$acr_password"
+          echo "CONTAINER_REGISTRY_USERNAME=$acr_username" >> "$GITHUB_ENV"
+          echo "CONTAINER_REGISTRY_PASSWORD=$acr_password" >> "$GITHUB_ENV"
 
       - name: Authenticate container registry
         run: |
