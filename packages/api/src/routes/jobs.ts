@@ -13,6 +13,12 @@ const JobsListQuerySchema = z.object({
   customerId: z.string().optional(),
 });
 
+type SiblingJob = {
+  id: string;
+  jobType: 'PACKING' | 'UNPACKING' | 'HOME_ORGANIZATION';
+  date: Date;
+};
+
 async function validateProjectJobRules(input: {
   caseId: string;
   jobType: 'PACKING' | 'UNPACKING' | 'HOME_ORGANIZATION';
@@ -32,16 +38,16 @@ async function validateProjectJobRules(input: {
     return { ok: false as const, statusCode: 409, error: 'לא ניתן לתזמן עבודות לפרויקט שבוטל.' };
   }
 
-  const siblingJobs = await prisma.job.findMany({
+  const siblingJobs = (await prisma.job.findMany({
     where: {
       caseId: input.caseId,
       ...(input.currentJobId ? { id: { not: input.currentJobId } } : {}),
     },
     select: { id: true, jobType: true, date: true },
-  });
+  })) as SiblingJob[];
 
   const typeValidationMessage = validateServiceAddition(
-    siblingJobs.map((job) => job.jobType),
+    siblingJobs.map((job: SiblingJob) => job.jobType),
     input.jobType,
   );
   if (typeValidationMessage) {
@@ -50,9 +56,9 @@ async function validateProjectJobRules(input: {
 
   if (input.jobType === 'UNPACKING') {
     const latestPackingDate = siblingJobs
-      .filter((job) => job.jobType === 'PACKING')
-      .map((job) => job.date)
-      .sort((a, b) => b.getTime() - a.getTime())[0];
+      .filter((job: SiblingJob) => job.jobType === 'PACKING')
+      .map((job: SiblingJob) => job.date)
+      .sort((a: Date, b: Date) => b.getTime() - a.getTime())[0];
 
     if (latestPackingDate && input.date.getTime() <= latestPackingDate.getTime()) {
       return {

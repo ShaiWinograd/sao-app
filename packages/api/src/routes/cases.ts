@@ -25,6 +25,16 @@ const CreateCaseCommunicationSchema = z.object({
   preview: z.string().min(1, 'Preview is required'),
 });
 
+type CaseCommunicationAuditLog = {
+  id: string;
+  newValue: unknown;
+  createdAt: Date;
+  performedBy: {
+    firstName: string;
+    lastName: string;
+  };
+};
+
 export async function casesRoutes(app: FastifyInstance) {
   // List cases (filtered by customer or status)
   app.get('/', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
@@ -178,7 +188,7 @@ export async function casesRoutes(app: FastifyInstance) {
       take: 100,
     });
 
-    return logs.map((log) => {
+    return (logs as CaseCommunicationAuditLog[]).map((log: CaseCommunicationAuditLog) => {
       const newValue = (log.newValue ?? {}) as Record<string, unknown>;
       return {
         id: log.id,
