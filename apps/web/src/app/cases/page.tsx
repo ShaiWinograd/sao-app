@@ -143,6 +143,7 @@ type CasesSort =
   | 'customer_name_asc'
   | 'status_flow';
 type CasesViewMode = 'cards' | 'board';
+type CaseActionFocus = 'details' | 'quote' | 'jobs' | 'reports' | 'payment';
 
 const caseStatusMeta: Record<CaseStatus, { label: string; className: string; icon: LucideIcon }> = {
   DRAFT: { label: 'משוריין', className: 'bg-gray-50 text-gray-700 border-gray-200', icon: CircleDashed },
@@ -253,29 +254,29 @@ function requiresAdminAction(item: CustomerCase) {
   return quoteNotHandled || hasPendingReports || hasOutstanding;
 }
 
-function getRecommendedNextAction(item: CustomerCase) {
+function getRecommendedNextAction(item: CustomerCase): { label: string; focus: CaseActionFocus } {
   if (item.status === 'DRAFT' && !item.quote.sentByEmail) {
-    return 'לשלוח הצעת מחיר ללקוח';
+    return { label: 'לשלוח הצעת מחיר ללקוח', focus: 'quote' };
   }
   if (item.status === 'DRAFT' && !item.quote.approved) {
-    return 'לתעד אישור להצעת המחיר';
+    return { label: 'לתעד אישור להצעת המחיר', focus: 'quote' };
   }
   if (item.status === 'ACTIVE' && item.jobs.length === 0) {
-    return 'להוסיף עבודה ראשונה לפרוייקט';
+    return { label: 'להוסיף עבודה ראשונה לפרוייקט', focus: 'jobs' };
   }
   if (item.status === 'ACTIVE' && item.jobs.some((job) => job.status === 'מתוכנן')) {
-    return 'לאייש ולפרסם את העבודות המתוכננות';
+    return { label: 'לאייש ולפרסם את העבודות המתוכננות', focus: 'jobs' };
   }
   if (item.status === 'READY_FOR_REVIEW' && item.finalReportStatus !== 'מוכן') {
-    return 'להפיק דוח פנימי לסגירת הפרוייקט';
+    return { label: 'להפיק דוח פנימי לסגירת הפרוייקט', focus: 'reports' };
   }
   if (item.status === 'READY_FOR_REVIEW' && item.customerReportStatus !== 'נשלח') {
-    return 'לשלוח דוח סיכום ללקוח';
+    return { label: 'לשלוח דוח סיכום ללקוח', focus: 'reports' };
   }
   if (item.status !== 'COMPLETED' && Math.max(item.invoicedTotal - item.paidTotal, 0) > 0) {
-    return 'לסגור יתרת תשלום פתוחה';
+    return { label: 'לסגור יתרת תשלום פתוחה', focus: 'payment' };
   }
-  return 'לעדכן פרטי פרוייקט לפי הצורך';
+  return { label: 'לעדכן פרטי פרוייקט לפי הצורך', focus: 'details' };
 }
 
 function getAdminActionLabels(item: CustomerCase) {
@@ -421,6 +422,7 @@ export default function CasesPage() {
   const [apiError, setApiError] = useState('');
   const [isLoadingCases, setIsLoadingCases] = useState(true);
   const [customers, setCustomers] = useState<ApiCustomer[]>([]);
+  const [caseActionFocus, setCaseActionFocus] = useState<CaseActionFocus | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -767,8 +769,9 @@ export default function CasesPage() {
   }, [cases]);
   const archivedCount = useMemo(() => cases.filter((item) => item.isArchived).length, [cases]);
 
-  const openCase = (item: CustomerCase) => {
+  const openCase = (item: CustomerCase, focus: CaseActionFocus | null = null) => {
     setOpenedCaseId(item.id);
+    setCaseActionFocus(focus);
     setIsCreating(false);
     setCaseMessage('');
     setFormCustomerName(item.customerName);
@@ -813,8 +816,18 @@ export default function CasesPage() {
     return () => window.clearTimeout(timeoutId);
   }, [highlightedCaseId]);
 
+  useEffect(() => {
+    if (!openedCaseId || !caseActionFocus) return;
+    const timeoutId = window.setTimeout(() => {
+      const target = document.querySelector<HTMLElement>(`[data-case-section="${caseActionFocus}"]`);
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+    return () => window.clearTimeout(timeoutId);
+  }, [openedCaseId, caseActionFocus]);
+
   const openCreate = () => {
     setOpenedCaseId(null);
+    setCaseActionFocus(null);
     setIsCreating(true);
     setCaseMessage('');
     setFormCustomerName('');
@@ -1158,7 +1171,7 @@ export default function CasesPage() {
               <button
                 key={item.id}
                 type="button"
-                onClick={() => openCase(item)}
+                onClick={() => openCase(item, recommendedAction.focus)}
                 data-case-link-target={item.id}
                 className={`text-right bg-white rounded-lg border border-gray-200 p-4 hover:border-purple-300 hover:bg-purple-50/30 transition-colors ${
                   highlightedCaseId === item.id ? 'ring-2 ring-purple-400 ring-offset-2' : ''
@@ -1224,7 +1237,7 @@ export default function CasesPage() {
                 </div>
 
                 <div className="mt-3 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-900">
-                  <span className="font-semibold">הפעולה הבאה:</span> {recommendedAction}
+                  <span className="font-semibold">הפעולה הבאה:</span> {recommendedAction.label}
                 </div>
               </button>
             );
@@ -1259,7 +1272,9 @@ export default function CasesPage() {
                 <span className="text-xs text-gray-500">{sortedFilteredCases.filter((item) => item.status === columnStatus).length}</span>
               </div>
               <div className="space-y-2 max-h-[420px] overflow-y-auto">
-                {sortedFilteredCases.filter((item) => item.status === columnStatus).map((item) => (
+                {sortedFilteredCases.filter((item) => item.status === columnStatus).map((item) => {
+                  const recommendedAction = getRecommendedNextAction(item);
+                  return (
                   <div
                     key={`${columnStatus}-${item.id}`}
                     data-case-link-target={item.id}
@@ -1280,7 +1295,7 @@ export default function CasesPage() {
                           : 'border-gray-200'
                     }`}
                   >
-                    <button type="button" onClick={() => openCase(item)} className="w-full text-right">
+                    <button type="button" onClick={() => openCase(item, recommendedAction.focus)} className="w-full text-right">
                       <p className="text-sm font-semibold text-gray-900">{item.caseName}</p>
                       <p className="text-xs text-gray-600 mt-1">{item.customerName}</p>
                       {isMovingProject(item.jobs) ? (
@@ -1290,11 +1305,11 @@ export default function CasesPage() {
                       ) : null}
                     </button>
                     <div className="mt-2 rounded-md border border-purple-200 bg-purple-50 px-2 py-1 text-[11px] text-purple-900">
-                      <span className="font-medium">הפעולה הבאה:</span> {getRecommendedNextAction(item)}
+                      <span className="font-medium">הפעולה הבאה:</span> {recommendedAction.label}
                     </div>
                     <p className="mt-2 text-[11px] text-gray-500">גררו לעמודת סטטוס אחרת כדי לעדכן.</p>
                   </div>
-                ))}
+                )})}
               </div>
             </div>
           ))}
@@ -1336,6 +1351,12 @@ export default function CasesPage() {
             </div>
 
             <div className="p-6 space-y-4 text-right">
+              {!isCreating && openedCase && caseActionFocus ? (
+                <div className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-900" data-case-section="details">
+                  <span className="font-semibold">מומלץ עכשיו:</span> {getRecommendedNextAction(openedCase).label}
+                </div>
+              ) : null}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {isCreating ? (
                   <div className="md:col-span-2 space-y-2">
@@ -1395,7 +1416,7 @@ export default function CasesPage() {
                 <textarea value={formNotes} onChange={(e) => setFormNotes(e.target.value)} className="md:col-span-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right min-h-[90px]" placeholder="הערות פנימיות" />
               </div>
 
-              <div className="rounded-lg border border-gray-200 p-4 space-y-3">
+              <div className="rounded-lg border border-gray-200 p-4 space-y-3" data-case-section="quote">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-gray-900">הצעת מחיר</p>
                   <span className="text-xs text-gray-500">נדרש אישור לפני מעבר ממשוריין למאושר לביצוע</span>
@@ -1649,7 +1670,7 @@ export default function CasesPage() {
                     </div>
                   )}
 
-                  <div className="rounded-lg border border-gray-200 p-3">
+                  <div className="rounded-lg border border-gray-200 p-3" data-case-section="reports">
                     <p className="text-xs text-gray-500 mb-2">צ׳קליסט סגירת פרוייקט</p>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
                       <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
@@ -1688,7 +1709,7 @@ export default function CasesPage() {
                     </div>
                   </div>
 
-                  <div className="rounded-lg border border-gray-200 p-3">
+                  <div className="rounded-lg border border-gray-200 p-3" data-case-section="jobs">
                     <p className="text-xs text-gray-500 mb-2">עבודות קשורות לפרוייקט</p>
                     <div className="space-y-2 max-h-[180px] overflow-y-auto">
                       {openedCase.jobs.map((job) => (
@@ -1796,7 +1817,7 @@ export default function CasesPage() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs" data-case-section="payment">
                     <div className="rounded-lg border border-gray-200 p-3">
                       <p className="text-gray-500">סטטוס דוח פנימי</p>
                       <p className="font-semibold text-gray-900 mt-1">{openedCase.finalReportStatus}</p>
