@@ -80,22 +80,88 @@ jobs:
       - name: Deploy web app to production
         run: |
           set -euo pipefail
+          publish_url="$(az webapp deployment list-publishing-profiles -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP_NAME" --query "[?publishMethod=='ZipDeploy'].publishUrl | [0]" -o tsv | sed 's/:443$//')"
+          creds="$(az webapp deployment list-publishing-credentials -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP_NAME" -o json)"
+          deploy_user="$(printf '%s' "$creds" | jq -r '.publishingUserName')"
+          deploy_pass="$(printf '%s' "$creds" | jq -r '.publishingPassword')"
+          echo "::add-mask::$deploy_user"
+          echo "::add-mask::$deploy_pass"
           az webapp deploy \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_WEB_APP_NAME" \
             --src-path production-deploy.zip \
             --type zip \
-            --restart true
+            --restart true \
+            --async true \
+            --track-status false
+
+          for attempt in $(seq 1 80); do
+            http_code="$(curl -sS -u "$deploy_user:$deploy_pass" -o "$RUNNER_TEMP/web-deploy.json" -w '%{http_code}' "https://$publish_url/api/deployments/latest" || true)"
+            if [ "$http_code" = "200" ]; then
+              status="$(jq -r '.status // empty' "$RUNNER_TEMP/web-deploy.json")"
+              progress="$(jq -r '.progress // ""' "$RUNNER_TEMP/web-deploy.json")"
+              echo "Web deployment status: $status $progress"
+              if [ "$status" = "4" ]; then
+                break
+              fi
+              if [ "$status" = "3" ]; then
+                echo "::error::Web app deployment failed."
+                cat "$RUNNER_TEMP/web-deploy.json"
+                exit 1
+              fi
+            else
+              echo "Web deployment poll returned HTTP $http_code; waiting for Kudu to finish..."
+            fi
+
+            if [ "$attempt" -eq 80 ]; then
+              echo "::error::Timed out waiting for web app deployment to complete."
+              exit 1
+            fi
+            sleep 15
+          done
 
       - name: Deploy API app to production
         run: |
           set -euo pipefail
+          publish_url="$(az webapp deployment list-publishing-profiles -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP_NAME" --query "[?publishMethod=='ZipDeploy'].publishUrl | [0]" -o tsv | sed 's/:443$//')"
+          creds="$(az webapp deployment list-publishing-credentials -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP_NAME" -o json)"
+          deploy_user="$(printf '%s' "$creds" | jq -r '.publishingUserName')"
+          deploy_pass="$(printf '%s' "$creds" | jq -r '.publishingPassword')"
+          echo "::add-mask::$deploy_user"
+          echo "::add-mask::$deploy_pass"
           az webapp deploy \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_API_APP_NAME" \
             --src-path production-deploy.zip \
             --type zip \
-            --restart true
+            --restart true \
+            --async true \
+            --track-status false
+
+          for attempt in $(seq 1 80); do
+            http_code="$(curl -sS -u "$deploy_user:$deploy_pass" -o "$RUNNER_TEMP/api-deploy.json" -w '%{http_code}' "https://$publish_url/api/deployments/latest" || true)"
+            if [ "$http_code" = "200" ]; then
+              status="$(jq -r '.status // empty' "$RUNNER_TEMP/api-deploy.json")"
+              progress="$(jq -r '.progress // ""' "$RUNNER_TEMP/api-deploy.json")"
+              echo "API deployment status: $status $progress"
+              if [ "$status" = "4" ]; then
+                break
+              fi
+              if [ "$status" = "3" ]; then
+                echo "::error::API app deployment failed."
+                cat "$RUNNER_TEMP/api-deploy.json"
+                exit 1
+              fi
+            else
+              echo "API deployment poll returned HTTP $http_code; waiting for Kudu to finish..."
+            fi
+
+            if [ "$attempt" -eq 80 ]; then
+              echo "::error::Timed out waiting for API app deployment to complete."
+              exit 1
+            fi
+            sleep 15
+          done
 
       - name: Verify production API health
         run: |
