@@ -7,6 +7,15 @@ on:
         description: Git ref to deploy (branch, tag, or commit SHA)
         required: true
         default: main
+      target:
+        description: Which service to deploy
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - web
+          - api
       reason:
         description: Why this production deployment is being run
         required: true
@@ -51,6 +60,7 @@ jobs:
         run: |
           echo "Deploy requested by: ${{ github.actor }}"
           echo "Deploy ref: ${{ github.event.inputs.ref }}"
+          echo "Deploy target: ${{ github.event.inputs.target }}"
           echo "Reason: ${{ github.event.inputs.reason }}"
 
       - name: Azure login
@@ -70,16 +80,61 @@ jobs:
       - name: Validate
         env:
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-        run: npm run typecheck && npm run test && npm run build
-
-      - name: Create deployment package
         run: |
           set -euo pipefail
-          git archive --format=zip --output production-deploy.zip HEAD
+          target="${{ github.event.inputs.target }}"
+
+          if [ "$target" = "web" ]; then
+            npx turbo run typecheck build --filter=@workforce/shared --filter=@workforce/web
+            npm run -w @workforce/shared test
+          elif [ "$target" = "api" ]; then
+            npx turbo run typecheck build --filter=@workforce/shared --filter=@workforce/database --filter=@workforce/api
+            npm run -w @workforce/shared test
+          else
+            npm run typecheck && npm run test && npm run build
+          fi
+
+      - name: Create prebuilt deployment packages
+        run: |
+          set -euo pipefail
+          rm -f web-production-deploy.zip api-production-deploy.zip
+
+          zip -r web-production-deploy.zip \
+            package.json \
+            package-lock.json \
+            node_modules \
+            apps/web \
+            packages/shared \
+            -x '**/.git/**' \
+            -x '**/.turbo/**' \
+            -x '**/.next/cache/**' \
+            -x '**/node_modules/.cache/**' \
+            -x '**/coverage/**' \
+            -x '**/*.log'
+
+          zip -r api-production-deploy.zip \
+            package.json \
+            package-lock.json \
+            node_modules \
+            packages/api \
+            packages/shared \
+            packages/database \
+            -x '**/.git/**' \
+            -x '**/.turbo/**' \
+            -x '**/.next/cache/**' \
+            -x '**/node_modules/.cache/**' \
+            -x '**/coverage/**' \
+            -x '**/*.log'
 
       - name: Deploy web app to production
+        if: github.event.inputs.target == 'all' || github.event.inputs.target == 'web'
         run: |
           set -euo pipefail
+          az webapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEB_APP_NAME" \
+            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false >/dev/null
+
           profile="$(az webapp deployment list-publishing-profiles -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP_NAME" --xml)"
           publish_url="$(printf '%s' "$profile" | perl -ne 'if (/publishMethod="ZipDeploy".*?publishUrl="([^"]+)"/) { $u=$1; $u =~ s/:443$//; print $u; exit }')"
           deploy_user="$(printf '%s' "$profile" | perl -ne 'if (/publishMethod="ZipDeploy".*?userName="([^"]+)"/) { print $1; exit }')"
@@ -89,7 +144,7 @@ jobs:
           az webapp deploy \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_WEB_APP_NAME" \
-            --src-path production-deploy.zip \
+            --src-path web-production-deploy.zip \
             --type zip \
             --restart true \
             --async true \
@@ -124,8 +179,14 @@ jobs:
           done
 
       - name: Deploy API app to production
+        if: github.event.inputs.target == 'all' || github.event.inputs.target == 'api'
         run: |
           set -euo pipefail
+          az webapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_API_APP_NAME" \
+            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false >/dev/null
+
           profile="$(az webapp deployment list-publishing-profiles -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP_NAME" --xml)"
           publish_url="$(printf '%s' "$profile" | perl -ne 'if (/publishMethod="ZipDeploy".*?publishUrl="([^"]+)"/) { $u=$1; $u =~ s/:443$//; print $u; exit }')"
           deploy_user="$(printf '%s' "$profile" | perl -ne 'if (/publishMethod="ZipDeploy".*?userName="([^"]+)"/) { print $1; exit }')"
@@ -135,7 +196,7 @@ jobs:
           az webapp deploy \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_API_APP_NAME" \
-            --src-path production-deploy.zip \
+            --src-path api-production-deploy.zip \
             --type zip \
             --restart true \
             --async true \
@@ -170,6 +231,7 @@ jobs:
           done
 
       - name: Verify production API health
+        if: github.event.inputs.target == 'all' || github.event.inputs.target == 'api'
         run: |
           set -euo pipefail
           curl --fail --silent --show-error "$AZURE_API_HEALTH_URL"
