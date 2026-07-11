@@ -9,31 +9,20 @@
 
 ## Workflows
 
-- CI: .github/workflows/ci.yml
-- PR governance: .github/workflows/pr-governance.yml
 - Release: .github/workflows/release.yml
 - Dev deploy: .github/workflows/deploy-dev.yml
 - Prod deploy: .github/workflows/deploy-prod.yml
-
-## Branch Strategy (No Direct Push To Main)
-
+- If required Azure credentials or target app configuration is missing, the workflow fails.
+- Development deploy is also manual until separate dev App Services are configured.
 Use this flow for every code change:
 
 1. Create a feature branch from `main`.
-2. Open a Pull Request into `main`.
-3. Wait for required checks to pass.
-4. Merge PR.
 5. Let release-please manage version and release notes.
 
 Recommended branch protection for `main`:
 
-- Require PR before merge: enabled
-- Required checks: `quality`, `semantic-pr-title`
-- Require conversation resolution: enabled
 - Required approvals: `0` for solo mode, `1+` when team grows
 - Include administrators: enabled
-
-## Required repository configuration
 
 ### Variables
 
@@ -46,9 +35,10 @@ Recommended branch protection for `main`:
 
 Deployment workflows are intentionally strict:
 
-- If the deploy command secret is missing, the workflow fails.
+- If required Azure credentials or target app configuration is missing, the workflow fails.
 - A green deploy workflow should always mean a real deployment command was executed.
 - Production deploy is manual (`workflow_dispatch`) and relies on the `production` environment approval gate.
+- Development deploy is also manual until separate dev App Services are configured.
 
 Production is deployed directly to the current Azure App Services:
 
@@ -56,9 +46,15 @@ Production is deployed directly to the current Azure App Services:
 - API: `spaceorder-api-app-poc`
 - Resource group: `workforce-rg`
 
+There is currently no separate development App Service or deployment slot in this subscription.
+To enable real development deployments, configure these repository/environment variables:
+
+- `AZURE_DEV_RESOURCE_GROUP`
+- `AZURE_DEV_WEB_APP_NAME`
+- `AZURE_DEV_API_APP_NAME`
+
 Examples:
 
-- DEPLOY_DEV_COMMAND: az webapp up --name spaceorder-web-dev --resource-group rg-spaceorder-dev --runtime "NODE:20-lts"
 - AZURE_CREDENTIALS: `{"clientId":"...","clientSecret":"...","subscriptionId":"fdb353b1-3b56-4c72-bd66-fbbe625d8a96","tenantId":"2a5148b8-e427-4aec-ab2c-48bb34a125fd"}`
 
 ## Environments
