@@ -22,12 +22,14 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
+  issues: write
 
 env:
   AZURE_RESOURCE_GROUP: workforce-rg
   AZURE_WEB_APP_NAME: spaceorder-web-app-poc2
   AZURE_API_APP_NAME: spaceorder-api-app-poc
+  AZURE_WEB_APP_URL: https://spaceorder-web-app-poc2.azurewebsites.net
   AZURE_API_HEALTH_URL: https://spaceorder-api-app-poc-h7hef6a2gtd5euhq.israelcentral-01.azurewebsites.net/health
   IMAGE_NAME_PREFIX: spaceorder
 
@@ -71,6 +73,12 @@ jobs:
           echo "Deploy target: ${{ github.event.inputs.target }}"
           echo "Reason: ${{ github.event.inputs.reason }}"
 
+      - name: Capture release metadata
+        run: |
+          set -euo pipefail
+          echo "DEPLOY_START_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=containers-prod-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
       - name: Azure login
         uses: azure/login@v2
         with:
@@ -110,6 +118,7 @@ jobs:
             --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
             -t "$WEB_IMAGE" .
           docker push "$WEB_IMAGE"
+          echo "DEPLOYED_WEB_IMAGE=$WEB_IMAGE" >> "$GITHUB_ENV"
 
       - name: Build and push API image
         if: github.event.inputs.target == 'all' || github.event.inputs.target == 'api'
@@ -119,6 +128,7 @@ jobs:
           echo "API_IMAGE=$API_IMAGE" >> "$GITHUB_ENV"
           docker build -f packages/api/Dockerfile -t "$API_IMAGE" .
           docker push "$API_IMAGE"
+          echo "DEPLOYED_API_IMAGE=$API_IMAGE" >> "$GITHUB_ENV"
 
       - name: Deploy web container
         if: github.event.inputs.target == 'all' || github.event.inputs.target == 'web'
@@ -167,3 +177,44 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --silent --show-error "$AZURE_API_HEALTH_URL"
+
+      - name: Create deployment release
+        if: success() && github.event.inputs.target == 'all'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" \
+            --target "$GITHUB_SHA" \
+            --title "Production containers ${RELEASE_TAG}" \
+            --notes "Automated production container deployment.\n\nWeb image: ${DEPLOYED_WEB_IMAGE:-n/a}\nAPI image: ${DEPLOYED_API_IMAGE:-n/a}\nTriggered by: ${{ github.actor }}\nRun: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Write deployment summary
+        if: always()
+        run: |
+          set -euo pipefail
+          end_epoch="$(date +%s)"
+          start_epoch="${DEPLOY_START_EPOCH:-$end_epoch}"
+          duration="$((end_epoch - start_epoch))"
+          {
+            echo "## Production Container Deployment"
+            echo
+            echo "- Status: ${{ job.status }}"
+            echo "- Target: ${{ github.event.inputs.target }}"
+            echo "- Duration: ${duration}s"
+            echo "- Web app: ${AZURE_WEB_APP_URL}"
+            echo "- API health: ${AZURE_API_HEALTH_URL}"
+            echo "- Web image: ${DEPLOYED_WEB_IMAGE:-n/a}"
+            echo "- API image: ${DEPLOYED_API_IMAGE:-n/a}"
+            echo "- Release tag: ${RELEASE_TAG:-n/a}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create failure alert issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh issue create \
+            --title "Production container deploy failed (run ${{ github.run_number }})" \
+            --body "Deployment failed for target '${{ github.event.inputs.target }}'.\n\nRun URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\nActor: ${{ github.actor }}\nRef: ${{ github.event.inputs.ref }}\nReason: ${{ github.event.inputs.reason }}" || true

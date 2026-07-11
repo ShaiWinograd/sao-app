@@ -1,0 +1,80 @@
+name: ACR Image Cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep_latest:
+        description: Number of newest tags to keep per repository
+        required: true
+        default: "20"
+        type: string
+      repositories:
+        description: Comma-separated ACR repositories to clean
+        required: true
+        default: "spaceorder-web,spaceorder-api"
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  AZURE_RESOURCE_GROUP: workforce-rg
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      CONTAINER_REGISTRY_SERVER: ${{ vars.CONTAINER_REGISTRY_SERVER }}
+    steps:
+      - name: Validate cleanup configuration
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+        run: |
+          set -euo pipefail
+          if [ -z "$AZURE_CREDENTIALS" ]; then
+            echo "::error::AZURE_CREDENTIALS is not configured in production environment secrets."
+            exit 1
+          fi
+          if [ -z "${CONTAINER_REGISTRY_SERVER}" ]; then
+            echo "::error::CONTAINER_REGISTRY_SERVER must be configured as a production environment variable."
+            exit 1
+          fi
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Cleanup old image tags
+        run: |
+          set -euo pipefail
+
+          acr_name="${CONTAINER_REGISTRY_SERVER%%.*}"
+          keep_latest="${{ github.event.inputs.keep_latest }}"
+          repos_raw="${{ github.event.inputs.repositories }}"
+
+          IFS=',' read -r -a repos <<< "$repos_raw"
+          for repo in "${repos[@]}"; do
+            repo="$(echo "$repo" | xargs)"
+            if [ -z "$repo" ]; then
+              continue
+            fi
+
+            echo "Cleaning repository: $repo"
+            mapfile -t tags < <(az acr repository show-tags -n "$acr_name" --repository "$repo" --orderby time_desc -o tsv)
+
+            total="${#tags[@]}"
+            if [ "$total" -le "$keep_latest" ]; then
+              echo "Skipping $repo: only $total tags, keep_latest=$keep_latest"
+              continue
+            fi
+
+            for ((idx=keep_latest; idx<total; idx++)); do
+              tag="${tags[$idx]}"
+              if [ -n "$tag" ]; then
+                echo "Deleting $repo:$tag"
+                az acr repository delete -n "$acr_name" --image "$repo:$tag" --yes >/dev/null
+              fi
+            done
+          done
