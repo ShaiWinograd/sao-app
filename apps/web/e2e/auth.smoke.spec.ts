@@ -13,6 +13,13 @@ test.describe('Auth smoke flow', () => {
     await expect(page.getByText('מערכת ניהול כוח אדם ותזמון משמרות')).toBeVisible();
   });
 
+  test('projects page is reachable and shows view controls', async ({ page }) => {
+    await page.goto('/cases');
+    await expect(page.getByRole('heading', { name: 'פרוייקטים' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'תצוגת כרטיסים' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'תצוגת עמודות' })).toBeVisible();
+  });
+
   test('sign-up page is reachable', async ({ page }) => {
     await page.goto('/sign-up');
     await expect(page.getByText('Space & Order')).toBeVisible();
