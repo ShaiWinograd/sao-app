@@ -42,6 +42,27 @@ Recommended policy:
 - development: no manual approval, protected secrets.
 - production: required reviewer approval + protected secrets.
 
+## Solo Maintainer Mode (recommended for this repo now)
+
+If you are the only contributor, keep PR workflow enabled but avoid review deadlocks:
+
+- Keep: "Require a pull request before merging"
+- Set: "Required approvals" to `0`
+- Disable: "Require review from Code Owners"
+- Keep: "Require status checks to pass" with `quality`
+- Keep: "Require conversation resolution"
+
+For environments in solo mode:
+
+- development: no required reviewers
+- production: no required reviewers (or disable self-review restriction if you add yourself)
+
+When the team grows, switch back to:
+
+- required approvals: `1+`
+- code owner reviews: enabled
+- production required reviewer(s): enabled
+
 ## Release model
 
 The release workflow uses conventional commits on main:
