@@ -253,6 +253,31 @@ function requiresAdminAction(item: CustomerCase) {
   return quoteNotHandled || hasPendingReports || hasOutstanding;
 }
 
+function getRecommendedNextAction(item: CustomerCase) {
+  if (item.status === 'DRAFT' && !item.quote.sentByEmail) {
+    return 'לשלוח הצעת מחיר ללקוח';
+  }
+  if (item.status === 'DRAFT' && !item.quote.approved) {
+    return 'לתעד אישור להצעת המחיר';
+  }
+  if (item.status === 'ACTIVE' && item.jobs.length === 0) {
+    return 'להוסיף עבודה ראשונה לפרוייקט';
+  }
+  if (item.status === 'ACTIVE' && item.jobs.some((job) => job.status === 'מתוכנן')) {
+    return 'לאייש ולפרסם את העבודות המתוכננות';
+  }
+  if (item.status === 'READY_FOR_REVIEW' && item.finalReportStatus !== 'מוכן') {
+    return 'להפיק דוח פנימי לסגירת הפרוייקט';
+  }
+  if (item.status === 'READY_FOR_REVIEW' && item.customerReportStatus !== 'נשלח') {
+    return 'לשלוח דוח סיכום ללקוח';
+  }
+  if (item.status !== 'COMPLETED' && Math.max(item.invoicedTotal - item.paidTotal, 0) > 0) {
+    return 'לסגור יתרת תשלום פתוחה';
+  }
+  return 'לעדכן פרטי פרוייקט לפי הצורך';
+}
+
 function getAdminActionLabels(item: CustomerCase) {
   const labels: string[] = [];
   if (item.status === 'DRAFT' && !item.quote.sentByEmail) {
@@ -1128,6 +1153,7 @@ export default function CasesPage() {
             const status = caseStatusMeta[item.status];
             const StatusIcon = status.icon;
             const outstanding = Math.max(item.invoicedTotal - item.paidTotal, 0);
+            const recommendedAction = getRecommendedNextAction(item);
             return (
               <button
                 key={item.id}
@@ -1196,6 +1222,10 @@ export default function CasesPage() {
                     </p>
                   </div>
                 </div>
+
+                <div className="mt-3 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-900">
+                  <span className="font-semibold">הפעולה הבאה:</span> {recommendedAction}
+                </div>
               </button>
             );
           })}
@@ -1259,6 +1289,9 @@ export default function CasesPage() {
                         </span>
                       ) : null}
                     </button>
+                    <div className="mt-2 rounded-md border border-purple-200 bg-purple-50 px-2 py-1 text-[11px] text-purple-900">
+                      <span className="font-medium">הפעולה הבאה:</span> {getRecommendedNextAction(item)}
+                    </div>
                     <p className="mt-2 text-[11px] text-gray-500">גררו לעמודת סטטוס אחרת כדי לעדכן.</p>
                   </div>
                 ))}
