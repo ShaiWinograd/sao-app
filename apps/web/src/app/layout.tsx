@@ -20,26 +20,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     >
       <html lang="he" dir="rtl">
         <head>
-          {/* Open Sans for English content */}
+          {/* Assistant + Heebo for Hebrew-first UI */}
+          <link
+            href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Heebo:wght@400;500;600;700&display=swap"
+            rel="stylesheet"
+          />
+          {/* Open Sans remains available for mixed Latin-heavy content */}
           <link
             href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap"
             rel="stylesheet"
           />
-          {/* Noto Sans Hebrew - perfect match for Open Sans */}
-          <link
-            href="https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@400;500;600;700&display=swap"
-            rel="stylesheet"
-          />
-          <style>{`
-            * {
-              font-family: 'Noto Sans Hebrew', 'Open Sans', sans-serif;
-            }
-            html[lang="en"] * {
-              font-family: 'Open Sans', sans-serif;
-            }
-          `}</style>
         </head>
-        <body className="bg-gray-50 text-gray-900 antialiased">
+        <body className="antialiased bg-[var(--color-background)] text-[var(--color-text-primary)]">
           <ClerkTokenProvider />
           {children}
         </body>
