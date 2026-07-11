@@ -2,11 +2,20 @@ name: Deploy Dev
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
+    inputs:
+      ref:
+        description: Git ref to deploy to development
+        required: true
+        default: main
+      reason:
+        description: Why this development deployment is being run
+        required: true
+        type: string
 
-permissions:
-  contents: read
+env:
+  AZURE_DEV_RESOURCE_GROUP: ${{ vars.AZURE_DEV_RESOURCE_GROUP }}
+  AZURE_DEV_WEB_APP_NAME: ${{ vars.AZURE_DEV_WEB_APP_NAME }}
+  AZURE_DEV_API_APP_NAME: ${{ vars.AZURE_DEV_API_APP_NAME }}
 
 jobs:
   deploy-dev:
@@ -15,8 +24,35 @@ jobs:
     env:
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY != '' && secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || 'pk_test_Y2xlcmsuYWNjb3VudHMuZGV2JA==' }}
     steps:
+      - name: Validate development deployment configuration
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+        run: |
+          set -euo pipefail
+          if [ -z "$AZURE_CREDENTIALS" ]; then
+            echo "::error::AZURE_CREDENTIALS is not configured in development environment secrets."
+            exit 1
+          fi
+          if [ -z "${AZURE_DEV_RESOURCE_GROUP}" ] || [ -z "${AZURE_DEV_WEB_APP_NAME}" ] || [ -z "${AZURE_DEV_API_APP_NAME}" ]; then
+            echo "::error::AZURE_DEV_RESOURCE_GROUP, AZURE_DEV_WEB_APP_NAME, and AZURE_DEV_API_APP_NAME repository/environment variables must be configured for a real dev deployment."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Deployment context
+        run: |
+          echo "Dev deploy requested by: ${{ github.actor }}"
+          echo "Deploy ref: ${{ github.event.inputs.ref }}"
+          echo "Reason: ${{ github.event.inputs.reason }}"
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Setup Node
         uses: actions/setup-node@v5
@@ -30,13 +66,27 @@ jobs:
       - name: Validate
         run: npm run typecheck && npm run test && npm run build
 
-      - name: Deploy to Development
-        env:
-          DEPLOY_DEV_COMMAND: ${{ secrets.DEPLOY_DEV_COMMAND }}
+      - name: Create deployment package
         run: |
           set -euo pipefail
-          if [ -z "$DEPLOY_DEV_COMMAND" ]; then
-            echo "::error::DEPLOY_DEV_COMMAND secret is not configured. This workflow must run a real deployment command."
-            exit 1
-          fi
-          sh -c "$DEPLOY_DEV_COMMAND"
+          git archive --format=zip --output development-deploy.zip HEAD
+
+      - name: Deploy web app to development
+        run: |
+          set -euo pipefail
+          az webapp deploy \
+            --resource-group "$AZURE_DEV_RESOURCE_GROUP" \
+            --name "$AZURE_DEV_WEB_APP_NAME" \
+            --src-path development-deploy.zip \
+            --type zip \
+            --restart true
+
+      - name: Deploy API app to development
+        run: |
+          set -euo pipefail
+          az webapp deploy \
+            --resource-group "$AZURE_DEV_RESOURCE_GROUP" \
+            --name "$AZURE_DEV_API_APP_NAME" \
+            --src-path development-deploy.zip \
+            --type zip \
+            --restart true
