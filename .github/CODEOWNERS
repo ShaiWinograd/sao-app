@@ -1,0 +1,14 @@
+# Default code owners
+* @ShaiWinograd
+
+# CI/CD ownership
+.github/workflows/ @ShaiWinograd
+release-please-config.json @ShaiWinograd
+.release-please-manifest.json @ShaiWinograd
+
+# Platform-specific ownership
+apps/mobile/ @ShaiWinograd
+apps/web/ @ShaiWinograd
+packages/api/ @ShaiWinograd
+packages/database/ @ShaiWinograd
+packages/shared/ @ShaiWinograd
