@@ -437,7 +437,7 @@ export default function CasesPage() {
           id: job.id,
           date: formatIsoDateToHebrew(job.date),
           type: mapApiJobType(job.jobType),
-          address: job.address.fullAddress,
+          address: job.address?.fullAddress ?? 'כתובת לא זמינה',
           workers: job.requiredWorkerCount,
           status: mapApiJobStatus(job.status),
         }));
@@ -475,7 +475,7 @@ export default function CasesPage() {
       setApiError('');
     } catch (error) {
       console.error('Failed to load cases from API:', error);
-      setCases([]);
+      // Keep previously loaded data on transient API failures.
       // Only show error if it's not a loading issue
       if (error instanceof Error) {
         setApiError(`לא ניתן לטעון פרוייקטים: ${error.message}`);
@@ -1016,7 +1016,21 @@ export default function CasesPage() {
       </div>
 
       {isLoadingCases ? <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">טוען פרוייקטים מהשרת…</div> : null}
-      {apiError ? <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{apiError}</div> : null}
+      {apiError ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>{apiError}</span>
+            <button
+              type="button"
+              onClick={() => void loadCasesFromApi()}
+              disabled={isLoadingCases}
+              className="rounded-md border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              נסה שוב
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="bg-white rounded-lg border border-gray-200 p-4">
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
