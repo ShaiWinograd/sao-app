@@ -2,63 +2,102 @@ name: Deploy Production
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: ["Deploy Dev"]
-    types: [completed]
+    inputs:
+      ref:
+        description: Git ref to deploy (branch, tag, or commit SHA)
+        required: true
+        default: main
+      reason:
+        description: Why this production deployment is being run
+        required: true
+        type: string
 
 permissions:
   contents: read
 
+env:
+  AZURE_RESOURCE_GROUP: workforce-rg
+  AZURE_WEB_APP_NAME: spaceorder-web-app-poc2
+  AZURE_API_APP_NAME: spaceorder-api-app-poc
+  AZURE_API_HEALTH_URL: https://spaceorder-api-app-poc-h7hef6a2gtd5euhq.israelcentral-01.azurewebsites.net/health
+
 jobs:
   deploy-prod:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Preflight deployment configuration
-        id: preflight
+      - name: Validate production deployment configuration
         env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-          DEPLOY_PROD_COMMAND: ${{ secrets.DEPLOY_PROD_COMMAND }}
         run: |
-          can_deploy=true
+          set -euo pipefail
+          if [ -z "$AZURE_CREDENTIALS" ]; then
+            echo "::error::AZURE_CREDENTIALS is not configured in production environment secrets."
+            exit 1
+          fi
           if [ -z "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" ]; then
-            echo "::warning::NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is not configured in production environment secrets."
-            can_deploy=false
+            echo "::error::NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is not configured in production environment secrets."
+            exit 1
           fi
-          if [ -z "$DEPLOY_PROD_COMMAND" ]; then
-            echo "::warning::DEPLOY_PROD_COMMAND is not configured in production environment secrets."
-            can_deploy=false
-          fi
-          echo "can_deploy=$can_deploy" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
-        if: steps.preflight.outputs.can_deploy == 'true'
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Deployment context
+        run: |
+          echo "Deploy requested by: ${{ github.actor }}"
+          echo "Deploy ref: ${{ github.event.inputs.ref }}"
+          echo "Reason: ${{ github.event.inputs.reason }}"
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Setup Node
-        if: steps.preflight.outputs.can_deploy == 'true'
         uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
 
       - name: Install dependencies
-        if: steps.preflight.outputs.can_deploy == 'true'
         run: npm ci
 
       - name: Validate
-        if: steps.preflight.outputs.can_deploy == 'true'
         env:
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
         run: npm run typecheck && npm run test && npm run build
 
-      - name: Deploy to Production
-        if: steps.preflight.outputs.can_deploy == 'true'
-        env:
-          DEPLOY_PROD_COMMAND: ${{ secrets.DEPLOY_PROD_COMMAND }}
-        run: sh -c "$DEPLOY_PROD_COMMAND"
+      - name: Create deployment package
+        run: |
+          set -euo pipefail
+          git archive --format=zip --output production-deploy.zip HEAD
 
-      - name: Skip production deployment
-        if: steps.preflight.outputs.can_deploy != 'true'
-        run: echo "::notice::Production deployment was skipped until required secrets are configured."
+      - name: Deploy web app to production
+        run: |
+          set -euo pipefail
+          az webapp deploy \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEB_APP_NAME" \
+            --src-path production-deploy.zip \
+            --type zip \
+            --restart true
+
+      - name: Deploy API app to production
+        run: |
+          set -euo pipefail
+          az webapp deploy \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_API_APP_NAME" \
+            --src-path production-deploy.zip \
+            --type zip \
+            --restart true
+
+      - name: Verify production API health
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error "$AZURE_API_HEALTH_URL"

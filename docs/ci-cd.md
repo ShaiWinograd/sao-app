@@ -42,12 +42,24 @@ Recommended branch protection for `main`:
 ### Secrets
 
 - DEPLOY_DEV_COMMAND: Shell command to deploy to development.
-- DEPLOY_PROD_COMMAND: Shell command to deploy to production.
+- AZURE_CREDENTIALS: Azure service principal JSON for GitHub Actions (`azure/login`).
+
+Deployment workflows are intentionally strict:
+
+- If the deploy command secret is missing, the workflow fails.
+- A green deploy workflow should always mean a real deployment command was executed.
+- Production deploy is manual (`workflow_dispatch`) and relies on the `production` environment approval gate.
+
+Production is deployed directly to the current Azure App Services:
+
+- Web: `spaceorder-web-app-poc2`
+- API: `spaceorder-api-app-poc`
+- Resource group: `workforce-rg`
 
 Examples:
 
 - DEPLOY_DEV_COMMAND: az webapp up --name spaceorder-web-dev --resource-group rg-spaceorder-dev --runtime "NODE:20-lts"
-- DEPLOY_PROD_COMMAND: az webapp up --name spaceorder-web-prod --resource-group rg-spaceorder-prod --runtime "NODE:20-lts"
+- AZURE_CREDENTIALS: `{"clientId":"...","clientSecret":"...","subscriptionId":"fdb353b1-3b56-4c72-bd66-fbbe625d8a96","tenantId":"2a5148b8-e427-4aec-ab2c-48bb34a125fd"}`
 
 ## Environments
 

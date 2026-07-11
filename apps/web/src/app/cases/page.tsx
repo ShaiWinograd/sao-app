@@ -144,9 +144,81 @@ type CasesSort =
   | 'status_flow';
 type CasesViewMode = 'cards' | 'board';
 type CaseActionFocus = 'details' | 'quote' | 'jobs' | 'reports' | 'payment';
+type ProjectPipelineStage = 'NEW_LEAD' | 'PREPARING_QUOTE' | 'WAITING_QUOTE_APPROVAL' | 'RESERVED' | 'APPROVED_TO_EXECUTE';
+type ProjectTimingPrecision = 'EXACT_DATE' | 'DATE_RANGE' | 'EXPECTED_MONTH' | 'EXPECTED_QUARTER' | 'DATE_UNKNOWN';
+
+type PlannedServiceComponent = {
+  id: string;
+  serviceType: CaseJob['type'];
+  estimatedDays: number;
+  workersPerDay: number;
+  notes: string;
+};
+
+type ProjectPlanningDraft = {
+  pipelineStage: ProjectPipelineStage;
+  timingPrecision: ProjectTimingPrecision;
+  exactDate: string;
+  rangeStart: string;
+  rangeEnd: string;
+  expectedMonth: string;
+  expectedQuarter: 'Q1' | 'Q2' | 'Q3' | 'Q4';
+  dateUnknownReason: string;
+  plannedComponents: PlannedServiceComponent[];
+};
 
 function isCaseActionFocus(value: string | null): value is CaseActionFocus {
   return value === 'details' || value === 'quote' || value === 'jobs' || value === 'reports' || value === 'payment';
+}
+
+const pipelineStageLabel: Record<ProjectPipelineStage, string> = {
+  NEW_LEAD: 'ליד חדש',
+  PREPARING_QUOTE: 'בהכנת הצעת מחיר',
+  WAITING_QUOTE_APPROVAL: 'מחכה לאישור הצעת מחיר',
+  RESERVED: 'משוריין',
+  APPROVED_TO_EXECUTE: 'מאושר לביצוע',
+};
+
+const timingPrecisionLabel: Record<ProjectTimingPrecision, string> = {
+  EXACT_DATE: 'תאריך מדויק',
+  DATE_RANGE: 'טווח תאריכים',
+  EXPECTED_MONTH: 'חודש משוער',
+  EXPECTED_QUARTER: 'רבעון משוער',
+  DATE_UNKNOWN: 'תאריך עדיין לא ידוע',
+};
+
+function createDefaultPlanningDraft(): ProjectPlanningDraft {
+  return {
+    pipelineStage: 'NEW_LEAD',
+    timingPrecision: 'DATE_UNKNOWN',
+    exactDate: '',
+    rangeStart: '',
+    rangeEnd: '',
+    expectedMonth: '',
+    expectedQuarter: 'Q1',
+    dateUnknownReason: '',
+    plannedComponents: [],
+  };
+}
+
+function describeTimingDraft(draft: ProjectPlanningDraft) {
+  if (draft.timingPrecision === 'EXACT_DATE' && draft.exactDate) {
+    return `תאריך מדויק: ${new Date(draft.exactDate).toLocaleDateString('he-IL')}`;
+  }
+  if (draft.timingPrecision === 'DATE_RANGE' && draft.rangeStart && draft.rangeEnd) {
+    return `טווח: ${new Date(draft.rangeStart).toLocaleDateString('he-IL')} - ${new Date(draft.rangeEnd).toLocaleDateString('he-IL')}`;
+  }
+  if (draft.timingPrecision === 'EXPECTED_MONTH' && draft.expectedMonth) {
+    const [year, month] = draft.expectedMonth.split('-').map(Number);
+    return `חודש משוער: ${new Date(year, month - 1, 1).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })}`;
+  }
+  if (draft.timingPrecision === 'EXPECTED_QUARTER') {
+    return `רבעון משוער: ${draft.expectedQuarter}`;
+  }
+  if (draft.dateUnknownReason.trim()) {
+    return `תאריך לא ידוע: ${draft.dateUnknownReason.trim()}`;
+  }
+  return timingPrecisionLabel[draft.timingPrecision];
 }
 
 const caseStatusMeta: Record<CaseStatus, { label: string; className: string; icon: LucideIcon }> = {
@@ -424,10 +496,20 @@ export default function CasesPage() {
   const [selectedCommunicationTemplateKey, setSelectedCommunicationTemplateKey] = useState<ProjectCommunicationTemplateKey>('quote');
   const [selectedCommunicationChannel, setSelectedCommunicationChannel] = useState<ProjectCommunicationChannel>('whatsapp');
   const [hubByCaseId, setHubByCaseId] = useState<Record<string, ApiCaseHub>>({});
+  const [planningByCaseId, setPlanningByCaseId] = useState<Record<string, ProjectPlanningDraft>>({});
   const [apiError, setApiError] = useState('');
   const [isLoadingCases, setIsLoadingCases] = useState(true);
   const [customers, setCustomers] = useState<ApiCustomer[]>([]);
   const [caseActionFocus, setCaseActionFocus] = useState<CaseActionFocus | null>(null);
+  const [formPipelineStage, setFormPipelineStage] = useState<ProjectPipelineStage>('NEW_LEAD');
+  const [formTimingPrecision, setFormTimingPrecision] = useState<ProjectTimingPrecision>('DATE_UNKNOWN');
+  const [formExactDate, setFormExactDate] = useState('');
+  const [formRangeStart, setFormRangeStart] = useState('');
+  const [formRangeEnd, setFormRangeEnd] = useState('');
+  const [formExpectedMonth, setFormExpectedMonth] = useState('');
+  const [formExpectedQuarter, setFormExpectedQuarter] = useState<'Q1' | 'Q2' | 'Q3' | 'Q4'>('Q1');
+  const [formDateUnknownReason, setFormDateUnknownReason] = useState('');
+  const [formPlannedComponents, setFormPlannedComponents] = useState<PlannedServiceComponent[]>([]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -455,6 +537,25 @@ export default function CasesPage() {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem('spaceorder_deleted_case_history', JSON.stringify(deletedCaseHistory));
   }, [deletedCaseHistory]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const raw = window.localStorage.getItem('spaceorder_case_planning_drafts');
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as Record<string, ProjectPlanningDraft>;
+      if (parsed && typeof parsed === 'object') {
+        setPlanningByCaseId(parsed);
+      }
+    } catch (error) {
+      console.error('Failed to parse planning drafts from localStorage', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('spaceorder_case_planning_drafts', JSON.stringify(planningByCaseId));
+  }, [planningByCaseId]);
 
   const loadCasesFromApi = useCallback(async () => {
     setIsLoadingCases(true);
@@ -778,6 +879,7 @@ export default function CasesPage() {
   const archivedCount = useMemo(() => cases.filter((item) => item.isArchived).length, [cases]);
 
   const openCase = (item: CustomerCase, focus: CaseActionFocus | null = null) => {
+    const planningDraft = planningByCaseId[item.id] ?? createDefaultPlanningDraft();
     setOpenedCaseId(item.id);
     setCaseActionFocus(focus);
     setIsCreating(false);
@@ -803,6 +905,15 @@ export default function CasesPage() {
     setSelectedCommunicationTemplateKey('quote');
     setSelectedCommunicationChannel('whatsapp');
     setDeleteReason('');
+    setFormPipelineStage(planningDraft.pipelineStage);
+    setFormTimingPrecision(planningDraft.timingPrecision);
+    setFormExactDate(planningDraft.exactDate);
+    setFormRangeStart(planningDraft.rangeStart);
+    setFormRangeEnd(planningDraft.rangeEnd);
+    setFormExpectedMonth(planningDraft.expectedMonth);
+    setFormExpectedQuarter(planningDraft.expectedQuarter);
+    setFormDateUnknownReason(planningDraft.dateUnknownReason);
+    setFormPlannedComponents(planningDraft.plannedComponents);
   };
 
   useEffect(() => {
@@ -835,6 +946,7 @@ export default function CasesPage() {
   }, [openedCaseId, caseActionFocus]);
 
   const openCreate = () => {
+    const defaultPlanning = createDefaultPlanningDraft();
     setOpenedCaseId(null);
     setCaseActionFocus(null);
     setIsCreating(true);
@@ -857,6 +969,15 @@ export default function CasesPage() {
     setSelectedCommunicationTemplateKey('quote');
     setSelectedCommunicationChannel('whatsapp');
     setDeleteReason('');
+    setFormPipelineStage(defaultPlanning.pipelineStage);
+    setFormTimingPrecision(defaultPlanning.timingPrecision);
+    setFormExactDate(defaultPlanning.exactDate);
+    setFormRangeStart(defaultPlanning.rangeStart);
+    setFormRangeEnd(defaultPlanning.rangeEnd);
+    setFormExpectedMonth(defaultPlanning.expectedMonth);
+    setFormExpectedQuarter(defaultPlanning.expectedQuarter);
+    setFormDateUnknownReason(defaultPlanning.dateUnknownReason);
+    setFormPlannedComponents(defaultPlanning.plannedComponents);
   };
 
   const saveCase = async () => {
@@ -885,6 +1006,42 @@ export default function CasesPage() {
       setCaseMessage('לא ניתן להעביר פרוייקט לסטטוס מאושר לביצוע לפני אישור הצעת המחיר.');
       return;
     }
+    if (formTimingPrecision === 'EXACT_DATE' && !formExactDate) {
+      setCaseMessage('יש לבחור תאריך מדויק עבור דיוק תזמון.');
+      return;
+    }
+    if (formTimingPrecision === 'DATE_RANGE' && (!formRangeStart || !formRangeEnd)) {
+      setCaseMessage('יש להזין תאריך התחלה וסיום עבור טווח תאריכים.');
+      return;
+    }
+    if (formTimingPrecision === 'DATE_RANGE' && formRangeStart > formRangeEnd) {
+      setCaseMessage('טווח התאריכים אינו תקין: תאריך התחלה מאוחר מתאריך הסיום.');
+      return;
+    }
+    if (formTimingPrecision === 'EXPECTED_MONTH' && !formExpectedMonth) {
+      setCaseMessage('יש לבחור חודש משוער.');
+      return;
+    }
+    if (formTimingPrecision === 'DATE_UNKNOWN' && !formDateUnknownReason.trim()) {
+      setCaseMessage('כאשר התאריך עדיין לא ידוע, יש לציין סיבה קצרה.');
+      return;
+    }
+    if (formPlannedComponents.some((component) => component.estimatedDays <= 0 || component.workersPerDay <= 0)) {
+      setCaseMessage('בכל רכיב שירות מתוכנן יש להזין ימי עבודה ועובדים ליום גדולים מאפס.');
+      return;
+    }
+
+    const planningDraft: ProjectPlanningDraft = {
+      pipelineStage: formPipelineStage,
+      timingPrecision: formTimingPrecision,
+      exactDate: formExactDate,
+      rangeStart: formRangeStart,
+      rangeEnd: formRangeEnd,
+      expectedMonth: formExpectedMonth,
+      expectedQuarter: formExpectedQuarter,
+      dateUnknownReason: formDateUnknownReason,
+      plannedComponents: formPlannedComponents,
+    };
 
     if (isCreating) {
       let customerId = selectedCustomerId;
@@ -915,6 +1072,7 @@ export default function CasesPage() {
         });
 
         await Promise.all([loadCasesFromApi(), api.get<ApiCustomer[]>('/customers').then((res) => setCustomers(res.data))]);
+        setPlanningByCaseId((prev) => ({ ...prev, [createdCase.data.id]: planningDraft }));
         setOpenedCaseId(createdCase.data.id);
         setIsCreating(false);
         setCaseMessage('פרוייקט חדש נוצר בהצלחה בשרת.');
@@ -936,6 +1094,7 @@ export default function CasesPage() {
         status: mapUiCaseStatusToApi(formStatus),
         internalNotes: formNotes.trim() || undefined,
       });
+      setPlanningByCaseId((prev) => ({ ...prev, [openedCaseId]: planningDraft }));
       await loadCasesFromApi();
       setCaseMessage('הפרוייקט נשמר בהצלחה בשרת.');
     } catch (error) {
@@ -1181,6 +1340,7 @@ export default function CasesPage() {
             const StatusIcon = status.icon;
             const outstanding = Math.max(item.invoicedTotal - item.paidTotal, 0);
             const recommendedAction = getRecommendedNextAction(item);
+            const planningDraft = planningByCaseId[item.id];
             return (
               <button
                 key={item.id}
@@ -1253,6 +1413,12 @@ export default function CasesPage() {
                 <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
                   <span className="font-semibold">הפעולה הבאה:</span> {recommendedAction.label}
                 </div>
+                {planningDraft ? (
+                  <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+                    <span className="font-semibold">שלב:</span> {pipelineStageLabel[planningDraft.pipelineStage]} •{' '}
+                    <span className="font-semibold">תזמון:</span> {describeTimingDraft(planningDraft)}
+                  </div>
+                ) : null}
               </button>
             );
           })}
@@ -1468,6 +1634,150 @@ export default function CasesPage() {
                 </select>
                 <input value={formManager} onChange={(e) => setFormManager(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right" placeholder="מנהל אחראי" />
                 <textarea value={formNotes} onChange={(e) => setFormNotes(e.target.value)} className="md:col-span-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right min-h-[90px]" placeholder="הערות פנימיות" />
+              </div>
+
+              <div className="rounded-lg border border-gray-200 p-4 space-y-3" data-case-section="details">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-gray-900">תכנון פרוייקט ראשוני</p>
+                  <span className="text-xs text-gray-500">לניהול פרוייקט גם לפני שיש עבודות ביומן</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label className="text-xs text-gray-700 space-y-1">
+                    <span className="block">שלב פרוייקט</span>
+                    <select
+                      value={formPipelineStage}
+                      onChange={(e) => setFormPipelineStage(e.target.value as ProjectPipelineStage)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                    >
+                      {(Object.keys(pipelineStageLabel) as ProjectPipelineStage[]).map((stage) => (
+                        <option key={stage} value={stage}>{pipelineStageLabel[stage]}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs text-gray-700 space-y-1">
+                    <span className="block">דיוק תזמון</span>
+                    <select
+                      value={formTimingPrecision}
+                      onChange={(e) => setFormTimingPrecision(e.target.value as ProjectTimingPrecision)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                    >
+                      {(Object.keys(timingPrecisionLabel) as ProjectTimingPrecision[]).map((precision) => (
+                        <option key={precision} value={precision}>{timingPrecisionLabel[precision]}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                {formTimingPrecision === 'EXACT_DATE' ? (
+                  <input value={formExactDate} onChange={(e) => setFormExactDate(e.target.value)} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white" />
+                ) : null}
+                {formTimingPrecision === 'DATE_RANGE' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <input value={formRangeStart} onChange={(e) => setFormRangeStart(e.target.value)} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white" />
+                    <input value={formRangeEnd} onChange={(e) => setFormRangeEnd(e.target.value)} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white" />
+                  </div>
+                ) : null}
+                {formTimingPrecision === 'EXPECTED_MONTH' ? (
+                  <input value={formExpectedMonth} onChange={(e) => setFormExpectedMonth(e.target.value)} type="month" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white" />
+                ) : null}
+                {formTimingPrecision === 'EXPECTED_QUARTER' ? (
+                  <select value={formExpectedQuarter} onChange={(e) => setFormExpectedQuarter(e.target.value as 'Q1' | 'Q2' | 'Q3' | 'Q4')} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white">
+                    <option value="Q1">Q1 (ינואר-מרץ)</option>
+                    <option value="Q2">Q2 (אפריל-יוני)</option>
+                    <option value="Q3">Q3 (יולי-ספטמבר)</option>
+                    <option value="Q4">Q4 (אוקטובר-דצמבר)</option>
+                  </select>
+                ) : null}
+                {formTimingPrecision === 'DATE_UNKNOWN' ? (
+                  <input value={formDateUnknownReason} onChange={(e) => setFormDateUnknownReason(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right" placeholder="מדוע התאריך עדיין לא ידוע?" />
+                ) : null}
+
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-gray-800">רכיבי שירות מתוכננים</p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormPlannedComponents((prev) => [
+                          ...prev,
+                          {
+                            id: `planned-${Date.now()}-${prev.length + 1}`,
+                            serviceType: 'אריזה',
+                            estimatedDays: 1,
+                            workersPerDay: 2,
+                            notes: '',
+                          },
+                        ])
+                      }
+                      className="px-2 py-1 text-[11px] rounded border border-gray-300 text-gray-700 hover:bg-white"
+                    >
+                      הוספת רכיב
+                    </button>
+                  </div>
+                  {formPlannedComponents.length === 0 ? (
+                    <p className="text-xs text-gray-500">אין רכיבים עדיין. אפשר להתחיל בלי עבודות ביומן ולהוסיף כאן תכנון ראשוני.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {formPlannedComponents.map((component) => (
+                        <div key={component.id} className="grid grid-cols-1 md:grid-cols-5 gap-2 rounded-lg border border-gray-200 bg-white p-2">
+                          <select
+                            value={component.serviceType}
+                            onChange={(e) =>
+                              setFormPlannedComponents((prev) =>
+                                prev.map((current) => (current.id === component.id ? { ...current, serviceType: e.target.value as CaseJob['type'] } : current)),
+                              )
+                            }
+                            className="rounded border border-gray-300 px-2 py-1 text-xs bg-white"
+                          >
+                            <option value="אריזה">אריזה</option>
+                            <option value="פריקה">פריקה</option>
+                            <option value="סידור">סידור</option>
+                          </select>
+                          <input
+                            type="number"
+                            min={1}
+                            value={component.estimatedDays}
+                            onChange={(e) =>
+                              setFormPlannedComponents((prev) =>
+                                prev.map((current) => (current.id === component.id ? { ...current, estimatedDays: Number(e.target.value) } : current)),
+                              )
+                            }
+                            className="rounded border border-gray-300 px-2 py-1 text-xs"
+                            placeholder="ימי עבודה"
+                          />
+                          <input
+                            type="number"
+                            min={1}
+                            value={component.workersPerDay}
+                            onChange={(e) =>
+                              setFormPlannedComponents((prev) =>
+                                prev.map((current) => (current.id === component.id ? { ...current, workersPerDay: Number(e.target.value) } : current)),
+                              )
+                            }
+                            className="rounded border border-gray-300 px-2 py-1 text-xs"
+                            placeholder="עובדים ליום"
+                          />
+                          <input
+                            value={component.notes}
+                            onChange={(e) =>
+                              setFormPlannedComponents((prev) =>
+                                prev.map((current) => (current.id === component.id ? { ...current, notes: e.target.value } : current)),
+                              )
+                            }
+                            className="rounded border border-gray-300 px-2 py-1 text-xs text-right"
+                            placeholder="הערה"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setFormPlannedComponents((prev) => prev.filter((current) => current.id !== component.id))}
+                            className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                          >
+                            הסרה
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="rounded-lg border border-gray-200 p-4 space-y-3" data-case-section="quote">
