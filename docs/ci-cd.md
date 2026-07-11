@@ -10,9 +10,28 @@
 ## Workflows
 
 - CI: .github/workflows/ci.yml
+- PR governance: .github/workflows/pr-governance.yml
 - Release: .github/workflows/release.yml
 - Dev deploy: .github/workflows/deploy-dev.yml
 - Prod deploy: .github/workflows/deploy-prod.yml
+
+## Branch Strategy (No Direct Push To Main)
+
+Use this flow for every code change:
+
+1. Create a feature branch from `main`.
+2. Open a Pull Request into `main`.
+3. Wait for required checks to pass.
+4. Merge PR.
+5. Let release-please manage version and release notes.
+
+Recommended branch protection for `main`:
+
+- Require PR before merge: enabled
+- Required checks: `quality`, `semantic-pr-title`
+- Require conversation resolution: enabled
+- Required approvals: `0` for solo mode, `1+` when team grows
+- Include administrators: enabled
 
 ## Required repository configuration
 
@@ -76,6 +95,14 @@ On each merge to main:
 1. release-please updates/creates a release PR with the next version and changelog.
 2. Merging that release PR creates a GitHub Release and tag (vX.Y.Z).
 3. Production deploy can run on release published event.
+
+PR titles should follow semantic style (validated by workflow):
+
+- `feat: ...`
+- `fix: ...`
+- `chore: ...`
+
+This keeps release note generation consistent and predictable.
 
 ## Running tests locally
 
