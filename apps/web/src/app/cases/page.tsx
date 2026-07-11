@@ -817,8 +817,7 @@ export default function CasesPage() {
       });
       openCase(requestedCase, requestedCaseFocus);
     }
-  }, [requestedCaseId, requestedCaseFocus, cases, openedCaseId]);
-  }, [requestedCaseId, requestedCaseFocus, cases, openedCaseId]);
+  }, [requestedCaseId, requestedCaseFocus, cases, openedCaseId, caseActionFocus]);
 
   useEffect(() => {
     if (!highlightedCaseId) return;
