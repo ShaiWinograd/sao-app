@@ -2,14 +2,16 @@ name: Deploy Production
 
 on:
   workflow_dispatch:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Deploy Dev"]
+    types: [completed]
 
 permissions:
   contents: read
 
 jobs:
   deploy-prod:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     environment: production
     env:
