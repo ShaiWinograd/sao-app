@@ -34,8 +34,9 @@ jobs:
         env:
           DEPLOY_DEV_COMMAND: ${{ secrets.DEPLOY_DEV_COMMAND }}
         run: |
+          set -euo pipefail
           if [ -z "$DEPLOY_DEV_COMMAND" ]; then
-            echo "::warning::DEPLOY_DEV_COMMAND secret is not configured. Deployment step was skipped."
-            exit 0
+            echo "::error::DEPLOY_DEV_COMMAND secret is not configured. This workflow must run a real deployment command."
+            exit 1
           fi
           sh -c "$DEPLOY_DEV_COMMAND"
