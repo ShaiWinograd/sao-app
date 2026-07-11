@@ -19,6 +19,12 @@ test.describe('Auth smoke flow', () => {
     await expect(page.getByRole('button', { name: 'תצוגת כרטיסים' })).toBeVisible();
   });
 
+  test('projects page is reachable with jobs focus query', async ({ page }) => {
+    await page.goto('/cases?focus=jobs');
+    await expect(page.getByRole('heading', { name: 'פרוייקטים' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'תצוגת עמודות' })).toBeVisible();
+  });
+
   test('sign-up page is reachable', async ({ page }) => {
     await page.goto('/sign-up');
     await expect(page.getByText('Space & Order')).toBeVisible();

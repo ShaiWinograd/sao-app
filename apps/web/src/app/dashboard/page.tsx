@@ -926,7 +926,11 @@ export default function DashboardPage() {
         title: 'עבודות לשבוע הקרוב שדורשות טיפול דחוף',
         count: urgentUpcomingWorks.length,
         details: [],
-        items: urgentUpcomingWorks.map((work) => ({ id: work.id.toString(), name: `${work.customerName} • ${toDisplayDateFromDateKey(work.dateKey)}`, href: '/jobs' })),
+        items: urgentUpcomingWorks.map((work) => ({
+          id: work.id.toString(),
+          name: `${work.customerName} • ${toDisplayDateFromDateKey(work.dateKey)}`,
+          href: `/cases?caseId=${work.caseId}&focus=jobs`,
+        })),
       },
     ];
   }, [displayedWorks, customers, cases, caseById, todayDateKey]);
