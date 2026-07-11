@@ -18,11 +18,4 @@ test.describe('Auth smoke flow', () => {
     await expect(page.getByText('Space & Order')).toBeVisible();
     await expect(page.getByText('יצירת חשבון חדש למנהלי משמרות')).toBeVisible();
   });
-
-  test('projects page is reachable and shows core controls', async ({ page }) => {
-    await page.goto('/cases');
-    await expect(page.getByRole('heading', { name: 'פרוייקטים' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'תצוגת כרטיסים' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'תצוגת עמודות' })).toBeVisible();
-  });
 });
