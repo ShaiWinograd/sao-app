@@ -99,11 +99,16 @@ jobs:
 
       - name: Build and push web image
         if: github.event.inputs.target == 'all' || github.event.inputs.target == 'web'
+        env:
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
         run: |
           set -euo pipefail
           WEB_IMAGE="$CONTAINER_REGISTRY_SERVER/$IMAGE_NAME_PREFIX-web:$IMAGE_TAG"
           echo "WEB_IMAGE=$WEB_IMAGE" >> "$GITHUB_ENV"
-          docker build -f apps/web/Dockerfile -t "$WEB_IMAGE" .
+          docker build \
+            -f apps/web/Dockerfile \
+            --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
+            -t "$WEB_IMAGE" .
           docker push "$WEB_IMAGE"
 
       - name: Build and push API image
