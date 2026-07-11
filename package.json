@@ -13,6 +13,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "e2e": "npm run -w @workforce/web e2e",
+    "verify:pr": "npm run typecheck && npm run test && npm run e2e",
     "db:generate": "turbo run db:generate",
     "db:push": "turbo run db:push",
     "db:migrate": "turbo run db:migrate",

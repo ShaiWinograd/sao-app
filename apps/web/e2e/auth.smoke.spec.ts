@@ -1,6 +1,12 @@
 import { expect, test } from '@playwright/test';
 
 test.describe('Auth smoke flow', () => {
+  test('root route redirects to dashboard', async ({ page }) => {
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.getByRole('heading', { name: 'לוח בקרה' })).toBeVisible();
+  });
+
   test('sign-in page is reachable', async ({ page }) => {
     await page.goto('/sign-in');
     await expect(page.getByText('Space & Order')).toBeVisible();

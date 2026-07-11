@@ -252,6 +252,9 @@ export default function DashboardPage() {
     selectedRange === 'today' ? 'יום' : selectedRange === 'week' ? 'שבוע' : selectedRange === 'month' ? 'חודש' : 'הטווח המותאם';
   const ownerName = user?.firstName?.trim() || user?.fullName?.trim() || 'אורית';
   const greetingText = `${getGreetingByHour(now.getHours())} ${ownerName}!`;
+  const feedbackMailtoHref = `mailto:shaiwinograd@gmail.com?subject=${encodeURIComponent('Space & Order - משוב מהאפליקציה')}&body=${encodeURIComponent(
+    'מה לחצתי:\n\nמה ציפיתי שיקרה:\n\nמה קרה בפועל:\n\nצילום מסך (אם אפשר):\n',
+  )}`;
 
   type WorkStatus = 'done' | 'active' | 'planned';
   type AssignedWorker = { name: string; isTeamLead: boolean };
@@ -1044,6 +1047,12 @@ export default function DashboardPage() {
           <h1 className="text-xl font-bold text-gray-900">לוח בקרה</h1>
           <p className="text-sm text-gray-600 mt-0.5">{greetingText}</p>
         </div>
+        <a
+          href={feedbackMailtoHref}
+          className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50"
+        >
+          דיווח באג או בקשה
+        </a>
       </div>
 
       {/* Owner KPI Bar */}
