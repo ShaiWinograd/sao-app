@@ -806,9 +806,10 @@ export default function CasesPage() {
   };
 
   useEffect(() => {
-    if (!requestedCaseId || cases.length === 0 || openedCaseId === requestedCaseId) return;
+    if (!requestedCaseId || cases.length === 0) return;
     const requestedCase = cases.find((item) => item.id === requestedCaseId);
     if (requestedCase) {
+      if (openedCaseId === requestedCaseId && caseActionFocus === requestedCaseFocus) return;
       setHighlightedCaseId(requestedCase.id);
       window.requestAnimationFrame(() => {
         const target = document.querySelector<HTMLElement>(`[data-case-link-target="${requestedCase.id}"]`);
@@ -816,7 +817,7 @@ export default function CasesPage() {
       });
       openCase(requestedCase, requestedCaseFocus);
     }
-  }, [requestedCaseId, requestedCaseFocus, cases, openedCaseId]);
+  }, [requestedCaseId, requestedCaseFocus, cases, openedCaseId, caseActionFocus]);
 
   useEffect(() => {
     if (!highlightedCaseId) return;
