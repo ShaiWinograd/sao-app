@@ -145,6 +145,10 @@ type CasesSort =
 type CasesViewMode = 'cards' | 'board';
 type CaseActionFocus = 'details' | 'quote' | 'jobs' | 'reports' | 'payment';
 
+function isCaseActionFocus(value: string | null): value is CaseActionFocus {
+  return value === 'details' || value === 'quote' || value === 'jobs' || value === 'reports' || value === 'payment';
+}
+
 const caseStatusMeta: Record<CaseStatus, { label: string; className: string; icon: LucideIcon }> = {
   DRAFT: { label: 'משוריין', className: 'bg-gray-50 text-gray-700 border-gray-200', icon: CircleDashed },
   ACTIVE: { label: 'מאושר לביצוע', className: 'bg-blue-50 text-blue-700 border-blue-200', icon: FolderKanban },
@@ -386,6 +390,7 @@ export default function CasesPage() {
   const { isLoaded: isAuthLoaded, isSignedIn, getToken } = useAuth();
   const canSeeFinancials = canViewSensitiveFinancials(resolveAppViewerRole(user));
   const [requestedCaseId, setRequestedCaseId] = useState<string | null>(null);
+  const [requestedCaseFocus, setRequestedCaseFocus] = useState<CaseActionFocus | null>(null);
   const [highlightedCaseId, setHighlightedCaseId] = useState<string | null>(null);
   const [cases, setCases] = useState<CustomerCase[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -526,7 +531,10 @@ export default function CasesPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    setRequestedCaseId(new URLSearchParams(window.location.search).get('caseId'));
+    const params = new URLSearchParams(window.location.search);
+    const focus = params.get('focus');
+    setRequestedCaseId(params.get('caseId'));
+    setRequestedCaseFocus(isCaseActionFocus(focus) ? focus : null);
   }, []);
 
   useEffect(() => {
@@ -806,9 +814,9 @@ export default function CasesPage() {
         const target = document.querySelector<HTMLElement>(`[data-case-link-target="${requestedCase.id}"]`);
         target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       });
-      openCase(requestedCase);
+      openCase(requestedCase, requestedCaseFocus);
     }
-  }, [requestedCaseId, cases, openedCaseId]);
+  }, [requestedCaseId, requestedCaseFocus, cases, openedCaseId]);
 
   useEffect(() => {
     if (!highlightedCaseId) return;

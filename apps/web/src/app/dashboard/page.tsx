@@ -908,19 +908,19 @@ export default function DashboardPage() {
         title: 'מחכה לאישור הצעת מחיר',
         count: draftCases.length,
         details: [],
-        items: draftCases.map((item) => ({ id: item.id, name: item.caseName, href: `/cases?caseId=${item.id}` })),
+        items: draftCases.map((item) => ({ id: item.id, name: item.caseName, href: `/cases?caseId=${item.id}&focus=quote` })),
       },
       {
         title: 'מחכה לתשלום מהלקוח',
         count: awaitingCustomerPaymentCases.length,
         details: [],
-        items: awaitingCustomerPaymentCases.map((item) => ({ id: item.id, name: item.caseName, href: `/cases?caseId=${item.id}` })),
+        items: awaitingCustomerPaymentCases.map((item) => ({ id: item.id, name: item.caseName, href: `/cases?caseId=${item.id}&focus=payment` })),
       },
       {
         title: 'פרוייקטים סגורים שממתינים לאישור שעות ושליחת דוח',
         count: completedAwaitingFollowup.length,
         details: [],
-        items: completedAwaitingFollowup.map((item) => ({ id: item.id, name: item.caseName, href: `/cases?caseId=${item.id}` })),
+        items: completedAwaitingFollowup.map((item) => ({ id: item.id, name: item.caseName, href: `/cases?caseId=${item.id}&focus=reports` })),
       },
       {
         title: 'עבודות לשבוע הקרוב שדורשות טיפול דחוף',
