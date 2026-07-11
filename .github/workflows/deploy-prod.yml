@@ -1,0 +1,39 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-prod:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate
+        run: npm run typecheck && npm run test && npm run build
+
+      - name: Deploy to Production
+        env:
+          DEPLOY_PROD_COMMAND: ${{ secrets.DEPLOY_PROD_COMMAND }}
+        run: |
+          if [ -z "$DEPLOY_PROD_COMMAND" ]; then
+            echo "DEPLOY_PROD_COMMAND secret is not configured" >&2
+            exit 1
+          fi
+          sh -c "$DEPLOY_PROD_COMMAND"

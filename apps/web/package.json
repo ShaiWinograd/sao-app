@@ -1,0 +1,42 @@
+{
+  "name": "@workforce/web",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "node ./scripts/start-dev-stable.mjs",
+    "dev:clean": "node ./scripts/start-dev-stable.mjs",
+    "dev:fast": "node ./scripts/start-dev-stable.mjs --skip-clean",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "npm run build && tsc --noEmit",
+    "e2e": "playwright test",
+    "e2e:ci": "playwright test --reporter=github,line"
+  },
+  "dependencies": {
+    "@clerk/localizations": "^3.21.4",
+    "@clerk/nextjs": "^6.0.0",
+    "@tanstack/react-query": "^5.56.2",
+    "@tanstack/react-query-devtools": "^5.56.2",
+    "@workforce/shared": "*",
+    "axios": "^1.7.7",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.441.0",
+    "next": "^15.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.12.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^15.0.0",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.11",
+    "typescript": "^5.6.2"
+  }
+}

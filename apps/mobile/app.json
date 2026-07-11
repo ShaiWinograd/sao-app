@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "Space & Order",
+    "slug": "space-order-workforce",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "workforce",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0f7a67"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.spaceorder.workforce",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "נדרש לאימות מיקום בזמן משמרת",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "נדרש לבדיקות מיקום תקופתיות במהלך משמרת פעילה"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0f7a67"
+      },
+      "package": "com.spaceorder.workforce",
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION", "FOREGROUND_SERVICE"]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "נדרש לבדיקות מיקום תקופתיות במהלך משמרת פעילה",
+          "locationWhenInUsePermission": "נדרש לאימות מיקום בזמן משמרת"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#0f7a67"
+        }
+      ]
+    ],
+    "extra": {
+      "router": { "origin": false },
+      "eas": { "projectId": "your-eas-project-id" }
+    }
+  }
+}

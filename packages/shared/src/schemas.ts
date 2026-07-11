@@ -1,0 +1,303 @@
+import { z } from 'zod';
+
+// ─── Customer ─────────────────────────────────────────────────────────────────
+
+export const CustomerSchema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  phone: z.string().min(9),
+  email: z.string().email(),
+  preferredContact: z.enum(['PHONE', 'EMAIL', 'WHATSAPP']).optional(),
+  notes: z.string().optional(),
+  parkingInstructions: z.string().optional(),
+  accessInstructions: z.string().optional(),
+  elevatorInfo: z.string().optional(),
+  petInfo: z.string().optional(),
+  specialRequests: z.string().optional(),
+  internalNotes: z.string().optional(),
+});
+
+export const CreateCustomerSchema = CustomerSchema;
+export const UpdateCustomerSchema = CustomerSchema.partial();
+
+// ─── Address ─────────────────────────────────────────────────────────────────
+
+export const AddressSchema = z.object({
+  customerId: z.string(),
+  fullAddress: z.string().min(1),
+  apartmentDetails: z.string().optional(),
+  label: z.enum(['OLD_APARTMENT', 'NEW_APARTMENT', 'STORAGE', 'OFFICE', 'OTHER']),
+  accessNotes: z.string().optional(),
+  parkingNotes: z.string().optional(),
+  elevatorNotes: z.string().optional(),
+});
+
+export const CreateAddressSchema = AddressSchema;
+export const UpdateAddressSchema = AddressSchema.partial().omit({ customerId: true });
+
+// ─── Customer Case ────────────────────────────────────────────────────────────
+
+export const CustomerCaseSchema = z.object({
+  customerId: z.string(),
+  name: z.string().min(1),
+  status: z.enum(['DRAFT', 'ACTIVE', 'READY_FOR_REVIEW', 'COMPLETED']).optional(),
+  startDate: z.string().optional(),
+  assignedAdminId: z.string().optional(),
+  internalNotes: z.string().optional(),
+});
+
+export const CreateCaseSchema = CustomerCaseSchema;
+export const UpdateCaseSchema = CustomerCaseSchema.partial().omit({ customerId: true });
+
+// ─── Job ─────────────────────────────────────────────────────────────────────
+
+export const JobSchema = z.object({
+  caseId: z.string(),
+  customerId: z.string(),
+  addressId: z.string(),
+  jobType: z.enum(['PACKING', 'UNPACKING', 'HOME_ORGANIZATION']),
+  date: z.string(),
+  plannedStart: z.string(),
+  plannedEnd: z.string(),
+  requiredWorkerCount: z.number().int().min(1),
+  staffingMode: z.enum(['AUTO_APPROVE', 'MANAGER_APPROVAL']),
+  workerSlots: z
+    .array(
+      z.object({
+        requiredSkill: z
+          .enum([
+            'SHIFT_LEADER',
+            'PACKING_SPECIALIST',
+            'UNPACKING_SPECIALIST',
+            'ORGANIZATION_SPECIALIST',
+            'DRIVER',
+            'GENERAL_WORKER',
+          ])
+          .optional(),
+        label: z.string().optional(),
+      })
+    )
+    .optional(),
+  jobNotes: z.string().optional(),
+  workerVisibleNotes: z.string().optional(),
+  billingModel: z.enum(['HOURLY', 'FIXED', 'CUSTOM']).optional(),
+  billingRate: z.number().optional(),
+  enableWaitlist: z.boolean().optional(),
+  locationRadiusMeters: z.number().optional(),
+  formTemplateId: z.string().optional(),
+});
+
+export const CreateJobSchema = JobSchema;
+export const UpdateJobSchema = JobSchema.partial().omit({ caseId: true, customerId: true });
+
+// ─── Shift / Join Request ─────────────────────────────────────────────────────
+
+export const JoinRequestSchema = z.object({
+  jobId: z.string(),
+  workerId: z.string(),
+  slotId: z.string().optional(),
+  message: z.string().optional(),
+});
+
+export const ApproveJoinRequestSchema = z.object({
+  shiftId: z.string(),
+  approved: z.boolean(),
+  reason: z.string().optional(),
+});
+
+// ─── Attendance ───────────────────────────────────────────────────────────────
+
+export const ClockInSchema = z.object({
+  shiftId: z.string(),
+  latitude: z.number(),
+  longitude: z.number(),
+  timestamp: z.string(),
+});
+
+export const ClockOutSchema = z.object({
+  shiftId: z.string(),
+  latitude: z.number(),
+  longitude: z.number(),
+  timestamp: z.string(),
+});
+
+export const AttendanceCorrectionSchema = z.object({
+  shiftId: z.string(),
+  clockIn: z.string().optional(),
+  clockOut: z.string().optional(),
+  reason: z.string(),
+  internalNote: z.string().optional(),
+});
+
+// ─── Replacement Request ──────────────────────────────────────────────────────
+
+export const ReplacementRequestSchema = z.object({
+  shiftId: z.string(),
+  reason: z.string(),
+  suggestedWorkerId: z.string().optional(),
+});
+
+export const ApproveReplacementSchema = z.object({
+  replacementRequestId: z.string(),
+  action: z.enum(['APPROVE_SUGGESTED', 'CHOOSE_WORKER', 'REOPEN', 'REJECT']),
+  replacementWorkerId: z.string().optional(),
+  reason: z.string().optional(),
+});
+
+// ─── End-of-Shift Form ────────────────────────────────────────────────────────
+
+export const FormAnswerSchema = z.object({
+  questionId: z.string(),
+  value: z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
+});
+
+export const FormSubmissionSchema = z.object({
+  shiftId: z.string(),
+  completionStatus: z.enum(['COMPLETED', 'PARTIALLY_COMPLETED', 'NOT_COMPLETED']),
+  answers: z.array(FormAnswerSchema),
+  managerNote: z.string().optional(),
+});
+
+// ─── Invoice ──────────────────────────────────────────────────────────────────
+
+export const InvoiceSchema = z.object({
+  caseId: z.string(),
+  customerId: z.string(),
+  jobIds: z.array(z.string()),
+  billableHours: z.number().optional(),
+  hourlyRate: z.number().optional(),
+  fixedPrice: z.number().optional(),
+  additionalFees: z.number().optional(),
+  discount: z.number().optional(),
+  vatRate: z.number().optional(),
+  dueDate: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const CreateInvoiceSchema = InvoiceSchema;
+export const UpdateInvoiceSchema = InvoiceSchema.partial().omit({
+  caseId: true,
+  customerId: true,
+});
+
+// ─── Customer Payment ─────────────────────────────────────────────────────────
+
+export const CustomerPaymentSchema = z.object({
+  invoiceId: z.string(),
+  amount: z.number().positive(),
+  paymentDate: z.string(),
+  method: z.enum(['BANK_TRANSFER', 'CASH', 'BIT', 'CHECK', 'OTHER']),
+  reference: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+// ─── Worker ───────────────────────────────────────────────────────────────────
+
+export const WorkerProfileSchema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  phone: z.string().min(9),
+  email: z.string().email(),
+  hourlyWage: z.number().min(0),
+  dailyPaymentAmount: z.number().min(0),
+  paymentMethod: z.enum(['BANK_TRANSFER', 'CASH', 'BIT', 'CHECK', 'OTHER']),
+  skills: z.array(
+    z.enum([
+      'SHIFT_LEADER',
+      'PACKING_SPECIALIST',
+      'UNPACKING_SPECIALIST',
+      'ORGANIZATION_SPECIALIST',
+      'DRIVER',
+      'GENERAL_WORKER',
+    ])
+  ),
+  isActive: z.boolean().optional(),
+  homeArea: z.string().optional(),
+  notes: z.string().optional(),
+  internalNotes: z.string().optional(),
+});
+
+export const CreateWorkerSchema = WorkerProfileSchema;
+export const UpdateWorkerSchema = WorkerProfileSchema.partial();
+
+// ─── Worker Adjustment ────────────────────────────────────────────────────────
+
+export const WorkerAdjustmentSchema = z.object({
+  workerId: z.string(),
+  amount: z.number(),
+  category: z.enum([
+    'CUSTOMER_REFERRAL',
+    'SHIFT_LEADER_BONUS',
+    'SPECIAL_ASSIGNMENT_BONUS',
+    'TRAVEL_REIMBURSEMENT',
+    'EXTRA_RESPONSIBILITY',
+    'CORRECTION',
+    'DEDUCTION',
+  ]),
+  reason: z.string(),
+  shiftId: z.string().optional(),
+  caseId: z.string().optional(),
+  payrollMonth: z.number().int().min(1).max(12),
+  payrollYear: z.number().int(),
+  isIncluded: z.boolean().optional(),
+});
+
+// ─── Worker Payment ───────────────────────────────────────────────────────────
+
+export const WorkerPaymentSchema = z.object({
+  workerId: z.string(),
+  month: z.number().int().min(1).max(12),
+  year: z.number().int(),
+  amount: z.number().positive(),
+  paymentDate: z.string(),
+  method: z.enum(['BANK_TRANSFER', 'CASH', 'BIT', 'CHECK', 'OTHER']),
+  reference: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+// ─── Business Expense ─────────────────────────────────────────────────────────
+
+export const BusinessExpenseSchema = z.object({
+  date: z.string(),
+  amount: z.number().positive(),
+  category: z.enum([
+    'SOFTWARE',
+    'MARKETING',
+    'INSURANCE',
+    'ACCOUNTANT',
+    'OFFICE',
+    'EQUIPMENT',
+    'VEHICLE',
+    'PARKING',
+    'SUPPLIES',
+    'OTHER',
+  ]),
+  vendor: z.string().optional(),
+  notes: z.string().optional(),
+  receiptUrl: z.string().optional(),
+  month: z.number().int().min(1).max(12),
+  year: z.number().int(),
+});
+
+// ─── Exported types ───────────────────────────────────────────────────────────
+
+export type CreateCustomerInput = z.infer<typeof CreateCustomerSchema>;
+export type UpdateCustomerInput = z.infer<typeof UpdateCustomerSchema>;
+export type CreateAddressInput = z.infer<typeof CreateAddressSchema>;
+export type CreateCaseInput = z.infer<typeof CreateCaseSchema>;
+export type UpdateCaseInput = z.infer<typeof UpdateCaseSchema>;
+export type CreateJobInput = z.infer<typeof CreateJobSchema>;
+export type UpdateJobInput = z.infer<typeof UpdateJobSchema>;
+export type JoinRequestInput = z.infer<typeof JoinRequestSchema>;
+export type ClockInInput = z.infer<typeof ClockInSchema>;
+export type ClockOutInput = z.infer<typeof ClockOutSchema>;
+export type AttendanceCorrectionInput = z.infer<typeof AttendanceCorrectionSchema>;
+export type ReplacementRequestInput = z.infer<typeof ReplacementRequestSchema>;
+export type FormSubmissionInput = z.infer<typeof FormSubmissionSchema>;
+export type CreateInvoiceInput = z.infer<typeof CreateInvoiceSchema>;
+export type CustomerPaymentInput = z.infer<typeof CustomerPaymentSchema>;
+export type CreateWorkerInput = z.infer<typeof CreateWorkerSchema>;
+export type UpdateWorkerInput = z.infer<typeof UpdateWorkerSchema>;
+export type WorkerAdjustmentInput = z.infer<typeof WorkerAdjustmentSchema>;
+export type WorkerPaymentInput = z.infer<typeof WorkerPaymentSchema>;
+export type BusinessExpenseInput = z.infer<typeof BusinessExpenseSchema>;

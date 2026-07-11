@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Hebrew RTL base */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  direction: rtl;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+html {
+  font-size: 14px;
+}
+
+/* Utility: remove number input arrows */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
