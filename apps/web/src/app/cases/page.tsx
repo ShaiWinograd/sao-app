@@ -1143,11 +1143,13 @@ export default function CasesPage() {
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
           <p className="text-sm font-semibold text-amber-800">פרוייקטים שממתינים לטיפול</p>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-            {pendingAdminCases.slice(0, 6).map((item) => (
+            {pendingAdminCases.slice(0, 6).map((item) => {
+              const recommendedAction = getRecommendedNextAction(item);
+              return (
               <button
                 key={`pending-${item.id}`}
                 type="button"
-                onClick={() => openCase(item)}
+                onClick={() => openCase(item, recommendedAction.focus)}
                 data-case-link-target={item.id}
                 className={`text-right rounded-lg border border-amber-300 bg-white px-3 py-2 hover:bg-amber-100/40 ${
                   highlightedCaseId === item.id ? 'ring-2 ring-purple-400 ring-offset-2' : ''
@@ -1162,8 +1164,11 @@ export default function CasesPage() {
                     </span>
                   ))}
                 </div>
+                <div className="mt-2 rounded-md border border-amber-300 bg-amber-100/70 px-2 py-1 text-[11px] text-amber-900">
+                  <span className="font-semibold">הפעולה הבאה:</span> {recommendedAction.label}
+                </div>
               </button>
-            ))}
+            )})}
           </div>
         </div>
       )}
