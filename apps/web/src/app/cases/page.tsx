@@ -1357,6 +1357,46 @@ export default function CasesPage() {
                 </div>
               ) : null}
 
+              {!isCreating && openedCase ? (
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCaseActionFocus('details')}
+                    className={`rounded-full border px-3 py-1 text-xs ${caseActionFocus === 'details' ? 'border-purple-300 bg-purple-50 text-purple-700' : 'border-gray-300 bg-white text-gray-700'}`}
+                  >
+                    פרטי פרוייקט
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCaseActionFocus('quote')}
+                    className={`rounded-full border px-3 py-1 text-xs ${caseActionFocus === 'quote' ? 'border-purple-300 bg-purple-50 text-purple-700' : 'border-gray-300 bg-white text-gray-700'}`}
+                  >
+                    הצעת מחיר
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCaseActionFocus('jobs')}
+                    className={`rounded-full border px-3 py-1 text-xs ${caseActionFocus === 'jobs' ? 'border-purple-300 bg-purple-50 text-purple-700' : 'border-gray-300 bg-white text-gray-700'}`}
+                  >
+                    עבודות
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCaseActionFocus('reports')}
+                    className={`rounded-full border px-3 py-1 text-xs ${caseActionFocus === 'reports' ? 'border-purple-300 bg-purple-50 text-purple-700' : 'border-gray-300 bg-white text-gray-700'}`}
+                  >
+                    דוחות וסגירה
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCaseActionFocus('payment')}
+                    className={`rounded-full border px-3 py-1 text-xs ${caseActionFocus === 'payment' ? 'border-purple-300 bg-purple-50 text-purple-700' : 'border-gray-300 bg-white text-gray-700'}`}
+                  >
+                    תשלום
+                  </button>
+                </div>
+              ) : null}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {isCreating ? (
                   <div className="md:col-span-2 space-y-2">
