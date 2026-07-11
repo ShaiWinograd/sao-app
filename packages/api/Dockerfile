@@ -15,6 +15,8 @@ COPY packages/api packages/api
 COPY packages/shared packages/shared
 COPY packages/database packages/database
 
+RUN npm run build --workspace @workforce/shared
+RUN npm run db:generate --workspace @workforce/database
 RUN npm run build --workspace @workforce/api
 
 ENV NODE_ENV=production

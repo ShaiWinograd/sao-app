@@ -13,6 +13,7 @@ COPY tsconfig.base.json turbo.json ./
 COPY apps/web apps/web
 COPY packages/shared packages/shared
 
+RUN npm run build --workspace @workforce/shared
 RUN npm run build --workspace @workforce/web
 
 ENV NODE_ENV=production
