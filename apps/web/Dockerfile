@@ -13,6 +13,9 @@ COPY tsconfig.base.json turbo.json ./
 COPY apps/web apps/web
 COPY packages/shared packages/shared
 
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_placeholder
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+
 RUN npm run build --workspace @workforce/shared
 RUN npm run build --workspace @workforce/web
 
