@@ -37,10 +37,30 @@ export const UpdateAddressSchema = AddressSchema.partial().omit({ customerId: tr
 
 // ─── Customer Case ────────────────────────────────────────────────────────────
 
+export const CaseStatusSchema = z.enum([
+  'DRAFT',
+  'ACTIVE',
+  'READY_FOR_REVIEW',
+  'COMPLETED',
+  'CANCELLED',
+  'LEAD',
+  'QUOTATION_DRAFT',
+  'AWAITING_APPROVAL',
+  'RESERVED',
+  'APPROVED_NO_DATES',
+  'PARTIALLY_SCHEDULED',
+  'READY_FOR_EXECUTION',
+  'IN_PROGRESS',
+  'AWAITING_COMPLETION',
+  'AWAITING_BILLING',
+  'AWAITING_PAYMENT',
+  'PAID',
+]);
+
 export const CustomerCaseSchema = z.object({
   customerId: z.string(),
   name: z.string().min(1),
-  status: z.enum(['DRAFT', 'ACTIVE', 'READY_FOR_REVIEW', 'COMPLETED']).optional(),
+  status: CaseStatusSchema.optional(),
   startDate: z.string().optional(),
   assignedAdminId: z.string().optional(),
   internalNotes: z.string().optional(),

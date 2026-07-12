@@ -29,6 +29,19 @@ enum CaseStatus {
   READY_FOR_REVIEW
   COMPLETED
   CANCELLED
+  // Full lifecycle states (spec: sale/planning → execution → payment/closure)
+  LEAD
+  QUOTATION_DRAFT
+  AWAITING_APPROVAL
+  RESERVED
+  APPROVED_NO_DATES
+  PARTIALLY_SCHEDULED
+  READY_FOR_EXECUTION
+  IN_PROGRESS
+  AWAITING_COMPLETION
+  AWAITING_BILLING
+  AWAITING_PAYMENT
+  PAID
 }
 
 enum QuotationStatus {
