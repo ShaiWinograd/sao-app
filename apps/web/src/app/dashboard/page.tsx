@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useUser, useAuth } from '@clerk/nextjs';
+import { extractUrgentDashboardIssues, orderDashboardWorkflowSections } from '@workforce/shared';
 import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, XCircle } from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
@@ -342,7 +343,7 @@ export default function DashboardPage() {
   const [workerVisibleNotes, setWorkerVisibleNotes] = useState('');
   const [customerMode, setCustomerMode] = useState<'existing' | 'new'>('new');
   const [dayJobsPickerDateKey, setDayJobsPickerDateKey] = useState<string | null>(null);
-  const [activeTaskItem, setActiveTaskItem] = useState<number | null>(null);
+  const [activeSectionKey, setActiveSectionKey] = useState<string | null>(null);
 
   // Load form templates when the create modal is opened
   useEffect(() => {
@@ -418,7 +419,7 @@ export default function DashboardPage() {
             date: `${day}.${month}`,
             hours: 5,
             requiredWorkers: job.requiredWorkerCount ?? 0,
-            requiredTeamLeads: 0,
+            requiredTeamLeads: (job.slots ?? []).some((slot: any) => slot.requiredSkill === 'SHIFT_LEADER') ? 1 : 0,
             assignedWorkers,
             actualTeamLeadName,
             responsibleName: actualTeamLeadName ?? MOM_OWNER_NAME,
@@ -871,65 +872,145 @@ export default function DashboardPage() {
       completionRate,
     };
   }, [displayedWorks]);
-  const openTaskItems = useMemo(() => {
-    const upcomingWorks = displayedWorks.filter((work) => {
-      const diff = daysBetween(work.dateKey, todayDateKey);
-      return diff >= 0 && diff <= 7;
+  const workflowSections = useMemo(() => {
+    const worksByCaseId = new Map<string, ActiveWork[]>();
+    displayedWorks.forEach((work) => {
+      worksByCaseId.set(work.caseId, [...(worksByCaseId.get(work.caseId) ?? []), work]);
     });
-    const missedClockWorks = displayedWorks.filter((work) => (work.status === 'active' || work.status === 'done') && work.assignedWorkers.length > 0);
-    const customersMissingDetails = customers.filter((customer) => {
-      const hasLastName = customer.fullName.trim().split(/\s+/).length > 1;
-      const hasEmail = customer.email.trim().length > 0;
-      const hasAddress = customer.addresses.some((address) => address.trim().length > 0);
-      return !hasLastName || !hasEmail || !hasAddress;
-    });
-    const draftCases = cases.filter((item) => item.status === 'DRAFT');
-    const awaitingCustomerPaymentCases = cases.filter((item) => item.status === 'READY_FOR_REVIEW');
-    const completedAwaitingFollowup = cases.filter((item) => {
-      const diff = daysBetween(todayDateKey, item.latestJobDate);
-      return item.status === 'COMPLETED' && diff >= 0 && diff <= 21;
-    });
-    const urgentUpcomingWorks = upcomingWorks.filter((work) => (caseById.get(work.caseId)?.status ?? 'ACTIVE') === 'DRAFT');
 
-    return [
+    const draftCases = cases.filter((item) => item.status === 'DRAFT');
+    const activeCases = cases.filter((item) => item.status === 'ACTIVE');
+    const activeCasesWithoutDates = activeCases.filter((item) => (worksByCaseId.get(item.id) ?? []).length === 0);
+    const partialSchedulingCases = activeCases.filter((item) => {
+      const caseWorks = worksByCaseId.get(item.id) ?? [];
+      if (caseWorks.length === 0) return false;
+      return caseWorks.some(
+        (work) => work.assignedWorkers.length < work.requiredWorkers || (work.requiredTeamLeads > 0 && !work.actualTeamLeadName),
+      );
+    });
+
+    const jobsWithWorkerShortage = displayedWorks.filter((work) => work.assignedWorkers.length < work.requiredWorkers);
+    const jobsMissingManager = displayedWorks.filter((work) => work.requiredTeamLeads > 0 && !work.actualTeamLeadName);
+    const attendanceExceptions = displayedWorks.filter(
+      (work) => (work.status === 'active' || work.status === 'done') && work.assignedWorkers.length > 0,
+    );
+    const awaitingBillingCases = cases.filter((item) => item.status === 'READY_FOR_REVIEW');
+    const awaitingPaymentCases = cases.filter((item) => {
+      if (item.status !== 'COMPLETED') return false;
+      const diff = daysBetween(todayDateKey, item.latestJobDate);
+      return diff >= 0 && diff <= 45;
+    });
+
+    return orderDashboardWorkflowSections([
       {
-        title: 'עובדות שחסר להן דיווח כניסה/יציאה',
-        count: missedClockWorks.length,
-        details: [],
-        items: missedClockWorks.map((work) => ({ id: work.id.toString(), name: `${work.customerName} • ${toDisplayDateFromDateKey(work.dateKey)}`, href: '/attendance' })),
-      },
-      {
-        title: 'לקוחות עם פרטים חסרים',
-        count: customersMissingDetails.length,
-        details: [],
-        items: customersMissingDetails.map((customer) => ({ id: customer.id, name: customer.fullName, href: '/customers' })),
-      },
-      {
+        key: 'quote-awaiting-approval',
         title: 'מחכה לאישור הצעת מחיר',
-        count: draftCases.length,
-        details: [],
-        items: draftCases.map((item) => ({ id: item.id, name: item.caseName, href: `/cases?caseId=${item.id}&focus=quote` })),
+        items: draftCases.map((item) => ({
+          id: item.id,
+          projectName: item.caseName,
+          issue: 'הצעת המחיר עדיין ממתינה לאישור',
+          href: `/cases?caseId=${item.id}&focus=quote`,
+          dateLabel: toDisplayDateFromDateKey(item.latestJobDate),
+          severity: 'high' as const,
+        })),
       },
       {
+        key: 'approved-awaiting-scheduling',
+        title: 'מאושר – מחכה לקביעת תאריכים',
+        items: activeCasesWithoutDates.map((item) => ({
+          id: item.id,
+          projectName: item.caseName,
+          issue: 'הפרויקט מאושר אך עדיין ללא עבודות מתוזמנות',
+          href: `/cases?caseId=${item.id}&focus=jobs`,
+          severity: 'medium' as const,
+        })),
+      },
+      {
+        key: 'partial-scheduling',
+        title: 'מאושר – תזמון חלקי',
+        items: partialSchedulingCases.map((item) => ({
+          id: item.id,
+          projectName: item.caseName,
+          issue: 'יש עבודות שלא מוכנות לביצוע מלא',
+          href: `/cases?caseId=${item.id}&focus=jobs`,
+          severity: 'medium' as const,
+        })),
+      },
+      {
+        key: 'jobs-understaffed',
+        title: 'עבודות לא מאוישות',
+        items: jobsWithWorkerShortage.map((work) => ({
+          id: String(work.id),
+          projectName: work.caseName,
+          issue: `חסרים ${Math.max(work.requiredWorkers - work.assignedWorkers.length, 0)} עובדים`,
+          href: `/jobs?open=edit&jobId=${work.id}`,
+          dateLabel: toDisplayDateFromDateKey(work.dateKey),
+          severity: 'high' as const,
+        })),
+      },
+      {
+        key: 'jobs-missing-manager',
+        title: 'חסר מנהל עבודה',
+        items: jobsMissingManager.map((work) => ({
+          id: `manager-${work.id}`,
+          projectName: work.caseName,
+          issue: 'לעבודה אין מנהל עבודה משויך',
+          href: `/jobs?open=edit&jobId=${work.id}`,
+          dateLabel: toDisplayDateFromDateKey(work.dateKey),
+          severity: 'high' as const,
+        })),
+      },
+      {
+        key: 'customer-forms-pending',
+        title: 'טפסי לקוח ממתינים',
+        items: [],
+      },
+      {
+        key: 'attendance-exceptions',
+        title: 'חריגות נוכחות',
+        items: attendanceExceptions.map((work) => ({
+          id: `attendance-${work.id}`,
+          projectName: work.caseName,
+          issue: 'נדרש אימות נוכחות לפני סגירת עבודה',
+          href: '/attendance',
+          dateLabel: toDisplayDateFromDateKey(work.dateKey),
+          severity: 'high' as const,
+        })),
+      },
+      {
+        key: 'awaiting-billing',
+        title: 'מחכה לחיוב',
+        items: awaitingBillingCases.map((item) => ({
+          id: `billing-${item.id}`,
+          projectName: item.caseName,
+          issue: 'העבודה הסתיימה וממתינה לחיוב',
+          href: `/cases?caseId=${item.id}&focus=reports`,
+          severity: 'medium' as const,
+        })),
+      },
+      {
+        key: 'awaiting-payment',
         title: 'מחכה לתשלום מהלקוח',
-        count: awaitingCustomerPaymentCases.length,
-        details: [],
-        items: awaitingCustomerPaymentCases.map((item) => ({ id: item.id, name: item.caseName, href: `/cases?caseId=${item.id}&focus=payment` })),
+        items: awaitingPaymentCases.map((item) => ({
+          id: `payment-${item.id}`,
+          projectName: item.caseName,
+          issue: 'טרם סומן תשלום לקוח',
+          href: `/cases?caseId=${item.id}&focus=payment`,
+          severity: 'medium' as const,
+        })),
       },
-      {
-        title: 'פרוייקטים סגורים שממתינים לאישור שעות ושליחת דוח',
-        count: completedAwaitingFollowup.length,
-        details: [],
-        items: completedAwaitingFollowup.map((item) => ({ id: item.id, name: item.caseName, href: `/cases?caseId=${item.id}&focus=reports` })),
-      },
-      {
-        title: 'עבודות לשבוע הקרוב שדורשות טיפול דחוף',
-        count: urgentUpcomingWorks.length,
-        details: [],
-        items: urgentUpcomingWorks.map((work) => ({ id: work.id.toString(), name: `${work.customerName} • ${toDisplayDateFromDateKey(work.dateKey)}`, href: '/jobs' })),
-      },
-    ];
-  }, [displayedWorks, customers, cases, caseById, todayDateKey]);
+    ]);
+  }, [cases, displayedWorks, todayDateKey]);
+
+  const urgentIssues = useMemo(
+    () => extractUrgentDashboardIssues(workflowSections, 8),
+    [workflowSections],
+  );
+
+  const activeWorkflowSection = useMemo(
+    () => workflowSections.find((section) => section.key === activeSectionKey) ?? null,
+    [workflowSections, activeSectionKey],
+  );
 
   const visibleShiftDates = useMemo(() => {
     if (selectedRange === 'today') {
@@ -1163,6 +1244,41 @@ export default function DashboardPage() {
       </div>
 
       {/* Main Content */}
+      <section className="bg-white rounded-lg border border-gray-200 p-3" data-testid="dashboard-urgent-panel">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-gray-900">דורש טיפול</h2>
+          <span className="text-[11px] text-gray-500">{urgentIssues.length} פריטים דחופים</span>
+        </div>
+        {urgentIssues.length === 0 ? (
+          <p className="mt-2 text-xs text-emerald-700">אין כרגע דברים דחופים שדורשים טיפול</p>
+        ) : (
+          <div className="mt-2 space-y-2">
+            {urgentIssues.map((item) => (
+              <div
+                key={`urgent-${item.id}`}
+                className={`rounded-lg border px-3 py-2 ${
+                  item.severity === 'high' ? 'border-rose-200 bg-rose-50' : 'border-amber-200 bg-amber-50'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-right">
+                    <p className="text-xs font-semibold text-gray-900">{item.projectName}</p>
+                    <p className="text-xs text-gray-700 mt-0.5">{item.issue}</p>
+                    {item.dateLabel ? <p className="text-[11px] text-gray-600 mt-0.5">תאריך: {item.dateLabel}</p> : null}
+                  </div>
+                  <Link
+                    href={item.href}
+                    className="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1 text-[11px] font-medium text-gray-800 hover:bg-gray-50"
+                  >
+                    פעולה ישירה
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       <div className="flex flex-col gap-2.5 lg:h-[calc(100vh-180px)] lg:min-h-[620px] min-h-0">
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden flex-1 min-h-[430px] flex flex-col">
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
@@ -1375,27 +1491,45 @@ export default function DashboardPage() {
           </div>
 
           <div className="px-3 py-2.5">
-            <h3 className="font-semibold text-gray-900 text-sm mb-2">משימות פתוחות לטיפול</h3>
-            <div className="space-y-2">
-              {openTaskItems.slice(0, 5).map((task, taskIndex) => (
-                <button
-                  key={task.title}
-                  type="button"
-                  disabled={task.count === 0}
-                  onClick={() => task.count > 0 && setActiveTaskItem(taskIndex)}
-                  className={`w-full text-right rounded-lg border p-2 ${task.count > 0 ? 'border-amber-200 bg-amber-50 hover:bg-amber-100 cursor-pointer' : 'border-emerald-200 bg-emerald-50 cursor-default'}`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className={`text-xs font-medium ${task.count > 0 ? 'text-amber-900' : 'text-emerald-800'}`}>{task.title}</p>
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${task.count > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'}`}>
-                      {task.count}
-                    </span>
+            <h3 className="font-semibold text-gray-900 text-sm mb-2">זרימות עבודה</h3>
+            <div className="space-y-2" data-testid="dashboard-workflow-sections">
+              {workflowSections.map((section) => {
+                const previewItems = section.items.slice(0, 5);
+                return (
+                  <div key={section.key} className="rounded-lg border border-gray-200 bg-white p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold text-gray-900">{section.title}</p>
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${section.items.length > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'}`}>
+                        {section.items.length}
+                      </span>
+                    </div>
+                    <div className="mt-1 space-y-1">
+                      {previewItems.length === 0 ? (
+                        <p className="text-[11px] text-emerald-700">אין פריטים פתוחים</p>
+                      ) : (
+                        previewItems.map((item) => (
+                          <Link
+                            key={`${section.key}-${item.id}`}
+                            href={item.href}
+                            className="block rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-100"
+                          >
+                            {item.projectName} • {item.issue}
+                          </Link>
+                        ))
+                      )}
+                    </div>
+                    {section.items.length > 5 ? (
+                      <button
+                        type="button"
+                        onClick={() => setActiveSectionKey(section.key)}
+                        className="mt-1.5 text-[11px] font-medium text-emerald-700 hover:text-emerald-800"
+                      >
+                        הצגת הכל
+                      </button>
+                    ) : null}
                   </div>
-                  {task.details.length > 0 && (
-                    <p className={`mt-0.5 text-[11px] ${task.count > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{task.details.join(' • ')}</p>
-                  )}
-                </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1815,10 +1949,10 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-      {activeTaskItem !== null && openTaskItems[activeTaskItem] && (
+      {activeWorkflowSection && (
         <div
           className="fixed inset-0 z-50 bg-black/30 flex items-start justify-center overflow-y-auto p-4 py-6"
-          onMouseDown={() => setActiveTaskItem(null)}
+          onMouseDown={() => setActiveSectionKey(null)}
         >
           <div
             className="w-full max-w-md rounded-lg border border-gray-200 bg-white shadow-xl max-h-[70vh] overflow-y-auto"
@@ -1827,25 +1961,26 @@ export default function DashboardPage() {
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
               <button
                 type="button"
-                onClick={() => setActiveTaskItem(null)}
+                onClick={() => setActiveSectionKey(null)}
                 className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
               >
                 סגירה
               </button>
-              <h3 className="font-semibold text-gray-900 text-sm">{openTaskItems[activeTaskItem].title}</h3>
+              <h3 className="font-semibold text-gray-900 text-sm">{activeWorkflowSection.title}</h3>
             </div>
             <div className="p-3 space-y-2">
-              {openTaskItems[activeTaskItem].items.map((item) => (
+              {activeWorkflowSection.items.map((item) => (
                 <Link
                   key={item.id}
                   href={item.href}
-                  onClick={() => setActiveTaskItem(null)}
+                  onClick={() => setActiveSectionKey(null)}
                   className="block w-full rounded-lg border border-gray-200 bg-white hover:bg-emerald-50 hover:border-emerald-300 px-3 py-2 text-right text-sm text-gray-900"
                 >
-                  {item.name}
+                  <div>{item.projectName}</div>
+                  <div className="text-xs text-gray-600 mt-0.5">{item.issue}</div>
                 </Link>
               ))}
-              {openTaskItems[activeTaskItem].items.length === 0 && (
+              {activeWorkflowSection.items.length === 0 && (
                 <p className="text-sm text-gray-500 text-center py-4">אין פריטים להצגה</p>
               )}
             </div>
