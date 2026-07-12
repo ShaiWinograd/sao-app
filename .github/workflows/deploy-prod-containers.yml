@@ -208,10 +208,18 @@ jobs:
         if: github.event.inputs.target == 'all' || github.event.inputs.target == 'api'
         run: |
           set -euo pipefail
+          # Keep the app's listen port (API_PORT) in sync with the port App
+          # Service routes to (WEBSITES_PORT), and pin a startup command that
+          # does not contain shell operators (App Service passes it as argv).
           az webapp config appsettings set \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_API_APP_NAME" \
-            --settings WEBSITES_PORT=3001 >/dev/null
+            --settings WEBSITES_PORT=3001 API_PORT=3001 >/dev/null
+
+          az webapp config set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_API_APP_NAME" \
+            --startup-file "npm run start --workspace @workforce/api" >/dev/null
 
           az webapp config container set \
             --resource-group "$AZURE_RESOURCE_GROUP" \
