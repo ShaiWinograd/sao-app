@@ -29,6 +29,7 @@ env:
   AZURE_RESOURCE_GROUP: workforce-rg
   AZURE_WEB_APP_NAME: spaceorder-web-app-poc2
   AZURE_API_APP_NAME: spaceorder-api-app-poc
+  AZURE_DB_SERVER_NAME: sao-workforce-db
   AZURE_WEB_APP_URL: https://spaceorder-web-app-poc2.azurewebsites.net
   AZURE_API_HEALTH_URL: https://spaceorder-api-app-poc-h7hef6a2gtd5euhq.israelcentral-01.azurewebsites.net/health
   IMAGE_NAME_PREFIX: spaceorder
@@ -150,6 +151,58 @@ jobs:
           az webapp restart \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_WEB_APP_NAME"
+
+      - name: Migrate database schema (prisma db push)
+        if: github.event.inputs.target == 'all' || github.event.inputs.target == 'api'
+        run: |
+          set -euo pipefail
+
+          database_url="$(az webapp config appsettings list \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_API_APP_NAME" \
+            --query "[?name=='DATABASE_URL'].value | [0]" -o tsv)"
+          if [ -z "$database_url" ]; then
+            echo "::error::DATABASE_URL app setting not found on $AZURE_API_APP_NAME"
+            exit 1
+          fi
+          echo "::add-mask::$database_url"
+
+          runner_ip="$(curl -sS -4 https://api.ipify.org)"
+          echo "::add-mask::$runner_ip"
+          rule_name="ci-migrate-${GITHUB_RUN_ID}"
+
+          cleanup_firewall() {
+            az postgres flexible-server firewall-rule delete \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$AZURE_DB_SERVER_NAME" \
+              --rule-name "$rule_name" --yes >/dev/null 2>&1 || true
+          }
+          trap cleanup_firewall EXIT
+
+          az postgres flexible-server firewall-rule create \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_DB_SERVER_NAME" \
+            --rule-name "$rule_name" \
+            --start-ip-address "$runner_ip" \
+            --end-ip-address "$runner_ip" >/dev/null
+
+          # Run prisma db push inside the freshly built API image (it already
+          # contains the prisma CLI and schema). Additive changes only; retry
+          # to allow the firewall rule to propagate.
+          pushed=false
+          for attempt in $(seq 1 6); do
+            if docker run --rm -e DATABASE_URL="$database_url" "$API_IMAGE" \
+                 npm run --workspace @workforce/database db:push -- --skip-generate; then
+              pushed=true
+              break
+            fi
+            echo "db push attempt $attempt failed; waiting for firewall propagation..."
+            sleep 15
+          done
+          if [ "$pushed" != true ]; then
+            echo "::error::prisma db push failed after retries"
+            exit 1
+          fi
 
       - name: Deploy API container
         if: github.event.inputs.target == 'all' || github.event.inputs.target == 'api'
