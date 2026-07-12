@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useAuth, useUser } from '@clerk/nextjs';
-import { validateServiceAddition } from '@workforce/shared';
+import { getStaffingIssueBreakdown, summarizeAgreedScheduledActual, validateServiceAddition } from '@workforce/shared';
 import {
   ChevronLeft,
   ChevronRight,
@@ -1223,6 +1223,52 @@ function JobsPageContent() {
     return map;
   }, [assignments, workers, works]);
 
+  const staffingInsights = useMemo(() => {
+    const visibleDateKeys = new Set(visibleDates.map((date) => toDateKey(date)));
+    const visibleWorks = works.filter((work) => {
+      if (!visibleDateKeys.has(work.date)) return false;
+      if (isWorkCreationBlockedDay(work.date)) return false;
+      return true;
+    });
+
+    const perWork = visibleWorks.map((work) => {
+      const responsibility = workResponsibilityById.get(work.id);
+      const hasAssignedManager = responsibility?.responsibleRole === 'admin';
+      return getStaffingIssueBreakdown({
+        requiredWorkers: work.requiredWorkers,
+        assignedWorkers: work.assignedWorkers,
+        requiresManager: work.requiresManager,
+        hasAssignedManager,
+        status: work.status,
+      });
+    });
+
+    const workerShortageSlots = perWork.reduce((sum, item) => sum + item.workerShortageSlots, 0);
+    const managerShortageJobs = perWork.filter((item) => item.managerShortage).length;
+    const readyJobs = perWork.filter((item) => item.isReadyForExecution).length;
+
+    const agreedScheduledActual = summarizeAgreedScheduledActual(
+      visibleWorks.map((work) => {
+        const responsibility = workResponsibilityById.get(work.id);
+        return {
+          requiredWorkers: work.requiredWorkers,
+          assignedWorkers: work.assignedWorkers,
+          requiresManager: work.requiresManager,
+          hasAssignedManager: responsibility?.responsibleRole === 'admin',
+          status: work.status,
+        };
+      }),
+    );
+
+    return {
+      workerShortageSlots,
+      managerShortageJobs,
+      readyJobs,
+      totalJobs: visibleWorks.length,
+      agreedScheduledActual,
+    };
+  }, [visibleDates, works, workResponsibilityById]);
+
   useEffect(() => {
     if (plannerView === 'shifts' && selectedRange === 'month') {
       setSelectedRange('week');
@@ -1413,9 +1459,9 @@ function JobsPageContent() {
             </p>
           </div>
           <div className="rounded-lg border border-gray-200 p-3">
-            <p className="text-xs text-gray-500">{plannerView === 'works' ? 'פערי שיבוץ' : 'ימי אי-זמינות'}</p>
-            <p className={`text-xl font-bold mt-1 ${plannerView === 'works' ? (weeklySummary.openSlots > 0 ? 'text-amber-700' : 'text-emerald-700') : shiftsSummary.unavailableEntries > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-              {plannerView === 'works' ? weeklySummary.openSlots : shiftsSummary.unavailableEntries}
+            <p className="text-xs text-gray-500">{plannerView === 'works' ? 'חוסר עובדים' : 'ימי אי-זמינות'}</p>
+            <p className={`text-xl font-bold mt-1 ${plannerView === 'works' ? (staffingInsights.workerShortageSlots > 0 ? 'text-amber-700' : 'text-emerald-700') : shiftsSummary.unavailableEntries > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+              {plannerView === 'works' ? staffingInsights.workerShortageSlots : shiftsSummary.unavailableEntries}
             </p>
           </div>
           <div className="rounded-lg border border-gray-200 p-3">
@@ -1423,6 +1469,49 @@ function JobsPageContent() {
             <p className="text-xl font-bold text-gray-900 mt-1">{visibleRangeOptions.find((r) => r.key === selectedRange)?.label}</p>
           </div>
         </div>
+
+        {plannerView === 'works' ? (
+          <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2" data-testid="staffing-insights-panel">
+            <div className="rounded-lg border border-gray-200 p-3">
+              <p className="text-xs text-gray-500">מה סוכם מול לקוח / מה שובץ / מה בוצע בפועל</p>
+              <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-md border border-blue-200 bg-blue-50 px-2 py-2">
+                  <p className="text-[11px] text-blue-700">סוכם</p>
+                  <p className="text-base font-bold text-blue-800">{staffingInsights.agreedScheduledActual.agreedSlots}</p>
+                </div>
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-2">
+                  <p className="text-[11px] text-amber-700">שובץ</p>
+                  <p className="text-base font-bold text-amber-800">{staffingInsights.agreedScheduledActual.scheduledSlots}</p>
+                </div>
+                <div className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-2">
+                  <p className="text-[11px] text-emerald-700">בוצע בפועל</p>
+                  <p className="text-base font-bold text-emerald-800">{staffingInsights.agreedScheduledActual.actualSlots}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 p-3" data-testid="staffing-shortages-panel">
+              <p className="text-xs text-gray-500">מצב איוש</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                <span className={`rounded-full border px-2 py-1 ${staffingInsights.workerShortageSlots > 0 ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
+                  חוסר עובדים: {staffingInsights.workerShortageSlots}
+                </span>
+                <span className={`rounded-full border px-2 py-1 ${staffingInsights.managerShortageJobs > 0 ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
+                  חוסר מנהל: {staffingInsights.managerShortageJobs}
+                </span>
+                <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-gray-700">
+                  מוכן לביצוע: {staffingInsights.readyJobs}/{staffingInsights.totalJobs}
+                </span>
+                <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-gray-700">
+                  בקשות ממתינות: 0
+                </span>
+                <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-gray-700">
+                  רשימת המתנה: 0
+                </span>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -1546,6 +1635,13 @@ function JobsPageContent() {
                           const status = statusMeta[work.status];
                           const staffingGap = Math.max(work.requiredWorkers - work.assignedWorkers, 0);
                           const responsibility = workResponsibilityById.get(work.id);
+                          const staffingBreakdown = getStaffingIssueBreakdown({
+                            requiredWorkers: work.requiredWorkers,
+                            assignedWorkers: work.assignedWorkers,
+                            requiresManager: work.requiresManager,
+                            hasAssignedManager: responsibility?.responsibleRole === 'admin',
+                            status: work.status,
+                          });
                           const linkedCase = caseById.get(work.caseId);
                           const linkedCaseMeta = caseStatusMeta[linkedCase?.status ?? 'draft'];
                           return (
@@ -1565,6 +1661,12 @@ function JobsPageContent() {
                               <p className="text-[11px] text-gray-500 mt-1 truncate">{work.address}</p>
                               <p className={`text-[11px] mt-1 ${staffingGap > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
                                 {work.assignedWorkers}/{work.requiredWorkers} שובצו
+                              </p>
+                              <p className={`text-[11px] mt-0.5 ${staffingBreakdown.managerShortage ? 'text-rose-700' : 'text-emerald-700'}`}>
+                                מצב מנהל: {staffingBreakdown.managerShortage ? 'חסר מנהל' : 'מנהל משויך'}
+                              </p>
+                              <p className={`text-[11px] mt-0.5 ${staffingBreakdown.isReadyForExecution ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                מוכנות: {staffingBreakdown.isReadyForExecution ? 'מוכן לביצוע' : 'חסר איוש/מנהל'}
                               </p>
                               <p className="text-[11px] text-gray-600 mt-1">
                                 {responsibility?.responsibleRole === 'admin' ? 'ראש צוות' : 'בעלות'}: {responsibility?.responsibleName ?? MOM_OWNER_NAME}
