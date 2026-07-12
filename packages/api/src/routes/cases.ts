@@ -8,6 +8,7 @@ import {
   UpdateCaseSchema,
   canTransitionCaseStatus,
   getAllowedCaseTransitions,
+  groupCasesIntoBoard,
   type CaseStatusValue,
 } from '@workforce/shared';
 import { subDays } from 'date-fns';
@@ -72,6 +73,26 @@ export async function casesRoutes(app: FastifyInstance) {
       },
       orderBy: { updatedAt: 'desc' },
     });
+  });
+
+  // Projects kanban board: cases grouped into lifecycle tabs/columns.
+  app.get('/board', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const cases = await prisma.customerCase.findMany({
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        latestActivityDate: true,
+        updatedAt: true,
+        customer: { select: { firstName: true, lastName: true } },
+        jobs: { select: { id: true, date: true, jobType: true, status: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    return groupCasesIntoBoard(
+      cases.map((kase) => ({ ...kase, status: kase.status as CaseStatusValue })),
+    );
   });
 
   // Get single case
