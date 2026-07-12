@@ -49,6 +49,39 @@ export const CustomerCaseSchema = z.object({
 export const CreateCaseSchema = CustomerCaseSchema;
 export const UpdateCaseSchema = CustomerCaseSchema.partial().omit({ customerId: true });
 
+// ─── Planned Service Component ───────────────────────────────────────────────
+
+export const ServiceTypeSchema = z.enum(['PACKING', 'UNPACKING', 'HOME_ORGANIZATION']);
+
+export const ServiceTimingPrecisionSchema = z.enum([
+  'EXACT_DATE',
+  'MULTIPLE_EXACT_DATES',
+  'DATE_RANGE',
+  'EXPECTED_MONTH',
+  'EXPECTED_YEAR',
+  'UNKNOWN',
+]);
+
+export const CreatePlannedServiceSchema = z.object({
+  serviceType: ServiceTypeSchema,
+  timingPrecision: ServiceTimingPrecisionSchema.optional(),
+  timingNote: z.string().optional(),
+  estimatedWorkdays: z.number().int().min(0).optional(),
+  workersPerDay: z.number().int().min(0).optional(),
+  hoursPerDay: z.number().min(0).optional(),
+  requiresManager: z.boolean().optional(),
+  reservedManagerPositions: z.number().int().min(0).optional(),
+  notes: z.string().optional(),
+  sortOrder: z.number().int().min(0).optional(),
+});
+
+export const UpdatePlannedServiceSchema = CreatePlannedServiceSchema.partial();
+
+// Create planned components from a high-level wizard service selection.
+export const CreatePlannedServicesFromSelectionSchema = z.object({
+  selection: z.enum(['PACKING', 'UNPACKING', 'ORGANIZATION', 'MOVING']),
+});
+
 // ─── Job ─────────────────────────────────────────────────────────────────────
 
 export const JobSchema = z.object({
