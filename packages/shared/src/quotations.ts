@@ -31,7 +31,9 @@ export function deriveApprovedSchedulingStatus(input: {
 }
 
 // The current version of a quotation is the one with the highest version number.
-export function getCurrentQuotationVersion<T extends QuotationVersionLike>(
+// Constrained only on `versionNumber` so concrete DB row types (with extra
+// fields) always infer to their full type instead of collapsing to the base.
+export function getCurrentQuotationVersion<T extends { versionNumber: number }>(
   versions: T[],
 ): T | undefined {
   if (versions.length === 0) return undefined;
@@ -40,7 +42,7 @@ export function getCurrentQuotationVersion<T extends QuotationVersionLike>(
   );
 }
 
-export function nextQuotationVersionNumber(versions: QuotationVersionLike[]): number {
+export function nextQuotationVersionNumber(versions: { versionNumber: number }[]): number {
   const current = getCurrentQuotationVersion(versions);
   return current ? current.versionNumber + 1 : 1;
 }

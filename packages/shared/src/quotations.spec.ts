@@ -70,8 +70,8 @@ describe('nextQuotationVersionNumber', () => {
   it('increments from the current version', () => {
     expect(
       nextQuotationVersionNumber([
-        { versionNumber: 1, status: 'APPROVED' },
-        { versionNumber: 2, status: 'DRAFT' },
+        { versionNumber: 1 },
+        { versionNumber: 2 },
       ]),
     ).toBe(3);
   });
