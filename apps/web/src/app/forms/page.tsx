@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, ClipboardList, Clock3, Image as ImageIcon, Plus, Settings2 } from 'lucide-react';
 import { useAuth } from '@clerk/nextjs';
+import { calculateEndShiftSubmissionWindow, mapHebrewEndShiftStatusToApi, requiresManagerNoteForEndShift } from '@workforce/shared';
 import { api, authHeaders } from '../../lib/api';
 import {
   type EndShiftFormLink,
@@ -149,6 +150,7 @@ export default function FormsPage() {
   const [submitClockOutAt, setSubmitClockOutAt] = useState(() => toDateTimeLocalValue(new Date()));
   const [submitPhotos, setSubmitPhotos] = useState(false);
   const [submitFollowUp, setSubmitFollowUp] = useState(false);
+  const [submitManagerNote, setSubmitManagerNote] = useState('');
   const [selectedApiShiftId, setSelectedApiShiftId] = useState('');
   const [apiShiftOptions, setApiShiftOptions] = useState<ApiShiftOption[]>([]);
   const [apiNotice, setApiNotice] = useState('');
@@ -293,15 +295,20 @@ export default function FormsPage() {
       setMessage('יש להזין זמן יציאה מהמשמרת.');
       return;
     }
-    const clockOutTime = new Date(submitClockOutAt);
-    if (Number.isNaN(clockOutTime.getTime())) {
+    const windowState = calculateEndShiftSubmissionWindow(submitClockOutAt);
+    if (!windowState) {
       setMessage('זמן היציאה אינו תקין.');
       return;
     }
-    const now = new Date();
-    const elapsedMinutesFromClockOut = Math.floor((now.getTime() - clockOutTime.getTime()) / (1000 * 60));
-    if (elapsedMinutesFromClockOut > 120) {
+    if (windowState.isExpired) {
       setMessage('עברו יותר משעתיים מזמן היציאה. יש לפנות למנהלת לאישור חריג.');
+      return;
+    }
+
+    const completionStatus = mapHebrewEndShiftStatusToApi(submitStatus);
+    const normalizedManagerNote = submitManagerNote.trim();
+    if (requiresManagerNoteForEndShift(completionStatus) && !normalizedManagerNote) {
+      setMessage('בטופס שהושלם חלקית או חסר מידע חובה להזין הערת מנהלת/עובדת.');
       return;
     }
 
@@ -311,14 +318,11 @@ export default function FormsPage() {
       const auth = await authHeaders(getToken);
       await api.post('/forms/submit', {
         shiftId: selectedApiShiftId,
-        completionStatus:
-          submitStatus === 'הושלם'
-            ? 'COMPLETED'
-            : submitStatus === 'הושלם חלקית'
-              ? 'PARTIALLY_COMPLETED'
-              : 'NOT_COMPLETED',
+        completionStatus,
         answers: [],
-        managerNote: submitFollowUp ? 'נדרש מעקב' : undefined,
+        managerNote:
+          normalizedManagerNote ||
+          (submitFollowUp ? 'נדרש מעקב' : undefined),
       }, auth);
     } catch (error) {
       setMessage('שמירה לשרת נכשלה. לא נשמר טופס עד לפתרון התקלה.');
@@ -329,6 +333,7 @@ export default function FormsPage() {
     setMessage(`הטופס נשמר וקושר אוטומטית ל-${caseName}.`);
     setSubmitPhotos(false);
     setSubmitFollowUp(false);
+    setSubmitManagerNote('');
     setSubmitStatus('הושלם');
     setSubmitClockOutAt(toDateTimeLocalValue(new Date()));
     setSelectedApiShiftId('');
@@ -339,13 +344,11 @@ export default function FormsPage() {
     () => Array.from(new Set(apiShiftOptions.map((option) => option.customerName))).sort((a, b) => a.localeCompare(b, 'he')),
     [apiShiftOptions],
   );
-  const clockOutElapsedMinutes = useMemo(() => {
+  const submissionWindow = useMemo(() => {
     if (!submitClockOutAt) return null;
-    const clockOutTime = new Date(submitClockOutAt);
-    if (Number.isNaN(clockOutTime.getTime())) return null;
-    return Math.floor((Date.now() - clockOutTime.getTime()) / (1000 * 60));
+    return calculateEndShiftSubmissionWindow(submitClockOutAt);
   }, [submitClockOutAt]);
-  const minutesRemainingForSubmission = clockOutElapsedMinutes === null ? null : 120 - clockOutElapsedMinutes;
+  const minutesRemainingForSubmission = submissionWindow?.remainingMinutes ?? null;
 
   return (
     <div className="space-y-6">
@@ -411,6 +414,12 @@ export default function FormsPage() {
             <input type="checkbox" checked={submitFollowUp} onChange={(event) => setSubmitFollowUp(event.target.checked)} />
             דורש מעקב
           </label>
+          <input
+            value={submitManagerNote}
+            onChange={(event) => setSubmitManagerNote(event.target.value)}
+            className="rounded-xl border border-gray-300 px-3 py-2 text-sm md:col-span-2"
+            placeholder="הערת מנהלת/עובדת (חובה בהשלמה חלקית או חסר מידע)"
+          />
           <button type="button" onClick={submitEndShiftForm} className="inline-flex items-center justify-center gap-1 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-700">
             <Plus className="w-3.5 h-3.5" />
             שליחת טופס וקישור לתיק

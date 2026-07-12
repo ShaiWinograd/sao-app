@@ -1,11 +1,17 @@
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, Modal, TextInput, ActivityIndicator } from 'react-native';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
-import { HE, formatDate, formatTime, canRequestReplacement } from '@workforce/shared';
+import { HE, formatDate, formatTime, canRequestReplacement, requiresManagerNoteForEndShift } from '@workforce/shared';
 import * as Location from 'expo-location';
 
 export default function ShiftsScreen() {
   const qc = useQueryClient();
+  const [endFlowVisible, setEndFlowVisible] = useState(false);
+  const [endFlowShiftId, setEndFlowShiftId] = useState<string | null>(null);
+  const [endFlowStatus, setEndFlowStatus] = useState<'COMPLETED' | 'PARTIALLY_COMPLETED' | 'NOT_COMPLETED'>('COMPLETED');
+  const [endFlowNote, setEndFlowNote] = useState('');
+
   const { data: shifts, isLoading } = useQuery({
     queryKey: ['my-shifts'],
     queryFn: () => api.get('/shifts/mine').then((r) => r.data),
@@ -49,11 +55,43 @@ export default function ShiftsScreen() {
         timestamp: new Date().toISOString(),
       });
     },
-    onSuccess: () => {
-      Alert.alert('✅', 'יציאה ממשמרת נרשמה. אל תשכח להגיש טופס סיום.');
+    onSuccess: (_data, shiftId) => {
+      setEndFlowShiftId(shiftId);
+      setEndFlowStatus('COMPLETED');
+      setEndFlowNote('');
+      setEndFlowVisible(true);
       qc.invalidateQueries({ queryKey: ['my-shifts'] });
     },
     onError: () => Alert.alert('שגיאה', 'לא ניתן לסיים משמרת'),
+  });
+
+  const endShiftFormMutation = useMutation({
+    mutationFn: async () => {
+      if (!endFlowShiftId) throw new Error('missing_shift');
+      if (requiresManagerNoteForEndShift(endFlowStatus) && !endFlowNote.trim()) {
+        throw new Error('note_required');
+      }
+      return api.post('/forms/submit', {
+        shiftId: endFlowShiftId,
+        completionStatus: endFlowStatus,
+        answers: [],
+        managerNote: endFlowNote.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      setEndFlowVisible(false);
+      setEndFlowShiftId(null);
+      setEndFlowNote('');
+      Alert.alert('✅', 'סיום המשמרת והטופס נשמרו בהצלחה.');
+      qc.invalidateQueries({ queryKey: ['my-shifts'] });
+    },
+    onError: (error: unknown) => {
+      if (error instanceof Error && error.message === 'note_required') {
+        Alert.alert('הערה נדרשת', 'בהשלמה חלקית או אי-השלמה יש להזין הערה למנהלת.');
+        return;
+      }
+      Alert.alert('שגיאה', 'הטופס לא נשמר. ניתן לנסות שוב מהמסך הזה.');
+    },
   });
 
   const confirmed = shifts?.filter((s: any) => s.joinRequestStatus === 'APPROVED') ?? [];
@@ -117,6 +155,57 @@ export default function ShiftsScreen() {
           }}
         />
       )}
+
+      <Modal visible={endFlowVisible} transparent animationType="fade" onRequestClose={() => {}}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>סיום משמרת</Text>
+            <Text style={styles.modalSubtitle}>בחרי סטטוס סיום ומלאי הערה במידת הצורך.</Text>
+
+            <View style={styles.statusRow}>
+              <TouchableOpacity
+                style={[styles.statusBtn, endFlowStatus === 'COMPLETED' && styles.statusBtnActive]}
+                onPress={() => setEndFlowStatus('COMPLETED')}
+              >
+                <Text style={[styles.statusBtnText, endFlowStatus === 'COMPLETED' && styles.statusBtnTextActive]}>הושלם</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.statusBtn, endFlowStatus === 'PARTIALLY_COMPLETED' && styles.statusBtnActive]}
+                onPress={() => setEndFlowStatus('PARTIALLY_COMPLETED')}
+              >
+                <Text style={[styles.statusBtnText, endFlowStatus === 'PARTIALLY_COMPLETED' && styles.statusBtnTextActive]}>הושלם חלקית</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.statusBtn, endFlowStatus === 'NOT_COMPLETED' && styles.statusBtnActive]}
+                onPress={() => setEndFlowStatus('NOT_COMPLETED')}
+              >
+                <Text style={[styles.statusBtnText, endFlowStatus === 'NOT_COMPLETED' && styles.statusBtnTextActive]}>לא הושלם</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              value={endFlowNote}
+              onChangeText={setEndFlowNote}
+              placeholder="הערה למנהלת (אופציונלי)"
+              style={styles.noteInput}
+              multiline
+              textAlignVertical="top"
+            />
+
+            <TouchableOpacity
+              style={[styles.btn, endShiftFormMutation.isPending && styles.btnDisabled]}
+              onPress={() => endShiftFormMutation.mutate()}
+              disabled={endShiftFormMutation.isPending}
+            >
+              {endShiftFormMutation.isPending ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.btnText}>שמרי וסיימי</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -135,7 +224,49 @@ const styles = StyleSheet.create({
   statusDone: { color: '#6d6254' },
   btn: { marginTop: 10, backgroundColor: '#0f7a67', borderRadius: 10, padding: 12, alignItems: 'center' },
   btnDanger: { backgroundColor: '#b34a3e' },
+  btnDisabled: { backgroundColor: '#9ca3af' },
   btnSecondary: { marginTop: 8, borderWidth: 1.5, borderColor: '#0f7a67', borderRadius: 10, padding: 10, alignItems: 'center' },
   btnSecondaryText: { color: '#0f7a67', fontWeight: '600', fontSize: 14 },
   btnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: '#2f251a' },
+  modalSubtitle: { fontSize: 13, color: '#6d6254' },
+  statusRow: { flexDirection: 'row', gap: 8 },
+  statusBtn: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#d8d2c7',
+    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: '#f9f7f2',
+  },
+  statusBtnActive: {
+    borderColor: '#0f7a67',
+    backgroundColor: '#e7f5f1',
+  },
+  statusBtnText: { fontSize: 12, color: '#6d6254', fontWeight: '600' },
+  statusBtnTextActive: { color: '#0f7a67' },
+  noteInput: {
+    minHeight: 90,
+    borderWidth: 1,
+    borderColor: '#d8d2c7',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: '#2f251a',
+    backgroundColor: '#faf8f4',
+  },
 });
