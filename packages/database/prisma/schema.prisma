@@ -31,6 +31,37 @@ enum CaseStatus {
   CANCELLED
 }
 
+enum QuotationStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum QuotationDatePrecision {
+  EXACT
+  PARTIAL
+  EXPECTED_MONTH
+  DATE_RANGE
+  TO_BE_DETERMINED
+}
+
+enum QuotationSendChannel {
+  WHATSAPP
+  EMAIL
+  MANUAL
+}
+
+enum QuotationApprovalMethod {
+  DIGITAL
+  SIGNED_DOCUMENT
+  WHATSAPP
+  EMAIL
+  VERBAL
+  MANUAL
+}
+
 enum JobType {
   PACKING
   UNPACKING
@@ -336,6 +367,7 @@ model CustomerCase {
   assignedAdmin        User?      @relation("CaseManager", fields: [assignedAdminId], references: [id])
   jobs                 Job[]
   invoices             Invoice[]
+  quotations           Quotation[]
   plannedServices      PlannedServiceComponent[]
 
   @@map("customer_cases")
@@ -756,6 +788,69 @@ model AppSetting {
   updatedAt DateTime @updatedAt
 
   @@map("app_settings")
+}
+
+// ─── Quotation ───────────────────────────────────────────────────────────────
+
+model Quotation {
+  id        String          @id @default(cuid())
+  caseId    String
+  status    QuotationStatus @default(DRAFT)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  // Relations
+  case      CustomerCase       @relation(fields: [caseId], references: [id])
+  versions  QuotationVersion[]
+
+  @@map("quotations")
+}
+
+// Immutable-after-approval snapshot of a quotation's scope, pricing, and timing.
+model QuotationVersion {
+  id                    String                   @id @default(cuid())
+  quotationId           String
+  versionNumber         Int
+  status                QuotationStatus          @default(DRAFT)
+  estimatedTotal        Decimal                  @db.Decimal(10, 2)
+  datePrecision         QuotationDatePrecision   @default(TO_BE_DETERMINED)
+  includedServices      String[]
+  timingNote            String?
+  validUntil            DateTime?
+  notes                 String?
+  isAddendum            Boolean                  @default(false)
+  replacesVersionId     String?
+  createdById           String?
+  sentAt                DateTime?
+  approvedAt            DateTime?
+  approvalMethod        QuotationApprovalMethod?
+  approvalNotes         String?
+  approvalAttachmentUrl String?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+
+  // Relations
+  quotation             Quotation                @relation(fields: [quotationId], references: [id])
+  sends                 QuotationSend[]
+
+  @@unique([quotationId, versionNumber])
+  @@map("quotation_versions")
+}
+
+// Audit record for each time a quotation version is sent to the customer.
+model QuotationSend {
+  id                    String               @id @default(cuid())
+  versionId             String
+  channel               QuotationSendChannel
+  recipient             String
+  versionNumberSnapshot Int
+  sentById              String?
+  createdAt             DateTime             @default(now())
+
+  // Relations
+  version               QuotationVersion     @relation(fields: [versionId], references: [id])
+
+  @@map("quotation_sends")
 }
 
 // ─── Planned Service Component ───────────────────────────────────────────────

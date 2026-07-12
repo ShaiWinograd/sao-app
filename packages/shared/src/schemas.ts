@@ -49,6 +49,71 @@ export const CustomerCaseSchema = z.object({
 export const CreateCaseSchema = CustomerCaseSchema;
 export const UpdateCaseSchema = CustomerCaseSchema.partial().omit({ customerId: true });
 
+
+// ─── Quotation ───────────────────────────────────────────────────────────────
+
+export const QuotationDatePrecisionSchema = z.enum([
+  'EXACT',
+  'PARTIAL',
+  'EXPECTED_MONTH',
+  'DATE_RANGE',
+  'TO_BE_DETERMINED',
+]);
+
+export const QuotationSendChannelSchema = z.enum(['WHATSAPP', 'EMAIL', 'MANUAL']);
+
+export const QuotationApprovalMethodSchema = z.enum([
+  'DIGITAL',
+  'SIGNED_DOCUMENT',
+  'WHATSAPP',
+  'EMAIL',
+  'VERBAL',
+  'MANUAL',
+]);
+
+export const CreateQuotationSchema = z.object({
+  caseId: z.string(),
+  estimatedTotal: z.number().nonnegative(),
+  includedServices: z.array(z.string().min(1)).min(1),
+  datePrecision: QuotationDatePrecisionSchema.optional(),
+  timingNote: z.string().optional(),
+  validUntil: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const UpdateQuotationVersionSchema = z
+  .object({
+    estimatedTotal: z.number().nonnegative(),
+    includedServices: z.array(z.string().min(1)).min(1),
+    datePrecision: QuotationDatePrecisionSchema,
+    timingNote: z.string(),
+    validUntil: z.string(),
+    notes: z.string(),
+  })
+  .partial();
+
+export const CreateQuotationVersionSchema = z.object({
+  estimatedTotal: z.number().nonnegative(),
+  includedServices: z.array(z.string().min(1)).min(1),
+  datePrecision: QuotationDatePrecisionSchema.optional(),
+  timingNote: z.string().optional(),
+  validUntil: z.string().optional(),
+  notes: z.string().optional(),
+  isAddendum: z.boolean().optional(),
+});
+
+export const SendQuotationSchema = z.object({
+  channel: QuotationSendChannelSchema,
+  recipient: z.string().min(1),
+});
+
+export const RecordQuotationApprovalSchema = z.object({
+  approvalMethod: QuotationApprovalMethodSchema,
+  approvedAt: z.string().optional(),
+  approvalNotes: z.string().optional(),
+  approvalAttachmentUrl: z.string().url().optional(),
+});
+
 // ─── Planned Service Component ───────────────────────────────────────────────
 
 export const ServiceTypeSchema = z.enum(['PACKING', 'UNPACKING', 'HOME_ORGANIZATION']);

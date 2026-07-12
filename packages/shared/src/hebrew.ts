@@ -12,6 +12,7 @@ export const HE = {
     replacementRequests: 'בקשות החלפה',
     customers: 'לקוחות',
     customerCase: 'פרוייקט',
+    quotations: 'הצעות מחיר',
     workers: 'עובדים',
     attendance: 'נוכחות',
     forms: 'טפסי סיום משמרת',
