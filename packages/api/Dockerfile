@@ -1,5 +1,11 @@
 FROM node:22-bookworm-slim
 
+# openssl + ca-certificates are required for Prisma engines to negotiate TLS
+# (Azure Postgres requires SSL) and to detect the correct engine binary.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Install workspace dependencies first for better layer caching.
