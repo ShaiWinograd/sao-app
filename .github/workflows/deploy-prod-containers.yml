@@ -174,14 +174,14 @@ jobs:
           cleanup_firewall() {
             az postgres flexible-server firewall-rule delete \
               --resource-group "$AZURE_RESOURCE_GROUP" \
-              --name "$AZURE_DB_SERVER_NAME" \
+              --server-name "$AZURE_DB_SERVER_NAME" \
               --rule-name "$rule_name" --yes >/dev/null 2>&1 || true
           }
           trap cleanup_firewall EXIT
 
           az postgres flexible-server firewall-rule create \
             --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$AZURE_DB_SERVER_NAME" \
+            --server-name "$AZURE_DB_SERVER_NAME" \
             --rule-name "$rule_name" \
             --start-ip-address "$runner_ip" \
             --end-ip-address "$runner_ip" >/dev/null
