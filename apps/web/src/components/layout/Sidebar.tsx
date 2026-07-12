@@ -7,7 +7,7 @@ import { UserButton, useUser } from '@clerk/nextjs';
 import { HE } from '@workforce/shared';
 import {
   LayoutDashboard, Users, Briefcase, Calendar, ClipboardList,
-  FileText, Wallet, BarChart3, Settings, ScrollText, ReceiptText,
+  FileText, Wallet, BarChart3, Settings, ScrollText, ReceiptText, LayoutGrid,
 } from 'lucide-react';
 import { canViewReports, resolveAppViewerRole } from '../../lib/viewer-access';
 
@@ -15,6 +15,7 @@ const navItems = [
   { href: '/dashboard', label: HE.nav.dashboard, icon: LayoutDashboard },
   { href: '/customers', label: HE.nav.customers, icon: Users },
   { href: '/cases', label: HE.nav.customerCase, icon: Briefcase },
+  { href: '/cases/board', label: HE.nav.projectBoard, icon: LayoutGrid },
   { href: '/quotations', label: HE.nav.quotations, icon: ReceiptText },
   { href: '/jobs', label: HE.nav.jobs, icon: Calendar },
   { href: '/workers', label: HE.nav.workers, icon: Users },
