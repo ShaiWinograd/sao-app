@@ -2,13 +2,20 @@ import { Prisma } from '@prisma/client';
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
-import { CreateCaseSchema, UpdateCaseSchema } from '@workforce/shared';
+import {
+  CaseStatusSchema,
+  CreateCaseSchema,
+  UpdateCaseSchema,
+  canTransitionCaseStatus,
+  getAllowedCaseTransitions,
+  type CaseStatusValue,
+} from '@workforce/shared';
 import { subDays } from 'date-fns';
 import { z } from 'zod';
 
 const CasesListQuerySchema = z.object({
   customerId: z.string().optional(),
-  status: z.enum(['DRAFT', 'ACTIVE', 'READY_FOR_REVIEW', 'COMPLETED', 'CANCELLED']).optional(),
+  status: CaseStatusSchema.optional(),
 });
 
 const ArchiveCaseSchema = z.object({
@@ -270,6 +277,26 @@ export async function casesRoutes(app: FastifyInstance) {
   app.patch('/:id', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = UpdateCaseSchema.parse(req.body);
+
+    // Enforce lifecycle transition rules when the status changes (drag/drop or
+    // explicit status change must not bypass business rules).
+    if (body.status) {
+      const existing = await prisma.customerCase.findUnique({
+        where: { id },
+        select: { status: true },
+      });
+      if (!existing) return reply.status(404).send({ error: 'Case not found' });
+
+      const from = existing.status as CaseStatusValue;
+      const to = body.status as CaseStatusValue;
+      if (!canTransitionCaseStatus(from, to)) {
+        return reply.status(409).send({
+          error: `Invalid status transition from ${from} to ${to}`,
+          allowedTransitions: getAllowedCaseTransitions(from),
+        });
+      }
+    }
+
     return prisma.customerCase.update({ where: { id }, data: body });
   });
 
