@@ -68,6 +68,15 @@ enum JobType {
   HOME_ORGANIZATION
 }
 
+enum ServiceTimingPrecision {
+  EXACT_DATE
+  MULTIPLE_EXACT_DATES
+  DATE_RANGE
+  EXPECTED_MONTH
+  EXPECTED_YEAR
+  UNKNOWN
+}
+
 enum JobStatus {
   DRAFT
   PUBLISHED
@@ -359,6 +368,7 @@ model CustomerCase {
   jobs                 Job[]
   invoices             Invoice[]
   quotations           Quotation[]
+  plannedServices      PlannedServiceComponent[]
 
   @@map("customer_cases")
 }
@@ -841,4 +851,30 @@ model QuotationSend {
   version               QuotationVersion     @relation(fields: [versionId], references: [id])
 
   @@map("quotation_sends")
+}
+
+// ─── Planned Service Component ───────────────────────────────────────────────
+
+// The intended service for a project (independent of scheduled calendar jobs).
+// Captures planned scope, timing precision, work estimate, and manager needs.
+model PlannedServiceComponent {
+  id                       String                 @id @default(cuid())
+  caseId                   String
+  serviceType              JobType
+  timingPrecision          ServiceTimingPrecision @default(UNKNOWN)
+  timingNote               String?
+  estimatedWorkdays        Int?
+  workersPerDay            Int?
+  hoursPerDay              Decimal?               @db.Decimal(5, 2)
+  requiresManager          Boolean                @default(false)
+  reservedManagerPositions Int                    @default(0)
+  notes                    String?
+  sortOrder                Int                    @default(0)
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+
+  // Relations
+  case                     CustomerCase           @relation(fields: [caseId], references: [id])
+
+  @@map("planned_service_components")
 }
