@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  dashboardIssueActionLabel,
   extractUrgentDashboardIssues,
   orderDashboardWorkflowSections,
   type DashboardWorkflowSection,
@@ -22,6 +23,18 @@ function section(
     })),
   };
 }
+
+describe('dashboardIssueActionLabel', () => {
+  it('returns a contextual verb for known workflow sections', () => {
+    expect(dashboardIssueActionLabel('jobs-understaffed')).toBe('פתיחת העבודה');
+    expect(dashboardIssueActionLabel('quote-awaiting-approval')).toBe('מעבר לאישור');
+    expect(dashboardIssueActionLabel('awaiting-payment')).toBe('סימון תשלום');
+  });
+
+  it('falls back to a generic label for unknown sections', () => {
+    expect(dashboardIssueActionLabel('unknown-section')).toBe('פעולה ישירה');
+  });
+});
 
 describe('orderDashboardWorkflowSections', () => {
   it('orders dashboard sections by canonical workflow order', () => {
