@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
-import { ArrowRight, CheckCircle2, FileText, Plus, RefreshCw, Send, XCircle } from 'lucide-react';
+import { ArrowRight, CheckCircle2, FileText, Plus, RefreshCw, Send, Trash2, XCircle } from 'lucide-react';
 import {
   estimateWorkerHours,
   getCurrentQuotationVersion,
@@ -138,6 +138,15 @@ export default function ProjectDetailPage() {
   const [newTotal, setNewTotal] = useState('');
   const [newServices, setNewServices] = useState('');
 
+  const [plannedForm, setPlannedForm] = useState({
+    serviceType: 'PACKING' as ServiceType,
+    timingPrecision: 'UNKNOWN' as TimingPrecision,
+    estimatedWorkdays: '',
+    workersPerDay: '',
+    hoursPerDay: '',
+    requiresManager: false,
+  });
+
   const load = useCallback(async () => {
     if (!caseId) return;
     setIsLoading(true);
@@ -201,6 +210,71 @@ export default function ProjectDetailPage() {
       setNewServices('');
     }, 'יצירת הצעת המחיר נכשלה');
   }, [newTotal, newServices, caseId, getToken, runQuotationAction]);
+
+  const runPlannedAction = useCallback(
+    async (action: () => Promise<unknown>, failureMessage: string) => {
+      setBusy(true);
+      setError(null);
+      try {
+        await action();
+        const auth = await authHeaders(getToken);
+        const res = await api.get<ApiPlannedService[]>(`/planned-services?caseId=${caseId}`, auth);
+        setPlanned(res.data);
+      } catch {
+        setError(failureMessage);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [caseId, getToken],
+  );
+
+  const handleAddPlanned = useCallback(() => {
+    void runPlannedAction(async () => {
+      const auth = await authHeaders(getToken);
+      await api.post(
+        '/planned-services',
+        {
+          caseId,
+          serviceType: plannedForm.serviceType,
+          timingPrecision: plannedForm.timingPrecision,
+          estimatedWorkdays: plannedForm.estimatedWorkdays ? Number(plannedForm.estimatedWorkdays) : undefined,
+          workersPerDay: plannedForm.workersPerDay ? Number(plannedForm.workersPerDay) : undefined,
+          hoursPerDay: plannedForm.hoursPerDay ? Number(plannedForm.hoursPerDay) : undefined,
+          requiresManager: plannedForm.requiresManager,
+        },
+        auth,
+      );
+      setPlannedForm({
+        serviceType: 'PACKING',
+        timingPrecision: 'UNKNOWN',
+        estimatedWorkdays: '',
+        workersPerDay: '',
+        hoursPerDay: '',
+        requiresManager: false,
+      });
+    }, 'הוספת השירות המתוכנן נכשלה');
+  }, [plannedForm, caseId, getToken, runPlannedAction]);
+
+  const handleAddFromSelection = useCallback(
+    (selection: 'PACKING' | 'UNPACKING' | 'ORGANIZATION' | 'MOVING') => {
+      void runPlannedAction(async () => {
+        const auth = await authHeaders(getToken);
+        await api.post('/planned-services/from-selection', { caseId, selection }, auth);
+      }, 'הוספת השירותים המתוכננים נכשלה');
+    },
+    [caseId, getToken, runPlannedAction],
+  );
+
+  const handleDeletePlanned = useCallback(
+    (plannedId: string) => {
+      void runPlannedAction(async () => {
+        const auth = await authHeaders(getToken);
+        await api.delete(`/planned-services/${plannedId}`, auth);
+      }, 'מחיקת השירות המתוכנן נכשלה');
+    },
+    [getToken, runPlannedAction],
+  );
 
   const financials = useMemo(() => {
     const invoices = kase?.invoices ?? [];
@@ -299,7 +373,17 @@ export default function ProjectDetailPage() {
                   <li key={service.id} className="rounded-lg border border-gray-100 px-3 py-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-gray-900">{SERVICE_LABELS[service.serviceType]}</span>
-                      <span className="text-xs text-gray-500">{TIMING_LABELS[service.timingPrecision]}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500">{TIMING_LABELS[service.timingPrecision]}</span>
+                        <button
+                          onClick={() => handleDeletePlanned(service.id)}
+                          disabled={busy}
+                          aria-label={`מחיקת ${SERVICE_LABELS[service.serviceType]}`}
+                          className="text-rose-500 hover:text-rose-700 disabled:opacity-50"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
                       {estimateWorkerHours({
@@ -315,6 +399,102 @@ export default function ProjectDetailPage() {
                 ))}
               </ul>
             )}
+
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <div className="flex flex-wrap gap-2 mb-3">
+                <span className="text-xs text-gray-500 self-center">הוספה מהירה:</span>
+                {(
+                  [
+                    ['MOVING', 'מעבר דירה'],
+                    ['PACKING', 'אריזה'],
+                    ['UNPACKING', 'פריקה'],
+                    ['ORGANIZATION', 'סידור'],
+                  ] as const
+                ).map(([selection, label]) => (
+                  <button
+                    key={selection}
+                    onClick={() => handleAddFromSelection(selection)}
+                    disabled={busy}
+                    className="px-2.5 py-1 text-xs rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  aria-label="סוג שירות"
+                  value={plannedForm.serviceType}
+                  onChange={(event) =>
+                    setPlannedForm((prev) => ({ ...prev, serviceType: event.target.value as ServiceType }))
+                  }
+                  className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs"
+                >
+                  {(Object.keys(SERVICE_LABELS) as ServiceType[]).map((key) => (
+                    <option key={key} value={key}>
+                      {SERVICE_LABELS[key]}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="דיוק תאריכים"
+                  value={plannedForm.timingPrecision}
+                  onChange={(event) =>
+                    setPlannedForm((prev) => ({ ...prev, timingPrecision: event.target.value as TimingPrecision }))
+                  }
+                  className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs"
+                >
+                  {(Object.keys(TIMING_LABELS) as TimingPrecision[]).map((key) => (
+                    <option key={key} value={key}>
+                      {TIMING_LABELS[key]}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="ימי עבודה"
+                  aria-label="ימי עבודה"
+                  value={plannedForm.estimatedWorkdays}
+                  onChange={(event) => setPlannedForm((prev) => ({ ...prev, estimatedWorkdays: event.target.value }))}
+                  className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs"
+                />
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="עובדים/יום"
+                  aria-label="עובדים ליום"
+                  value={plannedForm.workersPerDay}
+                  onChange={(event) => setPlannedForm((prev) => ({ ...prev, workersPerDay: event.target.value }))}
+                  className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs"
+                />
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="שעות/יום"
+                  aria-label="שעות ליום"
+                  value={plannedForm.hoursPerDay}
+                  onChange={(event) => setPlannedForm((prev) => ({ ...prev, hoursPerDay: event.target.value }))}
+                  className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs"
+                />
+                <label className="flex items-center gap-1.5 text-xs text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={plannedForm.requiresManager}
+                    onChange={(event) => setPlannedForm((prev) => ({ ...prev, requiresManager: event.target.checked }))}
+                  />
+                  דורש מנהל עבודה
+                </label>
+              </div>
+              <button
+                onClick={handleAddPlanned}
+                disabled={busy}
+                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                הוסף שירות מתוכנן
+              </button>
+            </div>
           </section>
 
           <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">

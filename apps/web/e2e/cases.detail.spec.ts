@@ -67,7 +67,7 @@ test.describe('Project detail page', () => {
     await expect(page.getByText('שירותים מתוכננים')).toBeVisible();
     // 2 workdays * 4 workers * 5 hours = 40 estimated worker-hours
     await expect(page.getByText(/40\s*שעות עבודה משוערות/)).toBeVisible();
-    await expect(page.getByText('דורש מנהל עבודה', { exact: false })).toBeVisible();
+    await expect(page.getByText(/שעות עבודה משוערות.*דורש מנהל עבודה/)).toBeVisible();
   });
 
   test('records a quotation approval from the quotations tab', async ({ page }) => {
@@ -82,5 +82,18 @@ test.describe('Project detail page', () => {
     await page.getByRole('button', { name: 'תיעוד אישור לקוח' }).click();
 
     await expect.poll(() => approved).toBe(true);
+  });
+
+  test('adds planned services from a moving selection', async ({ page }) => {
+    let fromSelection = false;
+    await page.route('**/api/v1/planned-services/from-selection', async (route) => {
+      fromSelection = true;
+      await route.fulfill({ status: 201, contentType: 'application/json', body: '[]' });
+    });
+
+    await page.goto('/cases/case-1');
+    await page.getByRole('button', { name: 'מעבר דירה', exact: true }).click();
+
+    await expect.poll(() => fromSelection).toBe(true);
   });
 });
