@@ -9,12 +9,14 @@ import {
   estimateWorkerHours,
   getCurrentQuotationVersion,
   CASE_LIFECYCLE_STEPS,
+  caseStatusTone,
   getCaseNextAction,
   getCaseStepIndex,
   type CaseStatusValue,
   type QuotationStatus,
 } from '@workforce/shared';
 import { api, authHeaders } from '../../../lib/api';
+import { StatusBadge } from '../../../components/ui/StatusBadge';
 import {
   communicationChannelLabel,
   communicationTemplateTitle,
@@ -402,9 +404,7 @@ export default function ProjectDetailPage() {
             {kase.customer.firstName} {kase.customer.lastName} · {kase.customer.phone}
           </p>
         </div>
-        <span className="text-xs px-2.5 py-1 rounded-full bg-primary-100 text-primary-700">
-          {CASE_STATUS_LABELS[kase.status]}
-        </span>
+        <StatusBadge tone={caseStatusTone(kase.status)} label={CASE_STATUS_LABELS[kase.status]} />
       </div>
 
       {getCaseStepIndex(kase.status) !== -1 && (
