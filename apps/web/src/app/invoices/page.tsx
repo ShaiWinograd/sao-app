@@ -6,6 +6,8 @@ import { useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { api } from '../../lib/api';
 import { canViewSensitiveFinancials, resolveAppViewerRole } from '../../lib/viewer-access';
+import { invoiceStatusTone } from '@workforce/shared';
+import { StatusBadge } from '../../components/ui/StatusBadge';
 
 type InvoiceStatus = 'DRAFT' | 'SENT' | 'PARTIALLY_PAID' | 'PAID' | 'VOID';
 type PaymentMethod = 'BANK_TRANSFER' | 'CASH' | 'BIT' | 'CHECK' | 'OTHER';
@@ -281,9 +283,7 @@ function InvoicesPageLegacy() {
                         <p className="text-sm font-semibold text-gray-900">{invoice.invoiceNumber}</p>
                         <p className="mt-0.5 text-xs text-gray-500">{customerName(invoice)}</p>
                       </div>
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${invoice.status === 'PAID' ? 'bg-emerald-100 text-emerald-700' : invoice.status === 'PARTIALLY_PAID' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-700'}`}>
-                        {statusLabels[invoice.status] ?? invoice.status}
-                      </span>
+                      <StatusBadge tone={invoiceStatusTone(invoice.status)} label={statusLabels[invoice.status] ?? invoice.status} />
                     </div>
                     <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
                       <span>{invoice.case?.name || 'ללא פרוייקט'}</span>
