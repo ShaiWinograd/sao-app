@@ -4,6 +4,7 @@ import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { CreateJobSchema, UpdateJobSchema } from '@workforce/shared';
 import { UserRole } from '@workforce/shared';
 import { validateServiceAddition } from '@workforce/shared';
+import { evaluateJobPublishReadiness } from '@workforce/shared';
 import { z } from 'zod';
 
 const JobsListQuerySchema = z.object({
@@ -245,6 +246,41 @@ export async function jobsRoutes(app: FastifyInstance) {
   // Publish a job (make it visible to workers)
   app.post('/:id/publish', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
+
+    const job = await prisma.job.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        requiredWorkerCount: true,
+        plannedStart: true,
+        plannedEnd: true,
+        addressId: true,
+        _count: { select: { slots: true } },
+      },
+    });
+
+    if (!job) {
+      return reply.status(404).send({ error: 'Job not found' });
+    }
+
+    const readiness = evaluateJobPublishReadiness({
+      status: job.status,
+      requiredWorkerCount: job.requiredWorkerCount,
+      slotCount: job._count.slots,
+      plannedStart: job.plannedStart,
+      plannedEnd: job.plannedEnd,
+      hasAddress: Boolean(job.addressId),
+    });
+
+    if (!readiness.ready) {
+      return reply.status(409).send({
+        error: 'העבודה אינה מוכנה לפרסום',
+        checks: readiness.checks,
+        unmetReasons: readiness.unmetReasons,
+      });
+    }
+
     return prisma.job.update({ where: { id }, data: { status: 'PUBLISHED' } });
   });
 
