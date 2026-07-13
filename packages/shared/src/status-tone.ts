@@ -1,4 +1,5 @@
 import type { CaseStatusValue } from './case-lifecycle';
+import type { QuotationStatus } from './quotations';
 
 // Semantic tone shared by all status badges. Maps to UI_VISUAL_DESIGN_SPEC §2.4.
 export type StatusTone = 'success' | 'warning' | 'error' | 'info' | 'neutral';
@@ -26,4 +27,30 @@ const CASE_STATUS_TONE: Record<CaseStatusValue, StatusTone> = {
 
 export function caseStatusTone(status: CaseStatusValue): StatusTone {
   return CASE_STATUS_TONE[status] ?? 'neutral';
+}
+
+const QUOTATION_STATUS_TONE: Record<QuotationStatus, StatusTone> = {
+  DRAFT: 'neutral',
+  SENT: 'info',
+  APPROVED: 'success',
+  REJECTED: 'error',
+  EXPIRED: 'warning',
+};
+
+export function quotationStatusTone(status: QuotationStatus): StatusTone {
+  return QUOTATION_STATUS_TONE[status] ?? 'neutral';
+}
+
+export type InvoiceStatusValue = 'DRAFT' | 'SENT' | 'PARTIALLY_PAID' | 'PAID' | 'VOID';
+
+const INVOICE_STATUS_TONE: Record<InvoiceStatusValue, StatusTone> = {
+  DRAFT: 'neutral',
+  SENT: 'info',
+  PARTIALLY_PAID: 'warning',
+  PAID: 'success',
+  VOID: 'neutral',
+};
+
+export function invoiceStatusTone(status: InvoiceStatusValue): StatusTone {
+  return INVOICE_STATUS_TONE[status] ?? 'neutral';
 }

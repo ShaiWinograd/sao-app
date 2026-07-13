@@ -5,9 +5,11 @@ import { useAuth } from '@clerk/nextjs';
 import { CheckCircle2, Clock, FileText, Plus, RefreshCw, Send, XCircle } from 'lucide-react';
 import {
   getCurrentQuotationVersion,
+  quotationStatusTone,
   type QuotationStatus,
 } from '@workforce/shared';
 import { api, authHeaders } from '../../lib/api';
+import { StatusBadge } from '../../components/ui/StatusBadge';
 
 type DatePrecision = 'EXACT' | 'PARTIAL' | 'EXPECTED_MONTH' | 'DATE_RANGE' | 'TO_BE_DETERMINED';
 type SendChannel = 'WHATSAPP' | 'EMAIL' | 'MANUAL';
@@ -59,14 +61,6 @@ const STATUS_LABELS: Record<QuotationStatus, string> = {
   APPROVED: 'מאושרת',
   REJECTED: 'נדחתה',
   EXPIRED: 'פג תוקף',
-};
-
-const STATUS_STYLES: Record<QuotationStatus, string> = {
-  DRAFT: 'bg-gray-100 text-gray-700',
-  SENT: 'bg-blue-100 text-blue-700',
-  APPROVED: 'bg-emerald-100 text-emerald-700',
-  REJECTED: 'bg-rose-100 text-rose-700',
-  EXPIRED: 'bg-amber-100 text-amber-700',
 };
 
 const DATE_PRECISION_LABELS: Record<DatePrecision, string> = {
@@ -423,11 +417,7 @@ export default function QuotationsPage() {
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-semibold text-gray-900">{quotation.case.name}</span>
-                          <span
-                            className={`text-[11px] px-2 py-0.5 rounded-full ${STATUS_STYLES[quotation.status]}`}
-                          >
-                            {STATUS_LABELS[quotation.status]}
-                          </span>
+                          <StatusBadge tone={quotationStatusTone(quotation.status)} label={STATUS_LABELS[quotation.status]} />
                         </div>
                         <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
                           <span>גרסה {version?.versionNumber ?? 1}</span>
@@ -458,9 +448,7 @@ export default function QuotationsPage() {
                       {currentVersion.isAddendum ? ' · תוספת' : ''}
                     </p>
                   </div>
-                  <span className={`text-xs px-2.5 py-1 rounded-full ${STATUS_STYLES[currentVersion.status]}`}>
-                    {STATUS_LABELS[currentVersion.status]}
-                  </span>
+                  <StatusBadge tone={quotationStatusTone(currentVersion.status)} label={STATUS_LABELS[currentVersion.status]} />
                 </div>
 
                 <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
@@ -567,11 +555,7 @@ export default function QuotationsPage() {
                               גרסה {version.versionNumber}
                               {version.isAddendum ? ' · תוספת' : ''}
                             </span>
-                            <span
-                              className={`text-[11px] px-2 py-0.5 rounded-full ${STATUS_STYLES[version.status]}`}
-                            >
-                              {STATUS_LABELS[version.status]}
-                            </span>
+                            <StatusBadge tone={quotationStatusTone(version.status)} label={STATUS_LABELS[version.status]} />
                           </div>
                           <div className="mt-1 text-xs text-gray-500">
                             {formatCurrency(version.estimatedTotal)} · {DATE_PRECISION_LABELS[version.datePrecision]}
