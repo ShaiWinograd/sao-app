@@ -92,6 +92,21 @@ test.describe('Project detail page', () => {
     await expect(page.getByText(/שעות עבודה משוערות.*דורש מנהל עבודה/)).toBeVisible();
   });
 
+  test('shows the lifecycle stepper and next-action card', async ({ page }) => {
+    await page.goto('/cases/case-1');
+
+    // Stepper renders the lifecycle steps
+    await expect(page.getByRole('navigation', { name: 'שלבי הפרוייקט' })).toBeVisible();
+    await expect(page.getByText('אישור לקוח')).toBeVisible();
+    await expect(page.getByText('תזמון')).toBeVisible();
+
+    // Next-action card for an AWAITING_APPROVAL project points to quotations
+    await expect(page.getByText('הפעולה הבאה')).toBeVisible();
+    await expect(page.getByText('תיעוד אישור הלקוח להצעת המחיר')).toBeVisible();
+    await page.getByRole('button', { name: 'מעבר להצעות מחיר' }).click();
+    await expect(page.getByRole('button', { name: 'תיעוד אישור לקוח' })).toBeVisible();
+  });
+
   test('records a quotation approval from the quotations tab', async ({ page }) => {
     let approved = false;
     await page.route('**/api/v1/quotations/quote-1/approve', async (route) => {
