@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
-import { ArrowRight, CheckCircle2, FileText, Plus, RefreshCw, Send, Trash2, XCircle } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Clock, FileText, MessageSquare, Plus, RefreshCw, Send, Trash2, XCircle } from 'lucide-react';
 import {
   estimateWorkerHours,
   getCurrentQuotationVersion,
@@ -12,6 +12,20 @@ import {
   type QuotationStatus,
 } from '@workforce/shared';
 import { api, authHeaders } from '../../../lib/api';
+import {
+  communicationChannelLabel,
+  communicationTemplateTitle,
+  type ProjectCommunicationChannel,
+  type ProjectCommunicationLogEntry,
+  type ProjectCommunicationTemplateKey,
+} from '../../../lib/project-communications';
+
+const COMMUNICATION_TEMPLATES: ProjectCommunicationTemplateKey[] = [
+  'quote',
+  'packing_form',
+  'move_reminder',
+  'completion_summary',
+];
 
 type ServiceType = 'PACKING' | 'UNPACKING' | 'HOME_ORGANIZATION';
 type TimingPrecision =
@@ -135,10 +149,11 @@ export default function ProjectDetailPage() {
   const caseId = params?.id;
   const { getToken } = useAuth();
 
-  const [tab, setTab] = useState<'overview' | 'quotations' | 'jobs'>('overview');
+  const [tab, setTab] = useState<'overview' | 'quotations' | 'jobs' | 'activity'>('overview');
   const [kase, setKase] = useState<ApiCaseDetail | null>(null);
   const [planned, setPlanned] = useState<ApiPlannedService[]>([]);
   const [quotations, setQuotations] = useState<ApiQuotation[]>([]);
+  const [comms, setComms] = useState<ProjectCommunicationLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -169,6 +184,12 @@ export default function ProjectDetailPage() {
       setKase(caseRes.data);
       setPlanned(plannedRes.data);
       setQuotations(quotesRes.data);
+      try {
+        const commsRes = await api.get<ProjectCommunicationLogEntry[]>(`/cases/${caseId}/communications`, auth);
+        setComms(commsRes.data);
+      } catch {
+        setComms([]);
+      }
     } catch {
       setError('טעינת הפרוייקט נכשלה');
     } finally {
@@ -284,6 +305,50 @@ export default function ProjectDetailPage() {
     [getToken, runPlannedAction],
   );
 
+  const buildCommPreview = useCallback(
+    (templateKey: ProjectCommunicationTemplateKey): string => {
+      const name = kase ? `${kase.customer.firstName} ${kase.customer.lastName}`.trim() : '';
+      const project = kase?.name ?? '';
+      switch (templateKey) {
+        case 'quote':
+          return `הצעת מחיר עבור "${project}" נשלחה ל${name}`;
+        case 'packing_form':
+          return `טופס ציוד אריזה עבור "${project}"`;
+        case 'move_reminder':
+          return `תזכורת לפני מעבר — "${project}"`;
+        default:
+          return `סיכום וסגירת פרוייקט "${project}"`;
+      }
+    },
+    [kase],
+  );
+
+  const handleSendComm = useCallback(
+    (templateKey: ProjectCommunicationTemplateKey, channel: ProjectCommunicationChannel) => {
+      if (!kase) return;
+      const recipient = channel === 'whatsapp' ? kase.customer.phone : kase.customer.email;
+      setBusy(true);
+      setError(null);
+      void (async () => {
+        try {
+          const auth = await authHeaders(getToken);
+          await api.post(
+            `/cases/${caseId}/communications`,
+            { templateKey, channel, recipient, preview: buildCommPreview(templateKey) },
+            auth,
+          );
+          const res = await api.get<ProjectCommunicationLogEntry[]>(`/cases/${caseId}/communications`, auth);
+          setComms(res.data);
+        } catch {
+          setError('שליחת ההודעה נכשלה');
+        } finally {
+          setBusy(false);
+        }
+      })();
+    },
+    [kase, caseId, getToken, buildCommPreview],
+  );
+
   const financials = useMemo(() => {
     const invoices = kase?.invoices ?? [];
     const invoiced = invoices.reduce((sum, inv) => sum + Number(inv.total || 0), 0);
@@ -367,6 +432,14 @@ export default function ProjectDetailPage() {
           className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === 'jobs' ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
         >
           עבודות
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === 'activity'}
+          onClick={() => setTab('activity')}
+          className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === 'activity' ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+        >
+          פעילות
         </button>
         <button
           onClick={() => void load()}
@@ -689,6 +762,71 @@ export default function ProjectDetailPage() {
             </ul>
           )}
         </section>
+      )}
+
+      {tab === 'activity' && (
+        <div className="space-y-5">
+          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <h2 className="text-sm font-semibold text-gray-900 mb-3">שליחת הודעה ללקוח</h2>
+            <ul className="space-y-2">
+              {COMMUNICATION_TEMPLATES.map((templateKey) => (
+                <li
+                  key={templateKey}
+                  className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2"
+                >
+                  <span className="text-sm text-gray-800">{communicationTemplateTitle(templateKey)}</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleSendComm(templateKey, 'whatsapp')}
+                      disabled={busy}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      וואטסאפ
+                    </button>
+                    <button
+                      onClick={() => handleSendComm(templateKey, 'email')}
+                      disabled={busy}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      אימייל
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <h2 className="text-sm font-semibold text-gray-900 mb-3">ציר תקשורת</h2>
+            {comms.length === 0 ? (
+              <p className="text-sm text-gray-400">טרם נשלחו הודעות בפרוייקט זה</p>
+            ) : (
+              <ul className="space-y-2">
+                {comms.map((entry) => (
+                  <li key={entry.id} className="rounded-lg border border-gray-100 px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-900">
+                        {communicationTemplateTitle(entry.templateKey)}
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-[11px] text-gray-400">
+                        <Clock className="w-3.5 h-3.5" />
+                        {formatDate(entry.sentAt)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">{entry.preview}</p>
+                    <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-gray-400">
+                      <MessageSquare className="w-3 h-3" />
+                      {communicationChannelLabel(entry.channel)} · {entry.recipient}
+                      {entry.performedByName ? ` · ${entry.performedByName}` : ''}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
       )}
     </div>
   );
