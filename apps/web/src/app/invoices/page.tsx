@@ -274,7 +274,7 @@ function InvoicesPageLegacy() {
                     key={invoice.id}
                     type="button"
                     onClick={() => setSelectedInvoiceId(invoice.id)}
-                    className={`w-full px-4 py-3 text-right hover:bg-purple-50 ${active ? 'bg-purple-50' : 'bg-white'}`}
+                    className={`w-full px-4 py-3 text-right hover:bg-primary-50 ${active ? 'bg-primary-50' : 'bg-white'}`}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -305,7 +305,7 @@ function InvoicesPageLegacy() {
             <>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <div className="inline-flex items-center gap-2 rounded-full bg-purple-100 px-2.5 py-1 text-xs font-medium text-purple-700">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-primary-100 px-2.5 py-1 text-xs font-medium text-primary-700">
                     <FileText className="h-3.5 w-3.5" />
                     {selectedInvoice.invoiceNumber}
                   </div>
@@ -417,7 +417,7 @@ function InvoicesPageLegacy() {
                     <textarea value={paymentNotes} onChange={(event) => setPaymentNotes(event.target.value)} rows={4} className="mt-1 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm" placeholder="אסמכתא, פירוט העברה, הערת גבייה..." />
                   </label>
 
-                  <button type="button" onClick={() => void handlePayment()} disabled={savingPayment || !canSeeFinancials} className="w-full rounded-xl bg-purple-600 px-3 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-300">
+                  <button type="button" onClick={() => void handlePayment()} disabled={savingPayment || !canSeeFinancials} className="w-full rounded-xl bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-primary-300">
                     {savingPayment ? 'שומר...' : 'רישום תשלום'}
                   </button>
                 </aside>

@@ -166,7 +166,7 @@ const statusMeta: Record<WorkStatus, { label: string; className: string }> = {
 const caseStatusMeta: Record<CaseStatus, { label: string; className: string }> = {
   draft: { label: 'משוריין', className: 'border-amber-200 bg-amber-50 text-amber-700' },
   active: { label: 'מאושר לביצוע', className: 'border-blue-200 bg-blue-50 text-blue-700' },
-  ready_for_review: { label: 'עבודה הסתיימה', className: 'border-purple-200 bg-purple-50 text-purple-700' },
+  ready_for_review: { label: 'עבודה הסתיימה', className: 'border-primary-200 bg-primary-50 text-primary-700' },
   completed: { label: 'סגור', className: 'border-gray-200 bg-gray-100 text-gray-700' },
 };
 
@@ -1318,7 +1318,7 @@ function JobsPageContent() {
         <button
           type="button"
           onClick={() => openCreateModal()}
-          className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-purple-700"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700"
         >
           <Plus className="w-4 h-4" />
           עבודה חדשה
@@ -1383,7 +1383,7 @@ function JobsPageContent() {
                   type="button"
                   onClick={() => setSelectedRange(option.key)}
                   className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                    isActive ? 'bg-purple-600 text-white shadow-sm ring-2 ring-purple-200' : 'text-gray-600 hover:bg-white'
+                    isActive ? 'bg-primary-600 text-white shadow-sm ring-2 ring-primary-200' : 'text-gray-600 hover:bg-white'
                   }`}
                 >
                   {option.label}
@@ -1411,7 +1411,7 @@ function JobsPageContent() {
             <button
               type="button"
               onClick={jumpToToday}
-              className="inline-flex items-center rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs font-medium text-purple-700 hover:bg-purple-100"
+              className="inline-flex items-center rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-medium text-primary-700 hover:bg-primary-100"
             >
               היום
             </button>
@@ -1535,12 +1535,12 @@ function JobsPageContent() {
                   day.isNonWorkingDay ? (
                     <div
                       key={`coverage-${day.dateKey}`}
-                      className={`rounded-lg border px-2.5 py-2 text-right ${day.dateKey === todayKey ? 'border-purple-300 bg-purple-100' : 'border-gray-300 bg-gray-100'}`}
+                      className={`rounded-lg border px-2.5 py-2 text-right ${day.dateKey === todayKey ? 'border-primary-300 bg-primary-100' : 'border-gray-300 bg-gray-100'}`}
                     >
                       <div className="text-right">
                         <div className="flex items-center justify-between gap-1">
                           {day.dateKey === todayKey && (
-                            <span className="rounded-full bg-purple-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>
+                            <span className="rounded-full bg-primary-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>
                           )}
                           <div className="text-right">
                             <p className="text-xs leading-4 text-gray-500">{day.dayLabel}</p>
@@ -1555,13 +1555,13 @@ function JobsPageContent() {
                       key={`coverage-${day.dateKey}`}
                       type="button"
                       onClick={() => openDayJobsFromCoverage(day.dateKey)}
-                      className={`rounded-lg border px-2.5 py-2 text-right hover:border-purple-300 hover:bg-purple-50 ${day.dateKey === todayKey ? 'border-purple-300 bg-purple-50' : 'border-gray-200 bg-white'}`}
+                      className={`rounded-lg border px-2.5 py-2 text-right hover:border-primary-300 hover:bg-primary-50 ${day.dateKey === todayKey ? 'border-primary-300 bg-primary-50' : 'border-gray-200 bg-white'}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="text-right">
                           <div className="flex items-center justify-end gap-1">
                             {day.dateKey === todayKey && (
-                              <span className="rounded-full bg-purple-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>
+                              <span className="rounded-full bg-primary-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>
                             )}
                             <p className="text-xs leading-4 text-gray-700">{day.dayLabel}</p>
                           </div>
@@ -1606,15 +1606,15 @@ function JobsPageContent() {
                       isNonWorkingDay
                         ? 'border-gray-300 bg-gray-100'
                         : isToday
-                          ? 'border-purple-300 bg-purple-50/40 cursor-pointer hover:border-purple-400 hover:bg-purple-100/60'
-                          : 'border-gray-200 bg-white cursor-pointer hover:border-purple-300 hover:bg-purple-50/70'
+                          ? 'border-primary-300 bg-primary-50/40 cursor-pointer hover:border-primary-400 hover:bg-primary-100/60'
+                          : 'border-gray-200 bg-white cursor-pointer hover:border-primary-300 hover:bg-primary-50/70'
                     }`}
                   >
                     <div className={`px-3 py-2 border-b ${isNonWorkingDay ? 'border-gray-300 bg-gray-200/60' : 'border-gray-100 bg-gray-50'}`}>
                       <div className="flex items-center justify-between">
                         <p className="text-xs text-gray-500">{formatDayName(date)}</p>
                         {isToday && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-[10px] font-semibold text-primary-700">
                             <Circle className="h-2 w-2 fill-current" />
                             היום
                           </span>
@@ -1652,7 +1652,7 @@ function JobsPageContent() {
                                 event.stopPropagation();
                                 openEditModal(work);
                               }}
-                              className="relative w-full rounded-md border border-gray-200 bg-white p-2 pr-3 text-right hover:border-purple-300 hover:bg-purple-50/70"
+                              className="relative w-full rounded-md border border-gray-200 bg-white p-2 pr-3 text-right hover:border-primary-300 hover:bg-primary-50/70"
                             >
                               <div className={`absolute right-0 top-1 bottom-1 w-1 rounded-full ${jobTypeColorClass[work.jobType]}`} />
                               <p className="text-sm font-semibold text-gray-900">לקוח: {work.customerName}</p>
@@ -1704,10 +1704,10 @@ function JobsPageContent() {
                       type="button"
                       disabled={isNonWorkingDay}
                       onClick={() => openCreateModal(dateKey)}
-                      className={`p-3 text-center border-l border-gray-200 ${isNonWorkingDay ? (isToday ? 'bg-purple-100 text-purple-700' : 'bg-gray-200 text-gray-500') : isToday ? 'bg-purple-50 text-purple-700 hover:bg-purple-100' : 'text-gray-700 hover:bg-purple-50'} disabled:cursor-not-allowed`}
+                      className={`p-3 text-center border-l border-gray-200 ${isNonWorkingDay ? (isToday ? 'bg-primary-100 text-primary-700' : 'bg-gray-200 text-gray-500') : isToday ? 'bg-primary-50 text-primary-700 hover:bg-primary-100' : 'text-gray-700 hover:bg-primary-50'} disabled:cursor-not-allowed`}
                     >
                       <div className="flex items-center justify-center gap-1">
-                        {isToday && <span className="rounded-full bg-purple-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>}
+                        {isToday && <span className="rounded-full bg-primary-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>}
                         <div className="text-xs">{formatDayName(date)}</div>
                       </div>
                       <div className="text-sm font-semibold">{formatDayDate(date)}</div>
@@ -1743,7 +1743,7 @@ function JobsPageContent() {
                     return (
                       <div
                         key={`${worker.id}-${dateKey}`}
-                        className={`p-2 border-l border-gray-100 min-h-[88px] ${isNonWorkingDay ? (isToday ? 'bg-purple-100' : 'bg-gray-100') : isToday ? 'bg-purple-50/50' : 'bg-white'}`}
+                        className={`p-2 border-l border-gray-100 min-h-[88px] ${isNonWorkingDay ? (isToday ? 'bg-primary-100' : 'bg-gray-100') : isToday ? 'bg-primary-50/50' : 'bg-white'}`}
                       >
                         {isNonWorkingDay ? (
                           <p className="text-[11px] text-center text-gray-500 mt-5">{nonWorkingLabel}</p>
@@ -1785,7 +1785,7 @@ function JobsPageContent() {
                                     {isUrgentCase ? 'דחוף: ממתין לאישור לקוח' : caseMeta.label}
                                   </p>
                                   {isActualLead && (
-                                    <p className="text-xs text-purple-700 font-medium mt-0.5">ראש צוות</p>
+                                    <p className="text-xs text-primary-700 font-medium mt-0.5">ראש צוות</p>
                                   )}
                                 </button>
                               );
@@ -1865,7 +1865,7 @@ function JobsPageContent() {
                   />
                 </div>
                 {!editingWorkId && customerSuggestions.length > 0 && (
-                  <div className="rounded-lg border border-purple-100 bg-purple-50 p-2 space-y-1">
+                  <div className="rounded-lg border border-primary-100 bg-primary-50 p-2 space-y-1">
                     {customerSuggestions.map((customer) => (
                       <button
                         key={`customer-suggestion-${customer.id}`}
@@ -1880,7 +1880,7 @@ function JobsPageContent() {
                           setExistingAddressQuery(customer.addresses[0] ?? '');
                           setAddressMode('existing');
                         }}
-                        className="w-full rounded-md border border-purple-200 bg-white px-3 py-1.5 text-right text-xs text-gray-700 hover:bg-purple-100"
+                        className="w-full rounded-md border border-primary-200 bg-white px-3 py-1.5 text-right text-xs text-gray-700 hover:bg-primary-100"
                       >
                         {customer.fullName} • {customer.phone}
                       </button>
@@ -1931,7 +1931,7 @@ function JobsPageContent() {
                               setSelectedAddress(address);
                               setExistingAddressQuery(address);
                             }}
-                            className={`w-full px-3 py-2 text-right text-xs hover:bg-purple-50 ${selectedAddress === address ? 'bg-purple-50 text-purple-700' : 'text-gray-700'}`}
+                            className={`w-full px-3 py-2 text-right text-xs hover:bg-primary-50 ${selectedAddress === address ? 'bg-primary-50 text-primary-700' : 'text-gray-700'}`}
                           >
                             {address}
                           </button>
@@ -2050,7 +2050,7 @@ function JobsPageContent() {
                 <button
                   type="button"
                   onClick={saveNewWork}
-                  className="px-4 py-2 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700 inline-flex items-center gap-1.5"
+                  className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 inline-flex items-center gap-1.5"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   {editingWorkId ? 'שמירת שינויים' : 'יצירת עבודה'}

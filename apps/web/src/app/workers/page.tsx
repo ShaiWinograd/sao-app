@@ -296,7 +296,7 @@ export default function WorkersPage() {
             setMessage('');
             setIsCreateModalOpen(true);
           }}
-          className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
         >
           <Plus className="w-4 h-4" />
           עובדת חדשה
@@ -357,14 +357,14 @@ export default function WorkersPage() {
           <button
             type="button"
             onClick={() => setWorkersView('active')}
-            className={`px-3 py-1.5 text-xs rounded-md ${workersView === 'active' ? 'bg-purple-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}
+            className={`px-3 py-1.5 text-xs rounded-md ${workersView === 'active' ? 'bg-primary-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}
           >
             עובדים פעילים ({workers.length})
           </button>
           <button
             type="button"
             onClick={() => setWorkersView('archive')}
-            className={`px-3 py-1.5 text-xs rounded-md ${workersView === 'archive' ? 'bg-purple-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}
+            className={`px-3 py-1.5 text-xs rounded-md ${workersView === 'archive' ? 'bg-primary-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}
           >
             ארכיון עובדים ({archivedWorkers.length})
           </button>
@@ -392,13 +392,13 @@ export default function WorkersPage() {
                   <td colSpan={8} className="px-4 py-6 text-center text-sm text-gray-500">טוען עובדים...</td>
                 </tr>
               ) : (workersView === 'active' ? filteredWorkers : filteredArchivedWorkers).map((worker) => (
-                <tr key={worker.id} className="hover:bg-purple-50/40">
+                <tr key={worker.id} className="hover:bg-primary-50/40">
                   <td className="px-4 py-3 text-sm font-semibold text-gray-900">
                     {workersView === 'active' ? (
                       <button
                         type="button"
                         onClick={() => openEditWorker(worker)}
-                        className="text-purple-700 hover:text-purple-800 hover:underline underline-offset-2"
+                        className="text-primary-700 hover:text-primary-800 hover:underline underline-offset-2"
                       >
                         {worker.name}
                       </button>
@@ -532,7 +532,7 @@ export default function WorkersPage() {
               <button
                 type="button"
                 onClick={() => void saveWorkerUpdate()}
-                className="w-full rounded-lg bg-purple-600 text-white px-4 py-2 text-sm font-medium hover:bg-purple-700"
+                className="w-full rounded-lg bg-primary-600 text-white px-4 py-2 text-sm font-medium hover:bg-primary-700"
               >
                 שמירת שינוי
               </button>

@@ -59,7 +59,7 @@ export default function Sidebar() {
               href={href}
               className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-all ${
                 isActive
-                  ? 'text-purple-600 bg-purple-50 border-b-2 border-purple-600'
+                  ? 'text-primary-600 bg-primary-50 border-b-2 border-primary-600'
                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
               }`}
             >

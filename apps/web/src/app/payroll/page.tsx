@@ -283,7 +283,7 @@ export default function PayrollPage() {
           <button type="button" onClick={() => moveMonth('next')} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50" aria-label="חודש הבא">
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <button type="button" onClick={jumpToCurrentMonth} className="inline-flex items-center gap-1 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs font-medium text-purple-700 hover:bg-purple-100">
+          <button type="button" onClick={jumpToCurrentMonth} className="inline-flex items-center gap-1 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-medium text-primary-700 hover:bg-primary-100">
             <CalendarDays className="w-4 h-4" />
             החודש
           </button>
@@ -412,7 +412,7 @@ export default function PayrollPage() {
             <input type="number" value={adjustmentAmount} onChange={(event) => setAdjustmentAmount(Number(event.target.value))} disabled={!canSeeFinancials} className="rounded-xl border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100" placeholder={canSeeFinancials ? 'סכום (חיובי/שלילי)' : 'סכום מוסתר'} />
             <input value={adjustmentReason} onChange={(event) => setAdjustmentReason(event.target.value)} className="rounded-xl border border-gray-300 px-3 py-2 text-sm" placeholder="סיבה/הערה" />
           </div>
-          <button type="button" onClick={() => void handleAddAdjustment()} disabled={saving || isClosed || !canSeeFinancials} className="mt-3 inline-flex items-center gap-1 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50">
+          <button type="button" onClick={() => void handleAddAdjustment()} disabled={saving || isClosed || !canSeeFinancials} className="mt-3 inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50">
             <Plus className="w-3.5 h-3.5" />
             הוספת התאמה
           </button>

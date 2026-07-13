@@ -8,18 +8,40 @@ module.exports = {
         sm: ['1rem', { lineHeight: '1.5rem' }],
       },
       fontFamily: {
-        sans: ['Noto Sans Hebrew', 'Open Sans', 'system-ui', 'sans-serif'],
+        sans: ['Assistant', 'Heebo', 'Noto Sans Hebrew', 'Arial', 'sans-serif'],
       },
       colors: {
-        brand: {
-          50: '#f0fdf9',
-          100: '#ccfbef',
-          500: '#0f7a67',
-          600: '#0a5a4c',
-          700: '#064f42',
+        // Muted-green brand from UI_VISUAL_DESIGN_SPEC.md §2.1
+        primary: {
+          50: '#f4f7f5',
+          100: '#eaf0ec',
+          200: '#d5e1da',
+          300: '#b3c7bc',
+          400: '#8caa99',
+          500: '#719180',
+          600: '#5f7d6e',
+          700: '#4e695c',
+          800: '#3d5449',
+          900: '#2f4038',
         },
-        danger: '#b34a3e',
+        // Supporting terracotta accent (use sparingly) §2.3
+        accent: {
+          100: '#f7ece7',
+          600: '#b66f52',
+        },
+        // Warm neutral surfaces §2.2
+        canvas: '#f7f6f2',
+        surface: { DEFAULT: '#ffffff', muted: '#fbfaf7' },
+        danger: '#b85656',
         ok: '#0c6a56',
+        // Legacy alias kept so existing bg-brand-* usages resolve to green
+        brand: {
+          50: '#f4f7f5',
+          100: '#eaf0ec',
+          500: '#719180',
+          600: '#5f7d6e',
+          700: '#4e695c',
+        },
       },
     },
   },

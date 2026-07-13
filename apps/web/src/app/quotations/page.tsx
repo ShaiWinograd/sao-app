@@ -297,7 +297,7 @@ export default function QuotationsPage() {
           </button>
           <button
             onClick={() => setIsCreating((prev) => !prev)}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700"
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700"
           >
             <Plus className="w-4 h-4" />
             הצעת מחיר חדשה
@@ -389,7 +389,7 @@ export default function QuotationsPage() {
             <button
               onClick={() => void handleCreate()}
               disabled={busyAction}
-              className="px-4 py-2 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50"
+              className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
             >
               צור הצעת מחיר
             </button>
@@ -419,7 +419,7 @@ export default function QuotationsPage() {
                     <li key={quotation.id}>
                       <button
                         onClick={() => setSelectedId(quotation.id)}
-                        className={`w-full text-right px-4 py-3 hover:bg-gray-50 ${isActive ? 'bg-purple-50' : ''}`}
+                        className={`w-full text-right px-4 py-3 hover:bg-gray-50 ${isActive ? 'bg-primary-50' : ''}`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-semibold text-gray-900">{quotation.case.name}</span>

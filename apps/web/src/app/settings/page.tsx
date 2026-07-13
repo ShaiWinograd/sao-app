@@ -249,7 +249,7 @@ export default function SettingsPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => void closeMonth()} className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700">
+            <button type="button" onClick={() => void closeMonth()} className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700">
               <Save className="w-4 h-4" />
               סגירת חודש
             </button>
@@ -272,7 +272,7 @@ export default function SettingsPage() {
             type="button"
             onClick={() => void saveSettings()}
             disabled={settingsSaving || settingsLoading}
-            className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
           >
             <Save className="w-4 h-4" />
             {settingsSaving ? 'שומר...' : 'שמירת הגדרות'}

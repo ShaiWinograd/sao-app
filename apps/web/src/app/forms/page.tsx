@@ -357,7 +357,7 @@ export default function FormsPage() {
           <h1 className="text-2xl font-bold text-gray-900 mb-1">טפסי סיום משמרת</h1>
           <p className="text-sm text-gray-500">ניהול תבניות ושליחה שמקושרת אוטומטית לתיק לקוח.</p>
         </div>
-        <div className="rounded-xl border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-800">
+        <div className="rounded-xl border border-primary-200 bg-primary-50 px-3 py-2 text-xs text-primary-800">
           <div>תבניות פעילות: {templates.length}</div>
           <div>טפסים עם מעקב: {followUpCount}</div>
         </div>
@@ -420,7 +420,7 @@ export default function FormsPage() {
             className="rounded-xl border border-gray-300 px-3 py-2 text-sm md:col-span-2"
             placeholder="הערת מנהלת/עובדת (חובה בהשלמה חלקית או חסר מידע)"
           />
-          <button type="button" onClick={submitEndShiftForm} className="inline-flex items-center justify-center gap-1 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-700">
+          <button type="button" onClick={submitEndShiftForm} className="inline-flex items-center justify-center gap-1 rounded-lg bg-primary-600 px-3 py-2 text-xs font-medium text-white hover:bg-primary-700">
             <Plus className="w-3.5 h-3.5" />
             שליחת טופס וקישור לתיק
           </button>
@@ -458,7 +458,7 @@ export default function FormsPage() {
                 onClick={() => setSelectedTemplateId(template.id)}
                 className={`rounded-lg border px-3 py-1.5 text-sm ${
                   selectedTemplate?.id === template.id
-                    ? 'border-purple-300 bg-purple-50 text-purple-700'
+                    ? 'border-primary-300 bg-primary-50 text-primary-700'
                     : 'border-gray-200 bg-white text-gray-700'
                 }`}
               >
@@ -513,7 +513,7 @@ export default function FormsPage() {
               <input type="checkbox" checked={newRequired} onChange={(event) => setNewRequired(event.target.checked)} />
               שדה חובה
             </label>
-            <button type="button" onClick={addQuestion} className="inline-flex items-center gap-1 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700">
+            <button type="button" onClick={addQuestion} className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700">
               <Plus className="w-3.5 h-3.5" />
               הוספת שאלה
             </button>
