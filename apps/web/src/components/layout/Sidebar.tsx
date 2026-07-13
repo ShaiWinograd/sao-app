@@ -57,13 +57,16 @@ export default function Sidebar() {
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-all ${
+              aria-current={isActive ? 'page' : undefined}
+              className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs transition-colors ${
                 isActive
-                  ? 'text-primary-600 bg-primary-50 border-b-2 border-primary-600'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  ? 'bg-primary-100 text-primary-700 font-semibold'
+                  : 'font-medium text-gray-600 hover:bg-primary-50 hover:text-primary-700'
               }`}
             >
-              <Icon className="w-4 h-4 flex-shrink-0" />
+              <Icon
+                className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-primary-600' : 'text-gray-400'}`}
+              />
               <span className="truncate">{label}</span>
             </Link>
           );
