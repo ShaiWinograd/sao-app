@@ -96,4 +96,13 @@ test.describe('Project detail page', () => {
 
     await expect.poll(() => fromSelection).toBe(true);
   });
+
+  test('lists project jobs in the jobs tab', async ({ page }) => {
+    await page.goto('/cases/case-1');
+    await page.getByRole('tab', { name: 'עבודות' }).click();
+
+    await expect(page.getByText('עבודות הפרוייקט')).toBeVisible();
+    await expect(page.getByText('תל אביב 1')).toBeVisible();
+    await expect(page.getByText('4 עובדים')).toBeVisible();
+  });
 });

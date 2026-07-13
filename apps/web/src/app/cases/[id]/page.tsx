@@ -110,6 +110,14 @@ const QUOTATION_STATUS_LABELS: Record<QuotationStatus, string> = {
   EXPIRED: 'פג תוקף',
 };
 
+const JOB_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'טיוטה',
+  PUBLISHED: 'פורסמה',
+  IN_PROGRESS: 'בביצוע',
+  COMPLETED: 'הושלמה',
+  CANCELLED: 'בוטלה',
+};
+
 function formatCurrency(value: number | string): string {
   const amount = typeof value === 'string' ? Number(value) : value;
   if (Number.isNaN(amount)) return '—';
@@ -127,7 +135,7 @@ export default function ProjectDetailPage() {
   const caseId = params?.id;
   const { getToken } = useAuth();
 
-  const [tab, setTab] = useState<'overview' | 'quotations'>('overview');
+  const [tab, setTab] = useState<'overview' | 'quotations' | 'jobs'>('overview');
   const [kase, setKase] = useState<ApiCaseDetail | null>(null);
   const [planned, setPlanned] = useState<ApiPlannedService[]>([]);
   const [quotations, setQuotations] = useState<ApiQuotation[]>([]);
@@ -353,6 +361,14 @@ export default function ProjectDetailPage() {
           הצעות מחיר
         </button>
         <button
+          role="tab"
+          aria-selected={tab === 'jobs'}
+          onClick={() => setTab('jobs')}
+          className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === 'jobs' ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+        >
+          עבודות
+        </button>
+        <button
           onClick={() => void load()}
           className="ms-auto inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
         >
@@ -361,7 +377,7 @@ export default function ProjectDetailPage() {
         </button>
       </div>
 
-      {tab === 'overview' ? (
+      {tab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-gray-900 mb-3">שירותים מתוכננים</h2>
@@ -531,7 +547,9 @@ export default function ProjectDetailPage() {
             )}
           </section>
         </div>
-      ) : (
+      )}
+
+      {tab === 'quotations' && (
         <div className="space-y-5">
           <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-gray-900 mb-3">הצעת מחיר חדשה</h2>
@@ -641,6 +659,36 @@ export default function ProjectDetailPage() {
             </ul>
           )}
         </div>
+      )}
+
+      {tab === 'jobs' && (
+        <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-gray-900 mb-3">עבודות הפרוייקט</h2>
+          {kase.jobs.length === 0 ? (
+            <p className="text-sm text-gray-400">טרם נקבעו עבודות לפרוייקט זה</p>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {[...kase.jobs]
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                .map((job) => (
+                  <li key={job.id} className="py-3 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900">{SERVICE_LABELS[job.jobType]}</span>
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                          {JOB_STATUS_LABELS[job.status] ?? job.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {formatDate(job.date)} · {job.address?.fullAddress ?? 'כתובת לא זמינה'}
+                      </p>
+                    </div>
+                    <span className="text-xs text-gray-500">{job.requiredWorkerCount} עובדים</span>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </section>
       )}
     </div>
   );
