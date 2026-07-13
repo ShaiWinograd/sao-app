@@ -376,7 +376,7 @@ export default function ProjectDetailPage() {
     return (
       <div className="p-6" dir="rtl">
         <p className="text-sm text-gray-500">{error ?? 'הפרוייקט לא נמצא'}</p>
-        <Link href="/cases/board" className="text-sm text-purple-600 mt-2 inline-block">
+        <Link href="/cases/board" className="text-sm text-primary-600 mt-2 inline-block">
           חזרה ללוח הפרוייקטים
         </Link>
       </div>
@@ -397,7 +397,7 @@ export default function ProjectDetailPage() {
             {kase.customer.firstName} {kase.customer.lastName} · {kase.customer.phone}
           </p>
         </div>
-        <span className="text-xs px-2.5 py-1 rounded-full bg-purple-100 text-purple-700">
+        <span className="text-xs px-2.5 py-1 rounded-full bg-primary-100 text-primary-700">
           {CASE_STATUS_LABELS[kase.status]}
         </span>
       </div>
@@ -413,7 +413,7 @@ export default function ProjectDetailPage() {
           role="tab"
           aria-selected={tab === 'overview'}
           onClick={() => setTab('overview')}
-          className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === 'overview' ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+          className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === 'overview' ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
         >
           סקירה
         </button>
@@ -421,7 +421,7 @@ export default function ProjectDetailPage() {
           role="tab"
           aria-selected={tab === 'quotations'}
           onClick={() => setTab('quotations')}
-          className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === 'quotations' ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+          className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === 'quotations' ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
         >
           הצעות מחיר
         </button>
@@ -429,7 +429,7 @@ export default function ProjectDetailPage() {
           role="tab"
           aria-selected={tab === 'jobs'}
           onClick={() => setTab('jobs')}
-          className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === 'jobs' ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+          className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === 'jobs' ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
         >
           עבודות
         </button>
@@ -437,7 +437,7 @@ export default function ProjectDetailPage() {
           role="tab"
           aria-selected={tab === 'activity'}
           onClick={() => setTab('activity')}
-          className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === 'activity' ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+          className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === 'activity' ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
         >
           פעילות
         </button>
@@ -578,7 +578,7 @@ export default function ProjectDetailPage() {
               <button
                 onClick={handleAddPlanned}
                 disabled={busy}
-                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50"
+                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
               >
                 <Plus className="w-3.5 h-3.5" />
                 הוסף שירות מתוכנן
@@ -651,7 +651,7 @@ export default function ProjectDetailPage() {
             <button
               onClick={handleCreateQuotation}
               disabled={busy}
-              className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50"
+              className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
             >
               <Plus className="w-4 h-4" />
               צור הצעת מחיר

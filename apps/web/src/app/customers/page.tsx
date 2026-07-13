@@ -134,7 +134,7 @@ const caseStatusMeta: Record<Customer['caseStatus'], { label: string; helper: st
   in_progress: {
     label: 'מאושר לביצוע',
     helper: 'הפרוייקט מאושר ויש עבודות מתוכננות או בביצוע',
-    className: 'bg-purple-50 text-purple-700 border-purple-200',
+    className: 'bg-primary-50 text-primary-700 border-primary-200',
   },
   completed_unpaid: {
     label: 'עבודה הסתיימה',
@@ -502,7 +502,7 @@ export default function CustomersPage() {
           <button
             type="button"
             onClick={openCreateCustomerCard}
-            className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white hover:bg-purple-700"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700"
           >
             <Plus className="w-4 h-4" />
             לקוח חדש
@@ -548,7 +548,7 @@ export default function CustomersPage() {
                 key={customer.id}
                 type="button"
                 onClick={() => openCustomerCard(customer)}
-                className="w-full text-right px-5 py-4 hover:bg-purple-50 transition-colors"
+                className="w-full text-right px-5 py-4 hover:bg-primary-50 transition-colors"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -596,7 +596,7 @@ export default function CustomersPage() {
                   setCardTab('details');
                   setCardMessage('');
                 }}
-                className={`px-3 py-1.5 text-xs rounded-md border ${cardTab === 'details' ? 'bg-purple-50 border-purple-300 text-purple-700' : 'border-gray-300 text-gray-700'}`}
+                className={`px-3 py-1.5 text-xs rounded-md border ${cardTab === 'details' ? 'bg-primary-50 border-primary-300 text-primary-700' : 'border-gray-300 text-gray-700'}`}
               >
                 פרטי לקוח
               </button>
@@ -607,7 +607,7 @@ export default function CustomersPage() {
                   setCardMessage('');
                 }}
                 disabled={isCreatingNew}
-                className={`px-3 py-1.5 text-xs rounded-md border ${cardTab === 'works' ? 'bg-purple-50 border-purple-300 text-purple-700' : 'border-gray-300 text-gray-700'} disabled:opacity-50`}
+                className={`px-3 py-1.5 text-xs rounded-md border ${cardTab === 'works' ? 'bg-primary-50 border-primary-300 text-primary-700' : 'border-gray-300 text-gray-700'} disabled:opacity-50`}
               >
                 עבודות קשורות
               </button>
@@ -617,7 +617,7 @@ export default function CustomersPage() {
                   setCardTab('communication');
                   setCardMessage('');
                 }}
-                className={`px-3 py-1.5 text-xs rounded-md border ${cardTab === 'communication' ? 'bg-purple-50 border-purple-300 text-purple-700' : 'border-gray-300 text-gray-700'}`}
+                className={`px-3 py-1.5 text-xs rounded-md border ${cardTab === 'communication' ? 'bg-primary-50 border-primary-300 text-primary-700' : 'border-gray-300 text-gray-700'}`}
               >
                 תקשורת לקוח
               </button>
@@ -703,7 +703,7 @@ export default function CustomersPage() {
                     </div>
                   )}
 
-                  <button type="button" onClick={saveCustomer} className="px-4 py-2 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700">
+                  <button type="button" onClick={saveCustomer} className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700">
                     {isCreatingNew ? 'יצירת לקוח' : 'שמירת שינויים'}
                   </button>
                 </>
@@ -711,8 +711,8 @@ export default function CustomersPage() {
 
               {cardTab === 'works' && openedCustomer && (
                 <div className="space-y-2">
-                  <div className="rounded-lg border border-purple-100 bg-purple-50 px-3 py-2">
-                    <p className="text-xs text-purple-700">
+                  <div className="rounded-lg border border-primary-100 bg-primary-50 px-3 py-2">
+                    <p className="text-xs text-primary-700">
                       עבודות קשורות הן ימי עבודה בתוך הפרוייקט. סטטוס הפרוייקט מייצג את מצב הלקוח הכולל (משוריין/מאושר לביצוע/עבודה הסתיימה/עבודה שולמה).
                     </p>
                   </div>
@@ -723,7 +723,7 @@ export default function CustomersPage() {
                       <div key={work.id} className="rounded-lg border border-gray-200 px-3 py-2">
                         <p className="text-sm font-semibold text-gray-900">{work.jobType} • {work.date}</p>
                         <p className="text-xs text-gray-600 mt-1">{work.address}</p>
-                        <p className="text-xs text-purple-700 mt-1">סטטוס: {work.status}</p>
+                        <p className="text-xs text-primary-700 mt-1">סטטוס: {work.status}</p>
                       </div>
                     ))
                   )}

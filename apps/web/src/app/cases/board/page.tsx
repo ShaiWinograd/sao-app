@@ -139,7 +139,7 @@ export default function ProjectBoardPage() {
               onClick={() => setActiveTab(index)}
               className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors ${
                 index === activeTab
-                  ? 'bg-purple-600 text-white'
+                  ? 'bg-primary-600 text-white'
                   : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
               }`}
             >
@@ -181,7 +181,7 @@ export default function ProjectBoardPage() {
                       >
                         <Link
                           href={`/cases/${kase.id}`}
-                          className="text-sm font-semibold text-gray-900 hover:text-purple-600"
+                          className="text-sm font-semibold text-gray-900 hover:text-primary-600"
                         >
                           {kase.name}
                         </Link>

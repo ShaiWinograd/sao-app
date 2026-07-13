@@ -301,7 +301,7 @@ export default function ReportsPage() {
         </article>
         <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="text-sm text-gray-500">רווח נקי</div>
-          <div className="text-xl font-bold text-purple-700 mt-1">{formatCurrency(summary.netProfit)}</div>
+          <div className="text-xl font-bold text-primary-700 mt-1">{formatCurrency(summary.netProfit)}</div>
         </article>
         <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="text-sm text-gray-500">שולי רווח</div>
