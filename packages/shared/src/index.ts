@@ -2,6 +2,7 @@ export * from './enums';
 export * from './case-lifecycle';
 export * from './case-board';
 export * from './case-steps';
+export * from './status-tone';
 export * from './end-shift';
 export * from './hebrew';
 export * from './schemas';

@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { RefreshCw } from 'lucide-react';
-import { getAllowedCaseTransitions, type CaseStatusValue } from '@workforce/shared';
+import { caseStatusTone, getAllowedCaseTransitions, type CaseStatusValue } from '@workforce/shared';
 import { api, authHeaders } from '../../../lib/api';
+import { StatusBadge } from '../../../components/ui/StatusBadge';
 
 type BoardCaseJob = {
   id: string;
@@ -188,6 +189,9 @@ export default function ProjectBoardPage() {
                         <p className="text-xs text-gray-500 mt-0.5">
                           {kase.customer.firstName} {kase.customer.lastName}
                         </p>
+                        <div className="mt-1.5">
+                          <StatusBadge tone={caseStatusTone(kase.status)} label={STATUS_LABELS[kase.status]} />
+                        </div>
                         <div className="mt-2 flex items-center justify-between text-[11px] text-gray-500">
                           <span>עבודה קרובה: {nextJobDate(kase.jobs)}</span>
                           <span>{kase.jobs.length} עבודות</span>
