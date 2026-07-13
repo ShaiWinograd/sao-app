@@ -8,6 +8,9 @@ import { ArrowRight, CheckCircle2, Clock, FileText, MessageSquare, Plus, Refresh
 import {
   estimateWorkerHours,
   getCurrentQuotationVersion,
+  CASE_LIFECYCLE_STEPS,
+  getCaseNextAction,
+  getCaseStepIndex,
   type CaseStatusValue,
   type QuotationStatus,
 } from '@workforce/shared';
@@ -383,6 +386,8 @@ export default function ProjectDetailPage() {
     );
   }
 
+  const nextAction = getCaseNextAction(kase.status);
+
   return (
     <div className="p-6" dir="rtl">
       <Link href="/cases/board" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-3">
@@ -401,6 +406,59 @@ export default function ProjectDetailPage() {
           {CASE_STATUS_LABELS[kase.status]}
         </span>
       </div>
+
+      {getCaseStepIndex(kase.status) !== -1 && (
+        <nav aria-label="שלבי הפרוייקט" className="mb-5 overflow-x-auto">
+          <ol className="flex items-center min-w-max">
+            {CASE_LIFECYCLE_STEPS.map((step, i) => {
+              const current = getCaseStepIndex(kase.status);
+              const state = i < current ? 'done' : i === current ? 'current' : 'todo';
+              return (
+                <li key={step.key} className="flex items-center">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold ${
+                        state === 'done'
+                          ? 'bg-primary-600 text-white'
+                          : state === 'current'
+                            ? 'bg-primary-100 text-primary-700 ring-2 ring-primary-500'
+                            : 'bg-gray-100 text-gray-400'
+                      }`}
+                    >
+                      {state === 'done' ? <CheckCircle2 className="w-4 h-4" /> : i + 1}
+                    </span>
+                    <span
+                      className={`text-xs whitespace-nowrap ${
+                        state === 'todo' ? 'text-gray-400' : 'text-gray-800 font-medium'
+                      }`}
+                    >
+                      {step.label}
+                    </span>
+                  </div>
+                  {i < CASE_LIFECYCLE_STEPS.length - 1 && (
+                    <span className={`mx-2 h-px w-6 ${i < current ? 'bg-primary-500' : 'bg-gray-200'}`} />
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
+      )}
+
+      {nextAction && (
+        <div className="mb-5 rounded-xl border border-primary-200 bg-primary-50 p-4 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-primary-700">הפעולה הבאה</p>
+            <p className="text-sm text-gray-900 mt-0.5">{nextAction.title}</p>
+          </div>
+          <button
+            onClick={() => setTab(nextAction.tab)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 whitespace-nowrap"
+          >
+            {nextAction.cta}
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm px-4 py-3">
