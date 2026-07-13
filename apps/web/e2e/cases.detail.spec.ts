@@ -58,6 +58,28 @@ test.describe('Project detail page', () => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
       }
     });
+    await page.route('**/api/v1/cases/case-1/communications', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([
+            {
+              id: 'comm-1',
+              caseId: 'case-1',
+              templateKey: 'quote',
+              channel: 'whatsapp',
+              recipient: '0501111111',
+              preview: 'שלום, מצורפת הצעת מחיר',
+              sentAt: '2026-07-12T10:00:00.000Z',
+              performedByName: 'מנהל',
+            },
+          ]),
+        });
+      } else {
+        await route.fulfill({ status: 201, contentType: 'application/json', body: '{}' });
+      }
+    });
   });
 
   test('shows overview with planned services and financials', async ({ page }) => {
@@ -104,5 +126,25 @@ test.describe('Project detail page', () => {
     await expect(page.getByText('עבודות הפרוייקט')).toBeVisible();
     await expect(page.getByText('תל אביב 1')).toBeVisible();
     await expect(page.getByText('4 עובדים')).toBeVisible();
+  });
+
+  test('shows the communication timeline and sends a message from the activity tab', async ({ page }) => {
+    let sent = false;
+    await page.route('**/api/v1/cases/case-1/communications', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
+      } else {
+        sent = true;
+        await route.fulfill({ status: 201, contentType: 'application/json', body: '{}' });
+      }
+    });
+
+    await page.goto('/cases/case-1');
+    await page.getByRole('tab', { name: 'פעילות' }).click();
+
+    await expect(page.getByText('ציר תקשורת')).toBeVisible();
+    await page.getByRole('button', { name: 'ואטסאפ' }).first().click();
+
+    await expect.poll(() => sent).toBe(true);
   });
 });
