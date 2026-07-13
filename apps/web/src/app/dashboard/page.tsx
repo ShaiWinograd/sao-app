@@ -3,8 +3,8 @@
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useUser, useAuth } from '@clerk/nextjs';
-import { extractUrgentDashboardIssues, orderDashboardWorkflowSections } from '@workforce/shared';
-import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, XCircle } from 'lucide-react';
+import { dashboardIssueActionLabel, extractUrgentDashboardIssues, orderDashboardWorkflowSections } from '@workforce/shared';
+import { AlertTriangle, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, XCircle } from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
 import { canViewSensitiveFinancials, resolveAppViewerRole } from '../../lib/viewer-access';
@@ -901,7 +901,7 @@ export default function DashboardPage() {
       return diff >= 0 && diff <= 45;
     });
 
-    return orderDashboardWorkflowSections([
+    const orderedSections = orderDashboardWorkflowSections([
       {
         key: 'quote-awaiting-approval',
         title: 'מחכה לאישור הצעת מחיר',
@@ -1000,12 +1000,29 @@ export default function DashboardPage() {
         })),
       },
     ]);
+
+    return orderedSections.map((section) => ({
+      ...section,
+      items: section.items.map((item) => ({
+        ...item,
+        actionLabel: dashboardIssueActionLabel(section.key),
+      })),
+    }));
   }, [cases, displayedWorks, todayDateKey]);
 
   const urgentIssues = useMemo(
     () => extractUrgentDashboardIssues(workflowSections, 8),
     [workflowSections],
   );
+
+  const dashboardStats = useMemo(() => {
+    const allItems = workflowSections.flatMap((section) => section.items);
+    const exceptionsCount = allItems.filter((item) => item.severity === 'high').length;
+    const awaitingApprovalCount =
+      workflowSections.find((section) => section.key === 'quote-awaiting-approval')?.items.length ?? 0;
+    const todayJobsCount = dashboardWorks.filter((work) => work.dateKey === todayDateKey).length;
+    return { exceptionsCount, awaitingApprovalCount, todayJobsCount };
+  }, [workflowSections, dashboardWorks, todayDateKey]);
 
   const activeWorkflowSection = useMemo(
     () => workflowSections.find((section) => section.key === activeSectionKey) ?? null,
@@ -1136,6 +1153,37 @@ export default function DashboardPage() {
         </a>
       </div>
 
+      {/* At-a-glance stat cards */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-xl border border-danger/30 bg-danger-bg p-3 flex items-center gap-3">
+          <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/70">
+            <AlertTriangle className="w-5 h-5 text-danger" />
+          </span>
+          <div>
+            <p className="text-xl font-bold text-danger leading-none">{dashboardStats.exceptionsCount}</p>
+            <p className="text-xs text-gray-700 mt-1">חריגות</p>
+          </div>
+        </div>
+        <div className="rounded-xl border border-warning/30 bg-warning-bg p-3 flex items-center gap-3">
+          <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/70">
+            <Clock className="w-5 h-5 text-warning" />
+          </span>
+          <div>
+            <p className="text-xl font-bold text-warning leading-none">{dashboardStats.awaitingApprovalCount}</p>
+            <p className="text-xs text-gray-700 mt-1">מחכות לאישור</p>
+          </div>
+        </div>
+        <div className="rounded-xl border border-success/30 bg-success-bg p-3 flex items-center gap-3">
+          <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/70">
+            <CalendarCheck className="w-5 h-5 text-success" />
+          </span>
+          <div>
+            <p className="text-xl font-bold text-success leading-none">{dashboardStats.todayJobsCount}</p>
+            <p className="text-xs text-gray-700 mt-1">עבודות היום</p>
+          </div>
+        </div>
+      </div>
+
       {/* Owner KPI Bar */}
       <div className="bg-white rounded-lg border border-gray-200 p-2 space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1257,20 +1305,29 @@ export default function DashboardPage() {
               <div
                 key={`urgent-${item.id}`}
                 className={`rounded-lg border px-3 py-2 ${
-                  item.severity === 'high' ? 'border-rose-200 bg-rose-50' : 'border-amber-200 bg-amber-50'
+                  item.severity === 'high' ? 'border-danger/30 bg-danger-bg' : 'border-warning/30 bg-warning-bg'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-right">
-                    <p className="text-xs font-semibold text-gray-900">{item.projectName}</p>
-                    <p className="text-xs text-gray-700 mt-0.5">{item.issue}</p>
-                    {item.dateLabel ? <p className="text-[11px] text-gray-600 mt-0.5">תאריך: {item.dateLabel}</p> : null}
+                  <div className="flex items-start gap-2 text-right">
+                    <span className="mt-0.5 shrink-0">
+                      {item.severity === 'high' ? (
+                        <AlertTriangle className="w-4 h-4 text-danger" />
+                      ) : (
+                        <Clock className="w-4 h-4 text-warning" />
+                      )}
+                    </span>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-900">{item.projectName}</p>
+                      <p className="text-xs text-gray-700 mt-0.5">{item.issue}</p>
+                      {item.dateLabel ? <p className="text-[11px] text-gray-600 mt-0.5">תאריך: {item.dateLabel}</p> : null}
+                    </div>
                   </div>
                   <Link
                     href={item.href}
-                    className="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1 text-[11px] font-medium text-gray-800 hover:bg-gray-50"
+                    className="inline-flex items-center rounded-md bg-primary-600 px-2.5 py-1.5 text-[11px] font-medium text-white hover:bg-primary-700 whitespace-nowrap"
                   >
-                    פעולה ישירה
+                    {item.actionLabel ?? 'פעולה ישירה'}
                   </Link>
                 </div>
               </div>

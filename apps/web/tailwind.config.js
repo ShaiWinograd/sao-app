@@ -32,7 +32,11 @@ module.exports = {
         // Warm neutral surfaces §2.2
         canvas: '#f7f6f2',
         surface: { DEFAULT: '#ffffff', muted: '#fbfaf7' },
-        danger: '#b85656',
+        // Semantic states §2.4 (each pairs a foreground with a soft bg)
+        success: { DEFAULT: '#4f7a5a', bg: '#eaf3ec' },
+        warning: { DEFAULT: '#b47a26', bg: '#fff4e2' },
+        danger: { DEFAULT: '#b85656', bg: '#fbecec' },
+        info: { DEFAULT: '#5f7b9a', bg: '#ebf1f6' },
         ok: '#0c6a56',
         // Legacy alias kept so existing bg-brand-* usages resolve to green
         brand: {

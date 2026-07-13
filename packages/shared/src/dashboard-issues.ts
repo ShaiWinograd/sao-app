@@ -7,6 +7,7 @@ export type DashboardIssue = {
   href: string;
   dateLabel?: string;
   severity: DashboardIssueSeverity;
+  actionLabel?: string;
 };
 
 export type DashboardWorkflowSection = {
@@ -32,6 +33,24 @@ const SEVERITY_WEIGHT: Record<DashboardIssueSeverity, number> = {
   medium: 2,
   low: 1,
 };
+
+// Contextual call-to-action label for each workflow section, so urgent-queue
+// cards deep-link with a meaningful verb instead of a generic "open".
+const DASHBOARD_SECTION_ACTION_LABELS: Record<string, string> = {
+  'quote-awaiting-approval': 'מעבר לאישור',
+  'approved-awaiting-scheduling': 'קביעת תאריך',
+  'partial-scheduling': 'השלמת תזמון',
+  'jobs-understaffed': 'פתיחת העבודה',
+  'jobs-missing-manager': 'שיוך מנהל עבודה',
+  'customer-forms-pending': 'שליחת תזכורת',
+  'attendance-exceptions': 'אימות נוכחות',
+  'awaiting-billing': 'הפקת חשבונית',
+  'awaiting-payment': 'סימון תשלום',
+};
+
+export function dashboardIssueActionLabel(sectionKey: string): string {
+  return DASHBOARD_SECTION_ACTION_LABELS[sectionKey] ?? 'פעולה ישירה';
+}
 
 export function orderDashboardWorkflowSections(
   sections: DashboardWorkflowSection[],
