@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { RefreshCw } from 'lucide-react';
 import { getAllowedCaseTransitions, type CaseStatusValue } from '@workforce/shared';
@@ -178,7 +179,12 @@ export default function ProjectBoardPage() {
                         key={kase.id}
                         className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm"
                       >
-                        <h3 className="text-sm font-semibold text-gray-900">{kase.name}</h3>
+                        <Link
+                          href={`/cases/${kase.id}`}
+                          className="text-sm font-semibold text-gray-900 hover:text-purple-600"
+                        >
+                          {kase.name}
+                        </Link>
                         <p className="text-xs text-gray-500 mt-0.5">
                           {kase.customer.firstName} {kase.customer.lastName}
                         </p>
