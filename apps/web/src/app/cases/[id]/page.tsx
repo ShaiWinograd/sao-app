@@ -925,19 +925,21 @@ export default function ProjectDetailPage() {
               {[...kase.jobs]
                 .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
                 .map((job) => (
-                  <li key={job.id} className="py-3 flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-900">{SERVICE_LABELS[job.jobType]}</span>
-                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
-                          {JOB_STATUS_LABELS[job.status] ?? job.status}
-                        </span>
+                  <li key={job.id} className="py-3">
+                    <Link href={`/jobs/${job.id}`} className="flex items-center justify-between hover:bg-gray-50 rounded-lg px-2 -mx-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-gray-900">{SERVICE_LABELS[job.jobType]}</span>
+                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                            {JOB_STATUS_LABELS[job.status] ?? job.status}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {formatDate(job.date)} · {job.address?.fullAddress ?? 'כתובת לא זמינה'}
+                        </p>
                       </div>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {formatDate(job.date)} · {job.address?.fullAddress ?? 'כתובת לא זמינה'}
-                      </p>
-                    </div>
-                    <span className="text-xs text-gray-500">{job.requiredWorkerCount} עובדים</span>
+                      <span className="text-xs text-gray-500">{job.requiredWorkerCount} עובדים</span>
+                    </Link>
                   </li>
                 ))}
             </ul>
