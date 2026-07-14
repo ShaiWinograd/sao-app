@@ -90,6 +90,11 @@ test.describe('Project detail page', () => {
     // 2 workdays * 4 workers * 5 hours = 40 estimated worker-hours
     await expect(page.getByText(/40\s*שעות עבודה משוערות/)).toBeVisible();
     await expect(page.getByText(/שעות עבודה משוערות.*דורש מנהל עבודה/)).toBeVisible();
+
+    // Plan-vs-actual comparison table
+    await expect(page.getByRole('heading', { name: 'השוואת תכנון מול ביצוע' })).toBeVisible();
+    await expect(page.getByText('חיוב מול הצעה מאושרת')).toBeVisible();
+    await expect(page.getByText('תשלום מול חיוב')).toBeVisible();
   });
 
   test('shows the lifecycle stepper and next-action card', async ({ page }) => {
