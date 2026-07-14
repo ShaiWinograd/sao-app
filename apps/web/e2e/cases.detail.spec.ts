@@ -80,6 +80,28 @@ test.describe('Project detail page', () => {
         await route.fulfill({ status: 201, contentType: 'application/json', body: '{}' });
       }
     });
+    await page.route('**/api/v1/cases/case-1/hub', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          checklist: { totalJobs: 1, completedOrCancelledJobs: 0, totalShifts: 2, closedShifts: 1, linkedForms: 1 },
+          readyForFinalReport: false,
+          forms: [
+            {
+              id: 'form-1',
+              shiftId: 'shift-1',
+              completionStatus: 'COMPLETED',
+              submittedAt: '2026-08-01T17:00:00.000Z',
+              managerNote: null,
+              workerName: 'נועה לוי',
+              jobType: 'PACKING',
+              shiftDate: '2026-08-01T08:00:00.000Z',
+            },
+          ],
+        }),
+      });
+    });
   });
 
   test('shows overview with planned services and financials', async ({ page }) => {
@@ -166,5 +188,16 @@ test.describe('Project detail page', () => {
     await page.getByRole('button', { name: 'ואטסאפ' }).first().click();
 
     await expect.poll(() => sent).toBe(true);
+  });
+
+  test('shows forms readiness and worker forms in the forms tab', async ({ page }) => {
+    await page.goto('/cases/case-1');
+    await page.getByRole('tab', { name: 'טפסים' }).click();
+
+    await expect(page.getByText('מוכנות טפסים ודוחות')).toBeVisible();
+    await expect(page.getByText('ממתין להשלמות')).toBeVisible();
+    await expect(page.getByText('טפסי עובדים')).toBeVisible();
+    await expect(page.getByText('נועה לוי')).toBeVisible();
+    await expect(page.getByText('הושלם', { exact: true })).toBeVisible();
   });
 });

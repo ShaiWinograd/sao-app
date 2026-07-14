@@ -16,6 +16,7 @@ import {
   getCaseStepIndex,
   type CaseStatusValue,
   type QuotationStatus,
+  type StatusTone,
 } from '@workforce/shared';
 import { api, authHeaders } from '../../../lib/api';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
@@ -88,6 +89,31 @@ type ApiQuotation = {
   versions: ApiQuotationVersion[];
 };
 
+type FormCompletionStatus = 'COMPLETED' | 'PARTIALLY_COMPLETED' | 'NOT_COMPLETED';
+
+type ApiCaseHubForm = {
+  id: string;
+  shiftId: string;
+  completionStatus: FormCompletionStatus;
+  submittedAt: string | null;
+  managerNote: string | null;
+  workerName: string;
+  jobType: ServiceType;
+  shiftDate: string;
+};
+
+type ApiCaseHub = {
+  checklist: {
+    totalJobs: number;
+    completedOrCancelledJobs: number;
+    totalShifts: number;
+    closedShifts: number;
+    linkedForms: number;
+  };
+  readyForFinalReport: boolean;
+  forms: ApiCaseHubForm[];
+};
+
 const CASE_STATUS_LABELS: Record<CaseStatusValue, string> = {
   DRAFT: 'טיוטה',
   ACTIVE: 'פעיל',
@@ -139,6 +165,18 @@ const JOB_STATUS_LABELS: Record<string, string> = {
   CANCELLED: 'בוטלה',
 };
 
+const FORM_COMPLETION_LABELS: Record<FormCompletionStatus, string> = {
+  COMPLETED: 'הושלם',
+  PARTIALLY_COMPLETED: 'הושלם חלקית',
+  NOT_COMPLETED: 'לא הושלם',
+};
+
+const FORM_COMPLETION_TONE: Record<FormCompletionStatus, StatusTone> = {
+  COMPLETED: 'success',
+  PARTIALLY_COMPLETED: 'warning',
+  NOT_COMPLETED: 'error',
+};
+
 function formatCurrency(value: number | string): string {
   const amount = typeof value === 'string' ? Number(value) : value;
   if (Number.isNaN(amount)) return '—';
@@ -156,11 +194,12 @@ export default function ProjectDetailPage() {
   const caseId = params?.id;
   const { getToken } = useAuth();
 
-  const [tab, setTab] = useState<'overview' | 'quotations' | 'jobs' | 'activity'>('overview');
+  const [tab, setTab] = useState<'overview' | 'quotations' | 'jobs' | 'activity' | 'forms'>('overview');
   const [kase, setKase] = useState<ApiCaseDetail | null>(null);
   const [planned, setPlanned] = useState<ApiPlannedService[]>([]);
   const [quotations, setQuotations] = useState<ApiQuotation[]>([]);
   const [comms, setComms] = useState<ProjectCommunicationLogEntry[]>([]);
+  const [hub, setHub] = useState<ApiCaseHub | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -196,6 +235,12 @@ export default function ProjectDetailPage() {
         setComms(commsRes.data);
       } catch {
         setComms([]);
+      }
+      try {
+        const hubRes = await api.get<ApiCaseHub>(`/cases/${caseId}/hub`, auth);
+        setHub(hubRes.data);
+      } catch {
+        setHub(null);
       }
     } catch {
       setError('טעינת הפרוייקט נכשלה');
@@ -518,6 +563,14 @@ export default function ProjectDetailPage() {
           className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === 'activity' ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
         >
           פעילות
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === 'forms'}
+          onClick={() => setTab('forms')}
+          className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === 'forms' ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+        >
+          טפסים
         </button>
         <button
           onClick={() => void load()}
@@ -947,6 +1000,71 @@ export default function ProjectDetailPage() {
                       {communicationChannelLabel(entry.channel)} · {entry.recipient}
                       {entry.performedByName ? ` · ${entry.performedByName}` : ''}
                     </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      )}
+
+      {tab === 'forms' && (
+        <div className="space-y-5">
+          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-900">מוכנות טפסים ודוחות</h2>
+              <StatusBadge
+                tone={hub?.readyForFinalReport ? 'success' : 'warning'}
+                label={hub?.readyForFinalReport ? 'מוכן לדוח מסכם' : 'ממתין להשלמות'}
+              />
+            </div>
+            {!hub ? (
+              <p className="text-sm text-gray-400">אין נתוני טפסים לפרוייקט זה</p>
+            ) : (
+              <dl className="grid grid-cols-3 gap-x-6 gap-y-3 text-sm">
+                <div>
+                  <dt className="text-gray-500">עבודות שהושלמו</dt>
+                  <dd className="text-gray-900 font-semibold">
+                    {hub.checklist.completedOrCancelledJobs}/{hub.checklist.totalJobs}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500">משמרות סגורות</dt>
+                  <dd className="text-gray-900 font-semibold">
+                    {hub.checklist.closedShifts}/{hub.checklist.totalShifts}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500">טפסים שהוגשו</dt>
+                  <dd className="text-gray-900 font-semibold">{hub.checklist.linkedForms}</dd>
+                </div>
+              </dl>
+            )}
+          </section>
+
+          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <h2 className="text-sm font-semibold text-gray-900 mb-3">טפסי עובדים</h2>
+            {!hub || hub.forms.length === 0 ? (
+              <p className="text-sm text-gray-400">טרם הוגשו טפסים בפרוייקט זה</p>
+            ) : (
+              <ul className="space-y-2">
+                {hub.forms.map((form) => (
+                  <li key={form.id} className="rounded-lg border border-gray-100 px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-900">{form.workerName}</span>
+                      <StatusBadge
+                        tone={FORM_COMPLETION_TONE[form.completionStatus]}
+                        label={FORM_COMPLETION_LABELS[form.completionStatus]}
+                      />
+                    </div>
+                    <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-gray-400">
+                      <FileText className="w-3 h-3" />
+                      {SERVICE_LABELS[form.jobType]} · {formatDate(form.shiftDate)}
+                      {form.submittedAt ? ` · הוגש ${formatDate(form.submittedAt)}` : ''}
+                    </p>
+                    {form.managerNote ? (
+                      <p className="mt-1 text-xs text-gray-500">הערת מנהל: {form.managerNote}</p>
+                    ) : null}
                   </li>
                 ))}
               </ul>
