@@ -661,10 +661,29 @@ export default function NewProjectWizard() {
                 <option value="DAILY">סכום יומי קבוע</option>
               </select>
             </label>
-            <label className="text-sm block">
-              <span className="text-gray-600">סכום (₪)</span>
-              <input type="number" min={0} value={pricingAmount} onChange={(e) => setPricingAmount(e.target.value)} className="mt-1 w-40 rounded-lg border border-gray-200 px-3 py-2" />
-            </label>
+            {pricingModel === 'HOURLY' ? (
+              <>
+                <label className="text-sm block">
+                  <span className="text-gray-600">תעריף לשעה (₪)</span>
+                  <select value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} className="mt-1 w-40 rounded-lg border border-gray-200 px-3 py-2 bg-white">
+                    {HOURLY_RATE_OPTIONS.map((rate) => (
+                      <option key={rate} value={String(rate)}>₪{rate}</option>
+                    ))}
+                  </select>
+                </label>
+                <div className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2.5">
+                  <p className="text-xs text-primary-700">
+                    {totalEstimatedHours} שעות × ₪{Number(hourlyRate) || 0} לשעה
+                  </p>
+                  <p className="text-lg font-bold text-gray-900 mt-0.5">סה״כ משוער: ₪{computedPrice.toLocaleString()}</p>
+                </div>
+              </>
+            ) : (
+              <label className="text-sm block">
+                <span className="text-gray-600">סכום (₪)</span>
+                <input type="number" min={0} value={pricingAmount} onChange={(e) => setPricingAmount(e.target.value)} className="mt-1 w-40 rounded-lg border border-gray-200 px-3 py-2" />
+              </label>
+            )}
             <p className="text-xs text-gray-500">סה״כ שעות עבודה משוערות: <span className="font-semibold text-gray-800">{totalEstimatedHours}</span></p>
           </div>
         )}

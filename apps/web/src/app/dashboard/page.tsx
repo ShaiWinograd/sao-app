@@ -160,6 +160,11 @@ export default function DashboardPage() {
   const { getToken } = useAuth();
   const viewerRole = resolveAppViewerRole(user);
   const canSeeFinancials = canViewSensitiveFinancials(viewerRole);
+  // Gate time/user-dependent text so SSR and first client render match (React #418).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   type RangeKey = 'today' | 'week' | 'month' | 'custom';
   const [selectedRange, setSelectedRange] = useState<RangeKey>('week');
   const [customFromDate, setCustomFromDate] = useState('2026-07-01');
@@ -380,7 +385,8 @@ export default function DashboardPage() {
           fullName: `${c.firstName} ${c.lastName}`,
           phone: c.phone || '',
           email: c.email || '',
-          addresses: c.addresses || [],
+          // API returns addresses as objects; the UI expects address strings.
+          addresses: (c.addresses || []).map((a: any) => (typeof a === 'string' ? a : a?.fullAddress ?? '')).filter(Boolean),
         }));
         
         const apiCases = casesRes.data.map((c: any) => ({
@@ -467,9 +473,9 @@ export default function DashboardPage() {
   }, [customers, newCustomerFirstName, newCustomerLastName, newCustomerPhone]);
   const existingAddressSuggestions = useMemo(() => {
     if (!selectedCustomer) return [];
-    const term = existingAddressQuery.trim().toLowerCase();
+    const term = String(existingAddressQuery ?? '').trim().toLowerCase();
     if (!term) return selectedCustomer.addresses;
-    return selectedCustomer.addresses.filter((address) => address.toLowerCase().includes(term));
+    return selectedCustomer.addresses.filter((address) => String(address ?? '').toLowerCase().includes(term));
   }, [selectedCustomer, existingAddressQuery]);
   const caseById = useMemo(() => new Map(cases.map((item) => [item.id, item])), [cases]);
 
@@ -1148,7 +1154,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">לוח בקרה</h1>
-          <p className="text-sm text-gray-600 mt-0.5">{greetingText}</p>
+          <p className="text-sm text-gray-600 mt-0.5" suppressHydrationWarning>{mounted ? greetingText : '\u00A0'}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link
