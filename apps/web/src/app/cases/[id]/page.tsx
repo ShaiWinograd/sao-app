@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
-import { ArrowRight, CheckCircle2, Clock, FileText, MessageSquare, Plus, RefreshCw, Send, Trash2, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, Clock, FileText, MessageSquare, Plus, RefreshCw, Send, Trash2, XCircle } from 'lucide-react';
 import {
   estimateWorkerHours,
   getCurrentQuotationVersion,
@@ -16,6 +16,7 @@ import {
   computePackingFormSchedule,
   getCaseNextAction,
   getCaseStepIndex,
+  getCaseStepState,
   type CaseStatusValue,
   type HoursComparisonEntry,
   type QuotationStatus,
@@ -575,24 +576,34 @@ export default function ProjectDetailPage() {
           <ol className="flex items-center min-w-max">
             {CASE_LIFECYCLE_STEPS.map((step, i) => {
               const current = getCaseStepIndex(kase.status);
-              const state = i < current ? 'done' : i === current ? 'current' : 'todo';
+              const state = getCaseStepState(kase.status, i);
               return (
                 <li key={step.key} className="flex items-center">
                   <div className="flex items-center gap-2">
                     <span
                       className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold ${
-                        state === 'done'
+                        state === 'complete'
                           ? 'bg-primary-600 text-white'
                           : state === 'current'
                             ? 'bg-primary-100 text-primary-700 ring-2 ring-primary-500'
-                            : 'bg-gray-100 text-gray-400'
+                            : state === 'attention'
+                              ? 'bg-warning-bg text-warning ring-2 ring-warning'
+                              : state === 'blocked'
+                                ? 'bg-danger-bg text-danger ring-2 ring-danger'
+                                : 'bg-gray-100 text-gray-400'
                       }`}
                     >
-                      {state === 'done' ? <CheckCircle2 className="w-4 h-4" /> : i + 1}
+                      {state === 'complete' ? (
+                        <CheckCircle2 className="w-4 h-4" />
+                      ) : state === 'attention' ? (
+                        <AlertTriangle className="w-4 h-4" />
+                      ) : (
+                        i + 1
+                      )}
                     </span>
                     <span
                       className={`text-xs whitespace-nowrap ${
-                        state === 'todo' ? 'text-gray-400' : 'text-gray-800 font-medium'
+                        state === 'not-started' ? 'text-gray-400' : 'text-gray-800 font-medium'
                       }`}
                     >
                       {step.label}
