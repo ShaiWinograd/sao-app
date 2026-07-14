@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Mail, MessageCircle, Plus, Search } from 'lucide-react';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
 import { api } from '../../lib/api';
+import { StatusBadge } from '../../components/ui/StatusBadge';
+import type { StatusTone } from '@workforce/shared';
 
 type CustomerAddress = {
   id: string;
@@ -125,26 +127,26 @@ function mapApiCustomer(apiCustomer: ApiCustomer): Customer {
   };
 }
 
-const caseStatusMeta: Record<Customer['caseStatus'], { label: string; helper: string; className: string }> = {
+const caseStatusMeta: Record<Customer['caseStatus'], { label: string; helper: string; tone: StatusTone }> = {
   planned: {
     label: 'משוריין',
     helper: 'הפרוייקט נפתח וממתין לאישור ביצוע',
-    className: 'bg-blue-50 text-blue-700 border-blue-200',
+    tone: 'info',
   },
   in_progress: {
     label: 'מאושר לביצוע',
     helper: 'הפרוייקט מאושר ויש עבודות מתוכננות או בביצוע',
-    className: 'bg-primary-50 text-primary-700 border-primary-200',
+    tone: 'info',
   },
   completed_unpaid: {
     label: 'עבודה הסתיימה',
     helper: 'העבודה בוצעה וממתינה לסגירת תשלום',
-    className: 'bg-amber-50 text-amber-700 border-amber-200',
+    tone: 'warning',
   },
   completed_paid: {
     label: 'עבודה שולמה',
     helper: 'הפרוייקט נסגר לאחר ביצוע ותשלום מלא',
-    className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    tone: 'success',
   },
 };
 
@@ -558,9 +560,10 @@ export default function CustomersPage() {
                     <p className="text-xs text-gray-600 mt-1">פרוייקט: {customer.caseName}</p>
                     <p className="text-xs text-gray-500 mt-1">{statusMeta.helper}</p>
                   </div>
-                  <div className={`px-2.5 py-1 text-xs rounded-full border font-medium ${isNotExecuted ? 'bg-rose-50 text-rose-700 border-rose-200' : statusMeta.className}`}>
-                    {isNotExecuted ? 'עבודה לא בוצעה' : statusMeta.label}
-                  </div>
+                  <StatusBadge
+                    tone={isNotExecuted ? 'error' : statusMeta.tone}
+                    label={isNotExecuted ? 'עבודה לא בוצעה' : statusMeta.label}
+                  />
                 </div>
               </button>
             );
