@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { ArrowRight, CheckCircle2, RefreshCw, Send, UserCheck, XCircle } from 'lucide-react';
-import { evaluateJobPublishReadiness, MANAGER_SKILL } from '@workforce/shared';
+import { evaluateJobPublishReadiness, MANAGER_SKILL, deriveJobStatusBadge } from '@workforce/shared';
 import { api, authHeaders } from '../../../lib/api';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 
@@ -177,6 +177,18 @@ export default function JobDetailPage() {
     [job],
   );
 
+  const jobBadge = useMemo(() => {
+    if (!job) return null;
+    const assignedWorkerCount = workerSlots.filter((slot) => shiftForSlot(slot.id)).length;
+    return deriveJobStatusBadge({
+      status: job.status,
+      requiredWorkerCount: workerSlots.length,
+      assignedWorkerCount,
+      requiresManager: managerSlots.length > 0,
+      hasManager: managerSlots.some((slot) => shiftForSlot(slot.id)),
+    });
+  }, [job, workerSlots, managerSlots, shiftForSlot]);
+
   const renderShiftStatus = (shift: ApiJobShift) => {
     if (shift.joinRequestStatus === 'PENDING') {
       return (
@@ -238,9 +250,7 @@ export default function JobDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
-            {JOB_STATUS_LABELS[job.status] ?? job.status}
-          </span>
+          {jobBadge && <StatusBadge tone={jobBadge.tone} label={jobBadge.label} />}
           {job.status === 'DRAFT' && (
             <button
               onClick={() => void publish()}
