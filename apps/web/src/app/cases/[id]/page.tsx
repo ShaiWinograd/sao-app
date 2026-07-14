@@ -1551,7 +1551,7 @@ export default function ProjectDetailPage() {
           >
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-base font-bold text-gray-900">תצוגה מקדימה — הצעת מחיר</h3>
-              <button onClick={() => setPreview(null)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => setPreview(null)} aria-label="סגירת התצוגה המקדימה" className="text-gray-400 hover:text-gray-600">
                 <XCircle className="w-5 h-5" />
               </button>
             </div>
