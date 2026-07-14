@@ -99,4 +99,33 @@ test.describe('Projects lifecycle board', () => {
 
     await expect.poll(() => patched).toBe(true);
   });
+
+  test('cancels a project only after confirmation is accepted', async ({ page }) => {
+    let patched = false;
+    await page.route('**/api/v1/cases/case-lead-1', async (route) => {
+      patched = true;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    });
+    page.on('dialog', (dialog) => dialog.accept());
+
+    await page.goto('/cases/board');
+    await page.getByLabel('שינוי סטטוס למעבר דירה משפחת כהן').selectOption('CANCELLED');
+
+    await expect.poll(() => patched).toBe(true);
+  });
+
+  test('does not cancel when the confirmation is dismissed', async ({ page }) => {
+    let patched = false;
+    await page.route('**/api/v1/cases/case-lead-1', async (route) => {
+      patched = true;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    });
+    page.on('dialog', (dialog) => dialog.dismiss());
+
+    await page.goto('/cases/board');
+    await page.getByLabel('שינוי סטטוס למעבר דירה משפחת כהן').selectOption('CANCELLED');
+    await page.waitForTimeout(300);
+
+    expect(patched).toBe(false);
+  });
 });
