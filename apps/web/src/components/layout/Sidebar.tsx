@@ -4,27 +4,22 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { UserButton, useUser } from '@clerk/nextjs';
-import { HE } from '@workforce/shared';
 import {
-  LayoutDashboard, Users, Briefcase, Calendar, ClipboardList,
-  FileText, Wallet, BarChart3, Settings, ScrollText, ReceiptText, LayoutGrid,
+  LayoutDashboard, Users, Calendar, BarChart3, Settings, LayoutGrid, Contact,
 } from 'lucide-react';
 import { canViewReports, resolveAppViewerRole } from '../../lib/viewer-access';
 
+// Spec 02 (navigation): only these seven top-level items. Quotations, Forms,
+// Attendance, Messages, and Payments must NOT be top-level — they live inside
+// projects and surface as dashboard tasks (their routes still exist for deep links).
 const navItems = [
-  { href: '/dashboard', label: HE.nav.dashboard, icon: LayoutDashboard },
-  { href: '/customers', label: HE.nav.customers, icon: Users },
-  { href: '/cases', label: HE.nav.customerCase, icon: Briefcase },
-  { href: '/cases/board', label: HE.nav.projectBoard, icon: LayoutGrid },
-  { href: '/quotations', label: HE.nav.quotations, icon: ReceiptText },
-  { href: '/jobs', label: HE.nav.jobs, icon: Calendar },
-  { href: '/workers', label: HE.nav.workers, icon: Users },
-  { href: '/attendance', label: HE.nav.attendance, icon: ClipboardList },
-  { href: '/forms', label: HE.nav.forms, icon: FileText },
-  { href: '/payroll', label: HE.nav.workerPayroll, icon: Wallet },
-  { href: '/reports', label: HE.nav.reports, icon: BarChart3 },
-  { href: '/settings', label: HE.nav.settings, icon: Settings },
-  { href: '/audit', label: HE.nav.auditLog, icon: ScrollText },
+  { href: '/dashboard', label: 'בית', icon: LayoutDashboard, matchPrefix: '/dashboard' },
+  { href: '/cases/board', label: 'פרויקטים', icon: LayoutGrid, matchPrefix: '/cases' },
+  { href: '/jobs', label: 'יומן עבודות', icon: Calendar, matchPrefix: '/jobs' },
+  { href: '/workers', label: 'עובדים', icon: Users, matchPrefix: '/workers' },
+  { href: '/customers', label: 'לקוחות', icon: Contact, matchPrefix: '/customers' },
+  { href: '/reports', label: 'דוחות', icon: BarChart3, matchPrefix: '/reports' },
+  { href: '/settings', label: 'הגדרות', icon: Settings, matchPrefix: '/settings' },
 ];
 
 export default function Sidebar() {
@@ -51,8 +46,10 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-1">
-        {visibleNavItems.map(({ href, label, icon: Icon }) => {
-          const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+        {visibleNavItems.map(({ href, label, icon: Icon, matchPrefix }) => {
+          const isActive =
+            pathname === href ||
+            (matchPrefix !== '/dashboard' && pathname.startsWith(matchPrefix));
           return (
             <Link
               key={href}
