@@ -390,6 +390,12 @@ export default function ProjectDetailPage() {
 
   const handleDeletePlanned = useCallback(
     (plannedId: string) => {
+      if (
+        typeof window !== 'undefined' &&
+        !window.confirm('מחיקת השירות המתוכנן תסיר אותו מתכנון הפרויקט. להמשיך?')
+      ) {
+        return;
+      }
       void runPlannedAction(async () => {
         const auth = await authHeaders(getToken);
         await api.delete(`/planned-services/${plannedId}`, auth);
@@ -1055,12 +1061,18 @@ export default function ProjectDetailPage() {
                         תיעוד אישור לקוח
                       </button>
                       <button
-                        onClick={() =>
+                        onClick={() => {
+                          if (
+                            typeof window !== 'undefined' &&
+                            !window.confirm('סימון ההצעה כנדחתה יסגור אותה. להמשיך?')
+                          ) {
+                            return;
+                          }
                           void runQuotationAction(async () => {
                             const auth = await authHeaders(getToken);
                             await api.post(`/quotations/${quotation.id}/reject`, {}, auth);
-                          }, 'סימון הצעת המחיר כנדחתה נכשל')
-                        }
+                          }, 'סימון הצעת המחיר כנדחתה נכשל');
+                        }}
                         disabled={busy || isApproved}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
                       >

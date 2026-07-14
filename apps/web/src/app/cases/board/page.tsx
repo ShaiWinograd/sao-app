@@ -104,6 +104,13 @@ export default function ProjectBoardPage() {
 
   const changeStatus = useCallback(
     async (caseId: string, status: CaseStatusValue) => {
+      if (
+        status === 'CANCELLED' &&
+        typeof window !== 'undefined' &&
+        !window.confirm('ביטול הפרויקט יעצור את כל הפעילות הקשורה אליו ויוציא אותו מהלוח הפעיל. להמשיך?')
+      ) {
+        return;
+      }
       setBusyId(caseId);
       setError(null);
       try {
