@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { RefreshCw, Plus } from 'lucide-react';
-import { caseStatusTone, getAllowedCaseTransitions, type CaseStatusValue } from '@workforce/shared';
+import { caseStatusTone, getAllowedCaseTransitions, getCaseNextAction, type CaseStatusValue } from '@workforce/shared';
 import { api, authHeaders } from '../../../lib/api';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 
@@ -70,6 +70,19 @@ export default function ProjectBoardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [view, setView] = useState<'board' | 'list'>('board');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | CaseStatusValue>('ALL');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const savedView = window.localStorage.getItem('projectsView');
+    if (savedView === 'list' || savedView === 'board') setView(savedView);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.localStorage.setItem('projectsView', view);
+  }, [view]);
 
   const loadBoard = useCallback(async () => {
     setIsLoading(true);
@@ -108,6 +121,30 @@ export default function ProjectBoardPage() {
 
   const tab = useMemo(() => board?.tabs[activeTab], [board, activeTab]);
 
+  const allCases = useMemo(() => {
+    if (!board) return [] as BoardCase[];
+    const byId = new Map<string, BoardCase>();
+    for (const boardTab of board.tabs) {
+      for (const column of boardTab.columns) {
+        for (const kase of column.items) byId.set(kase.id, kase);
+      }
+    }
+    for (const kase of board.unplaced ?? []) byId.set(kase.id, kase);
+    return [...byId.values()];
+  }, [board]);
+
+  const filteredCases = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return allCases
+      .filter((kase) => {
+        if (statusFilter !== 'ALL' && kase.status !== statusFilter) return false;
+        if (!query) return true;
+        const haystack = `${kase.name} ${kase.customer.firstName} ${kase.customer.lastName}`.toLowerCase();
+        return haystack.includes(query);
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, 'he'));
+  }, [allCases, search, statusFilter]);
+
   return (
     <div className="p-6" dir="rtl">
       <div className="flex items-center justify-between mb-4">
@@ -139,7 +176,41 @@ export default function ProjectBoardPage() {
         </div>
       )}
 
-      {board && (
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+          {(['board', 'list'] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setView(option)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md ${view === option ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-white'}`}
+            >
+              {option === 'board' ? 'לוח' : 'רשימה'}
+            </button>
+          ))}
+        </div>
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="חיפוש לפי שם פרויקט או לקוח"
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm min-w-[240px]"
+        />
+        <select
+          aria-label="סינון לפי סטטוס"
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value as 'ALL' | CaseStatusValue)}
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+        >
+          <option value="ALL">כל הסטטוסים</option>
+          {(Object.keys(STATUS_LABELS) as CaseStatusValue[]).map((statusValue) => (
+            <option key={statusValue} value={statusValue}>
+              {STATUS_LABELS[statusValue]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {view === 'board' && board && (
         <div className="mb-5 flex gap-2" role="tablist">
           {board.tabs.map((t, index) => (
             <button
@@ -159,11 +230,12 @@ export default function ProjectBoardPage() {
         </div>
       )}
 
-      {isLoading ? (
-        <div className="text-sm text-gray-500">טוען…</div>
-      ) : !tab ? (
-        <div className="text-sm text-gray-500">אין נתונים להצגה</div>
-      ) : (
+      {view === 'board' &&
+        (isLoading ? (
+          <div className="text-sm text-gray-500">טוען…</div>
+        ) : !tab ? (
+          <div className="text-sm text-gray-500">אין נתונים להצגה</div>
+        ) : (
         <div className="grid grid-flow-col auto-cols-[minmax(240px,1fr)] gap-4 overflow-x-auto pb-4">
           {tab.columns.map((column) => (
             <section
@@ -235,7 +307,49 @@ export default function ProjectBoardPage() {
             </section>
           ))}
         </div>
-      )}
+        ))}
+
+      {view === 'list' &&
+        (isLoading ? (
+          <div className="text-sm text-gray-500">טוען…</div>
+        ) : (
+          <div className="rounded-xl border border-gray-200 bg-white overflow-x-auto" data-testid="projects-list">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-gray-500 border-b border-gray-200 bg-gray-50">
+                  <th className="text-right font-medium px-4 py-2">פרויקט</th>
+                  <th className="text-right font-medium px-4 py-2">לקוח</th>
+                  <th className="text-right font-medium px-4 py-2">סטטוס</th>
+                  <th className="text-right font-medium px-4 py-2">עבודה קרובה</th>
+                  <th className="text-right font-medium px-4 py-2">עבודות</th>
+                  <th className="text-right font-medium px-4 py-2">הפעולה הבאה</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredCases.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-6 text-center text-gray-400">לא נמצאו פרויקטים</td>
+                  </tr>
+                ) : (
+                  filteredCases.map((kase) => (
+                    <tr key={kase.id} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="px-4 py-2.5">
+                        <Link href={`/cases/${kase.id}`} className="font-medium text-gray-900 hover:text-primary-600">
+                          {kase.name}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-600">{kase.customer.firstName} {kase.customer.lastName}</td>
+                      <td className="px-4 py-2.5"><StatusBadge tone={caseStatusTone(kase.status)} label={STATUS_LABELS[kase.status]} /></td>
+                      <td className="px-4 py-2.5 text-gray-600">{nextJobDate(kase.jobs)}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{kase.jobs.length}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{getCaseNextAction(kase.status)?.title ?? '—'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        ))}
 
       {board && board.unplaced.length > 0 && (
         <p className="mt-4 text-xs text-gray-400">
