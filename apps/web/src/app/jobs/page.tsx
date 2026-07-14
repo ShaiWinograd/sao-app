@@ -18,6 +18,7 @@ import {
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
 import { canViewSensitiveFinancials, resolveAppViewerRole } from '../../lib/viewer-access';
 import { api, authHeaders } from '../../lib/api';
+import MonthCalendar from '../../components/scheduling/MonthCalendar';
 
 function getApiErrorMessage(error: unknown, fallback: string) {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -394,6 +395,7 @@ function JobsPageContent() {
   const [formAttempted, setFormAttempted] = useState(false);
   const [customerMode, setCustomerMode] = useState<'existing' | 'new'>('existing');
   const [dayJobsPickerDateKey, setDayJobsPickerDateKey] = useState<string | null>(null);
+  const [calendarMode, setCalendarMode] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
@@ -1514,7 +1516,28 @@ function JobsPageContent() {
         ) : null}
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      {selectedRange === 'month' && plannerView === 'works' && (
+        <div className="flex items-center justify-end">
+          <button
+            type="button"
+            onClick={() => setCalendarMode((v) => !v)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          >
+            {calendarMode ? 'תצוגת רשימה' : 'תצוגת לוח חודשי'}
+          </button>
+        </div>
+      )}
+
+      {calendarMode && selectedRange === 'month' && plannerView === 'works' && (
+        <MonthCalendar
+          anchor={monthAnchor}
+          works={filteredWorks}
+          todayKey={todayKey}
+          onSelectDay={(k) => setDayJobsPickerDateKey(k)}
+        />
+      )}
+
+      <div className={`bg-white rounded-lg border border-gray-200 overflow-hidden ${calendarMode && selectedRange === 'month' && plannerView === 'works' ? 'hidden' : ''}`}>
         <div className="overflow-x-auto">
           {plannerView === 'shifts' && (
             <div className="border-b border-gray-200 bg-gray-50 py-3">
