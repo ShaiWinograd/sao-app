@@ -170,6 +170,31 @@ test.describe('Project detail page', () => {
     await expect(page.getByText('4 עובדים')).toBeVisible();
   });
 
+  test('finds ranked available workers from the jobs tab', async ({ page }) => {
+    await page.route('**/api/v1/workers/availability**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          { id: 'w1', name: 'דנה כהן', available: true, hasRequiredSkill: true, isManagerCapable: true, score: 180, reasons: ['זמין בתאריך', 'יכול לשמש מנהל עבודה'] },
+          { id: 'w2', name: 'רון לוי', available: false, hasRequiredSkill: false, isManagerCapable: false, score: 0, reasons: ['עמוס בתאריך'] },
+        ]),
+      });
+    });
+
+    await page.goto('/cases/case-1');
+    await page.getByRole('tab', { name: 'עבודות' }).click();
+
+    const finder = page.getByTestId('availability-finder');
+    await expect(finder).toBeVisible();
+    await finder.getByRole('button', { name: 'חיפוש' }).click();
+
+    await expect(finder.getByText('דנה כהן')).toBeVisible();
+    await expect(finder.getByText('רון לוי')).toBeVisible();
+    await expect(finder.getByText('זמין', { exact: true })).toBeVisible();
+    await expect(finder.getByText('עמוס', { exact: true })).toBeVisible();
+  });
+
   test('shows the communication timeline and sends a message from the activity tab', async ({ page }) => {
     let sent = false;
     await page.route('**/api/v1/cases/case-1/communications', async (route) => {

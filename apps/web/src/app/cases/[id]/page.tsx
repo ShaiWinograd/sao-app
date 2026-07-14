@@ -20,6 +20,7 @@ import {
 } from '@workforce/shared';
 import { api, authHeaders } from '../../../lib/api';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
+import { AvailabilityFinder } from '../../../components/scheduling/AvailabilityFinder';
 import {
   communicationChannelLabel,
   communicationTemplateTitle,
@@ -914,6 +915,7 @@ export default function ProjectDetailPage() {
       )}
 
       {tab === 'jobs' && (
+        <div className="space-y-5">
         <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-gray-900 mb-3">עבודות הפרוייקט</h2>
           {kase.jobs.length === 0 ? (
@@ -941,6 +943,8 @@ export default function ProjectDetailPage() {
             </ul>
           )}
         </section>
+          <AvailabilityFinder defaultDate={nextJob ? nextJob.date.slice(0, 10) : ''} />
+        </div>
       )}
 
       {tab === 'activity' && (
