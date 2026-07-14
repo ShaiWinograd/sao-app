@@ -13,6 +13,7 @@ import {
   computePlanVariance,
   formatVariancePct,
   buildHoursComparison,
+  computePackingFormSchedule,
   getCaseNextAction,
   getCaseStepIndex,
   type CaseStatusValue,
@@ -506,6 +507,24 @@ export default function ProjectDetailPage() {
     }
     return buildHoursComparison(entries);
   }, [planned, kase]);
+
+  const packingAutomation = useMemo(() => {
+    const jobs = kase?.jobs ?? [];
+    const packingJobs = jobs.filter((job) => job.jobType === 'PACKING');
+    const firstPackingDate = packingJobs.length
+      ? [...packingJobs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0].date
+      : null;
+    const quotationApproved = quotations.some(
+      (quotation) => getCurrentQuotationVersion(quotation.versions)?.status === 'APPROVED',
+    );
+    const alreadySent = comms.some((entry) => entry.templateKey === 'packing_form');
+    return computePackingFormSchedule({
+      firstPackingDate,
+      quotationApproved,
+      alreadySent,
+      today: new Date().toISOString().slice(0, 10),
+    });
+  }, [kase, quotations, comms]);
 
   if (isLoading) {
     return (
@@ -1109,6 +1128,38 @@ export default function ProjectDetailPage() {
 
       {tab === 'activity' && (
         <div className="space-y-5">
+          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <h2 className="text-sm font-semibold text-gray-900 mb-3">אוטומציות</h2>
+            <div className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2">
+              <div>
+                <p className="text-sm text-gray-800">טופס ציוד לאריזה</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">נשלח אוטומטית 7 ימים לפני יום האריזה הראשון</p>
+              </div>
+              <StatusBadge
+                tone={
+                  packingAutomation.state === 'already_sent'
+                    ? 'success'
+                    : packingAutomation.state === 'due_now'
+                      ? 'warning'
+                      : packingAutomation.state === 'scheduled'
+                        ? 'info'
+                        : 'neutral'
+                }
+                label={
+                  packingAutomation.state === 'already_sent'
+                    ? 'נשלח'
+                    : packingAutomation.state === 'due_now'
+                      ? 'מוכן לשליחה עכשיו'
+                      : packingAutomation.state === 'scheduled'
+                        ? `מתוזמן לשליחה ב-${formatDate(packingAutomation.sendDate)}`
+                        : packingAutomation.state === 'awaiting_approval'
+                          ? 'ממתין לאישור הצעת מחיר'
+                          : 'ממתין לקביעת תאריך אריזה'
+                }
+              />
+            </div>
+          </section>
+
           <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-gray-900 mb-3">שליחת הודעה ללקוח</h2>
             <ul className="space-y-2">
