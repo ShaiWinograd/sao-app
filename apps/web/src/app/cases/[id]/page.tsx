@@ -10,6 +10,8 @@ import {
   getCurrentQuotationVersion,
   CASE_LIFECYCLE_STEPS,
   caseStatusTone,
+  computePlanVariance,
+  formatVariancePct,
   getCaseNextAction,
   getCaseStepIndex,
   type CaseStatusValue,
@@ -369,6 +371,24 @@ export default function ProjectDetailPage() {
     return [...jobs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
   }, [kase]);
 
+  const comparison = useMemo(() => {
+    const estimatedHours = planned.reduce(
+      (sum, ps) =>
+        sum +
+        estimateWorkerHours({
+          estimatedWorkdays: ps.estimatedWorkdays,
+          workersPerDay: ps.workersPerDay,
+          hoursPerDay: typeof ps.hoursPerDay === 'string' ? Number(ps.hoursPerDay) : ps.hoursPerDay,
+        }),
+      0,
+    );
+    const approvedQuoteTotal = quotations.reduce((sum, q) => {
+      const current = getCurrentQuotationVersion(q.versions);
+      return current && current.status === 'APPROVED' ? sum + Number(current.estimatedTotal || 0) : sum;
+    }, 0);
+    return { estimatedHours, approvedQuoteTotal };
+  }, [planned, quotations]);
+
   if (isLoading) {
     return (
       <div className="p-6 text-sm text-gray-500" dir="rtl">
@@ -676,6 +696,54 @@ export default function ProjectDetailPage() {
                 ))}
               </ul>
             )}
+          </section>
+
+          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <h2 className="text-sm font-semibold text-gray-900 mb-3">השוואת תכנון מול ביצוע</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-gray-500 border-b border-gray-100">
+                    <th className="text-right font-medium py-2">מדד</th>
+                    <th className="text-right font-medium py-2">מתוכנן</th>
+                    <th className="text-right font-medium py-2">בפועל</th>
+                    <th className="text-right font-medium py-2">פער</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    {
+                      key: 'billing',
+                      label: 'חיוב מול הצעה מאושרת',
+                      baseline: comparison.approvedQuoteTotal,
+                      actual: financials.invoiced,
+                    },
+                    {
+                      key: 'payment',
+                      label: 'תשלום מול חיוב',
+                      baseline: financials.invoiced,
+                      actual: financials.paid,
+                    },
+                  ].map((row) => {
+                    const variance = computePlanVariance(row.baseline, row.actual);
+                    return (
+                      <tr key={row.key} className="border-b border-gray-50 last:border-0">
+                        <td className="py-2 text-gray-700">{row.label}</td>
+                        <td className="py-2 text-gray-900">{formatCurrency(row.baseline)}</td>
+                        <td className="py-2 text-gray-900">{formatCurrency(row.actual)}</td>
+                        <td className="py-2">
+                          <StatusBadge tone={variance.tone} label={formatVariancePct(variance)} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-3 text-xs text-gray-500">
+              שעות עבודה משוערות מהתכנון:{' '}
+              <span className="font-semibold text-gray-800">{comparison.estimatedHours}</span>
+            </p>
           </section>
         </div>
       )}
