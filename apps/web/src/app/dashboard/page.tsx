@@ -397,7 +397,14 @@ export default function DashboardPage() {
           latestJobDate: c.updatedAt?.split('T')[0] || new Date().toISOString().split('T')[0],
         }));
 
-        const apiWorks: ActiveWork[] = jobsRes.data.map((job: any, index: number) => {
+        // Cancelled projects (and cancelled jobs) must not appear as active work.
+        const cancelledCaseIds = new Set(
+          casesRes.data.filter((c: any) => c.status === 'CANCELLED').map((c: any) => c.id),
+        );
+
+        const apiWorks: ActiveWork[] = jobsRes.data
+          .filter((job: any) => job.status !== 'CANCELLED' && !cancelledCaseIds.has(job.caseId))
+          .map((job: any, index: number) => {
           const customerName = `${job.customer?.firstName ?? ''} ${job.customer?.lastName ?? ''}`.trim();
           const date = new Date(job.date);
           const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;

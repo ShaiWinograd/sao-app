@@ -316,6 +316,19 @@ export async function casesRoutes(app: FastifyInstance) {
           allowedTransitions: getAllowedCaseTransitions(from),
         });
       }
+
+      // Cancelling a project also cancels its still-open jobs.
+      if (to === 'CANCELLED') {
+        const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          const updatedCase = await tx.customerCase.update({ where: { id }, data: body });
+          await tx.job.updateMany({
+            where: { caseId: id, status: { notIn: ['COMPLETED', 'CANCELLED'] } },
+            data: { status: 'CANCELLED' },
+          });
+          return updatedCase;
+        });
+        return updated;
+      }
     }
 
     return prisma.customerCase.update({ where: { id }, data: body });
@@ -371,10 +384,6 @@ export async function casesRoutes(app: FastifyInstance) {
         select: { id: true },
       }));
 
-    if (!performedBy) {
-      return reply.status(500).send({ error: 'No active admin user available for audit logging' });
-    }
-
     const archiveNote = `[ארכוב ${new Date().toISOString()}] ${reason.trim()}`;
     const nextInternalNotes = [kase.internalNotes, archiveNote].filter(Boolean).join('\n');
 
@@ -388,23 +397,34 @@ export async function casesRoutes(app: FastifyInstance) {
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          performedById: performedBy.id,
-          action: 'DELETE',
-          entityType: 'CustomerCase',
-          entityId: id,
-          previousValue: {
-            status: kase.status,
-            internalNotes: kase.internalNotes ?? null,
-          },
-          newValue: {
-            status: updatedCase.status,
-            internalNotes: updatedCase.internalNotes ?? null,
-          },
-          reason: reason.trim(),
-        },
+      // Cancelling a project cancels its still-open jobs so they stop appearing
+      // as active work / needing attention.
+      await tx.job.updateMany({
+        where: { caseId: id, status: { notIn: ['COMPLETED', 'CANCELLED'] } },
+        data: { status: 'CANCELLED' },
       });
+
+      // Attribute the audit entry when a user is available; never block the
+      // archive itself if there is no resolvable admin user (e.g. fresh DB).
+      if (performedBy) {
+        await tx.auditLog.create({
+          data: {
+            performedById: performedBy.id,
+            action: 'DELETE',
+            entityType: 'CustomerCase',
+            entityId: id,
+            previousValue: {
+              status: kase.status,
+              internalNotes: kase.internalNotes ?? null,
+            },
+            newValue: {
+              status: updatedCase.status,
+              internalNotes: updatedCase.internalNotes ?? null,
+            },
+            reason: reason.trim(),
+          },
+        });
+      }
 
       return updatedCase;
     });
