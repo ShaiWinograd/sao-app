@@ -29,6 +29,15 @@ const job = {
       formStatus: 'NOT_SUBMITTED',
       worker: { firstName: 'דנה', lastName: 'לוי' },
     },
+    {
+      id: 'shift-2',
+      slotId: 'slot-w1',
+      workerNameSnapshot: 'רון כהן',
+      attendanceStatus: 'SCHEDULED',
+      joinRequestStatus: 'PENDING',
+      formStatus: 'NOT_SUBMITTED',
+      worker: { firstName: 'רון', lastName: 'כהן' },
+    },
   ],
 };
 
@@ -53,5 +62,21 @@ test.describe('Job detail page', () => {
     await expect(page.getByText('מנהל עבודה')).toBeVisible();
     await expect(page.getByText('דנה לוי')).toBeVisible();
     await expect(page.getByText('מקום פנוי').first()).toBeVisible();
+  });
+
+  test('approves a pending join request from the staffing tab', async ({ page }) => {
+    let approved = false;
+    await page.route('**/api/v1/shifts/shift-2/approve', async (route) => {
+      approved = true;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    });
+
+    await page.goto('/jobs/job-1');
+    await page.getByRole('tab', { name: 'עובדים' }).click();
+
+    await expect(page.getByText('רון כהן')).toBeVisible();
+    await page.getByRole('button', { name: 'אישור' }).click();
+
+    await expect.poll(() => approved).toBe(true);
   });
 });

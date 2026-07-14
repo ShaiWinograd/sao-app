@@ -146,6 +146,23 @@ export default function JobDetailPage() {
     }
   }, [jobId, getToken, load]);
 
+  const decideJoinRequest = useCallback(
+    async (shiftId: string, approved: boolean) => {
+      setBusy(true);
+      setError(null);
+      try {
+        const auth = await authHeaders(getToken);
+        await api.post(`/shifts/${shiftId}/approve`, { approved }, auth);
+        await load();
+      } catch {
+        setError('עדכון בקשת השיבוץ נכשל');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [getToken, load],
+  );
+
   const managerSlots = useMemo(
     () => (job ? job.slots.filter((slot) => slot.requiredSkill === MANAGER_SKILL) : []),
     [job],
@@ -159,6 +176,37 @@ export default function JobDetailPage() {
     (slotId: string) => job?.shifts.find((shift) => shift.slotId === slotId) ?? null,
     [job],
   );
+
+  const renderShiftStatus = (shift: ApiJobShift) => {
+    if (shift.joinRequestStatus === 'PENDING') {
+      return (
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => void decideJoinRequest(shift.id, true)}
+            disabled={busy}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            אישור
+          </button>
+          <button
+            onClick={() => void decideJoinRequest(shift.id, false)}
+            disabled={busy}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+          >
+            <XCircle className="w-3.5 h-3.5" />
+            דחייה
+          </button>
+        </div>
+      );
+    }
+    return (
+      <StatusBadge
+        tone={shift.joinRequestStatus === 'REJECTED' ? 'error' : 'success'}
+        label={JOIN_STATUS_LABELS[shift.joinRequestStatus] ?? shift.joinRequestStatus}
+      />
+    );
+  };
 
   if (isLoading) {
     return <div className="p-6 text-sm text-gray-500" dir="rtl">טוען…</div>;
@@ -294,7 +342,7 @@ export default function JobDetailPage() {
                         {shift ? shift.workerNameSnapshot : 'מקום פנוי'}
                       </span>
                       {shift ? (
-                        <StatusBadge tone="success" label={JOIN_STATUS_LABELS[shift.joinRequestStatus] ?? shift.joinRequestStatus} />
+                        renderShiftStatus(shift)
                       ) : (
                         <StatusBadge tone="warning" label="לא מאויש" />
                       )}
@@ -317,7 +365,7 @@ export default function JobDetailPage() {
                     <li key={slot.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2">
                       <span className="text-sm text-gray-800">{shift ? shift.workerNameSnapshot : 'מקום פנוי'}</span>
                       {shift ? (
-                        <StatusBadge tone="success" label={JOIN_STATUS_LABELS[shift.joinRequestStatus] ?? shift.joinRequestStatus} />
+                        renderShiftStatus(shift)
                       ) : (
                         <StatusBadge tone="neutral" label="פנוי" />
                       )}
