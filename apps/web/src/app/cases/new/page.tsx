@@ -70,6 +70,24 @@ function emptyAddress(): AddressEntry {
   return { label: 'NEW_APARTMENT', raw: '', selection: null, floor: '', apartment: '' };
 }
 
+// Which addresses matter for each service type: a move needs current + new,
+// packing needs the current home, unpacking/organization need a single address.
+function defaultAddressesForSelection(sel: ServiceSelection): AddressEntry[] {
+  const make = (label: AddressLabel): AddressEntry => ({ ...emptyAddress(), label });
+  switch (sel) {
+    case 'MOVING':
+      return [make('OLD_APARTMENT'), make('NEW_APARTMENT')];
+    case 'PACKING':
+      return [make('OLD_APARTMENT')];
+    case 'UNPACKING':
+      return [make('NEW_APARTMENT')];
+    case 'ORGANIZATION':
+      return [make('OTHER')];
+    default:
+      return [emptyAddress()];
+  }
+}
+
 function buildFullAddress(entry: AddressEntry): string {
   const base = entry.selection?.formattedAddress ?? entry.raw.trim();
   const parts = [base];
@@ -101,7 +119,7 @@ export default function NewProjectWizard() {
   const [customerNotes, setCustomerNotes] = useState('');
 
   // Step 1 — addresses
-  const [addresses, setAddresses] = useState<AddressEntry[]>([emptyAddress()]);
+  const [addresses, setAddresses] = useState<AddressEntry[]>([]);
   const setAddressField = useCallback(
     (index: number, patch: Partial<AddressEntry>) =>
       setAddresses((prev) => prev.map((a, i) => (i === index ? { ...a, ...patch } : a))),
@@ -110,6 +128,16 @@ export default function NewProjectWizard() {
 
   // Step 2 — service
   const [selection, setSelection] = useState<ServiceSelection | null>(null);
+  // Selecting a service also seeds the relevant address slots for that service.
+  const selectService = useCallback(
+    (value: ServiceSelection) => {
+      setSelection((prev) => {
+        if (prev !== value) setAddresses(defaultAddressesForSelection(value));
+        return value;
+      });
+    },
+    [],
+  );
 
   // Step 3 — timing
   const [timing, setTiming] = useState<TimingChoice>('all_known');
@@ -123,16 +151,34 @@ export default function NewProjectWizard() {
 
   // Step 4 — specific job dates per component (used when timing is known)
   const [datesByType, setDatesByType] = useState<Record<string, string[]>>({});
+  const [dateError, setDateError] = useState('');
   const addDateFor = useCallback(
     (type: ServiceType, date: string) => {
       if (!date) return;
+      // Moving-project rule: unpacking must be at least a day after the last
+      // packing day (and a packing day cannot fall on/after an unpacking day).
+      if (type === 'UNPACKING') {
+        const packingDates = datesByType['PACKING'] ?? [];
+        if (packingDates.length > 0 && date <= packingDates.reduce((a, b) => (a > b ? a : b))) {
+          setDateError('תאריך הפריקה חייב להיות לפחות יום אחרי יום האריזה האחרון.');
+          return;
+        }
+      }
+      if (type === 'PACKING') {
+        const unpackingDates = datesByType['UNPACKING'] ?? [];
+        if (unpackingDates.length > 0 && date >= unpackingDates.reduce((a, b) => (a < b ? a : b))) {
+          setDateError('יום האריזה חייב להיות לפני יום הפריקה.');
+          return;
+        }
+      }
+      setDateError('');
       setDatesByType((prev) => {
         const existing = prev[type] ?? [];
         if (existing.includes(date)) return prev;
         return { ...prev, [type]: [...existing, date].sort() };
       });
     },
-    [],
+    [datesByType],
   );
   const removeDateFor = useCallback(
     (type: ServiceType, date: string) =>
@@ -376,112 +422,117 @@ export default function NewProjectWizard() {
 
       <div className="mt-5 rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
         {step === 1 && (
-          <div className="space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <label className="text-sm">
-                <span className="text-gray-600">שם פרטי *</span>
-                <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
-              </label>
-              <label className="text-sm">
-                <span className="text-gray-600">שם משפחה</span>
-                <input value={lastName} onChange={(e) => setLastName(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
-              </label>
-              <label className="text-sm">
-                <span className="text-gray-600">טלפון *</span>
-                <input value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
-              </label>
-              <label className="text-sm">
-                <span className="text-gray-600">אימייל</span>
-                <input value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
-              </label>
-              <label className="text-sm md:col-span-2">
-                <span className="text-gray-600">הערות</span>
-                <textarea value={customerNotes} onChange={(e) => setCustomerNotes(e.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
-              </label>
-            </div>
-
-            <div className="border-t border-gray-100 pt-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold text-gray-900">כתובות</h3>
-                <span className="text-[11px] text-gray-400">בחירה מתוך Azure Maps כדי לשמור כתובת</span>
-              </div>
-              <div className="space-y-3">
-                {addresses.map((entry, index) => (
-                  <div key={index} className="rounded-lg border border-gray-200 p-3 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={entry.label}
-                        onChange={(e) => setAddressField(index, { label: e.target.value as AddressLabel })}
-                        aria-label="סוג כתובת"
-                        className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm bg-white"
-                      >
-                        {(Object.keys(ADDRESS_LABELS) as AddressLabel[]).map((key) => (
-                          <option key={key} value={key}>{ADDRESS_LABELS[key]}</option>
-                        ))}
-                      </select>
-                      {addresses.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => setAddresses((prev) => prev.filter((_, i) => i !== index))}
-                          className="ms-auto text-xs text-rose-600 hover:text-rose-700"
-                        >
-                          הסרה
-                        </button>
-                      )}
-                    </div>
-                    <AzureMapsAddressInput
-                      value={entry.raw}
-                      onChange={(v) => setAddressField(index, { raw: v })}
-                      onSelectionChange={(sel) => setAddressField(index, { selection: sel })}
-                      placeholder="חיפוש כתובת…"
-                    />
-                    <div className="grid grid-cols-2 gap-2">
-                      <input
-                        value={entry.floor}
-                        onChange={(e) => setAddressField(index, { floor: e.target.value })}
-                        placeholder="קומה"
-                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
-                      />
-                      <input
-                        value={entry.apartment}
-                        onChange={(e) => setAddressField(index, { apartment: e.target.value })}
-                        placeholder="דירה"
-                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
-                      />
-                    </div>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setAddresses((prev) => [...prev, emptyAddress()])}
-                  className="text-xs text-primary-700 hover:text-primary-800"
-                >
-                  + הוספת כתובת
-                </button>
-              </div>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label className="text-sm">
+              <span className="text-gray-600">שם פרטי *</span>
+              <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
+            </label>
+            <label className="text-sm">
+              <span className="text-gray-600">שם משפחה</span>
+              <input value={lastName} onChange={(e) => setLastName(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
+            </label>
+            <label className="text-sm">
+              <span className="text-gray-600">טלפון *</span>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
+            </label>
+            <label className="text-sm">
+              <span className="text-gray-600">אימייל</span>
+              <input value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
+            </label>
+            <label className="text-sm md:col-span-2">
+              <span className="text-gray-600">הערות</span>
+              <textarea value={customerNotes} onChange={(e) => setCustomerNotes(e.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
+            </label>
           </div>
         )}
 
         {step === 2 && (
-          <div className="grid grid-cols-2 gap-3">
-            {SERVICE_CARDS.map((card) => (
-              <button
-                key={card.value}
-                onClick={() => setSelection(card.value)}
-                className={`rounded-xl border p-4 text-right transition-colors ${
-                  selection === card.value
-                    ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-200'
-                    : 'border-gray-200 hover:border-primary-300 hover:bg-primary-50/40'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-base font-semibold text-gray-900">{card.label}</span>
-                  {selection === card.value && <Check className="w-4 h-4 text-primary-600" />}
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 gap-3">
+              {SERVICE_CARDS.map((card) => (
+                <button
+                  key={card.value}
+                  onClick={() => selectService(card.value)}
+                  className={`rounded-xl border p-4 text-right transition-colors ${
+                    selection === card.value
+                      ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-200'
+                      : 'border-gray-200 hover:border-primary-300 hover:bg-primary-50/40'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-base font-semibold text-gray-900">{card.label}</span>
+                    {selection === card.value && <Check className="w-4 h-4 text-primary-600" />}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">{card.hint}</p>
+                </button>
+              ))}
+            </div>
+
+            {selection && (
+              <div className="border-t border-gray-100 pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-semibold text-gray-900">כתובות</h3>
+                  <span className="text-[11px] text-gray-400">
+                    {selection === 'MOVING' ? 'מעבר דירה: כתובת נוכחית + כתובת חדשה' : 'כתובת אחת לשירות זה'}
+                  </span>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">{card.hint}</p>
-              </button>
-            ))}
+                <div className="space-y-3">
+                  {addresses.map((entry, index) => (
+                    <div key={index} className="rounded-lg border border-gray-200 p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={entry.label}
+                          onChange={(e) => setAddressField(index, { label: e.target.value as AddressLabel })}
+                          aria-label="סוג כתובת"
+                          className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm bg-white"
+                        >
+                          {(Object.keys(ADDRESS_LABELS) as AddressLabel[]).map((key) => (
+                            <option key={key} value={key}>{ADDRESS_LABELS[key]}</option>
+                          ))}
+                        </select>
+                        {addresses.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setAddresses((prev) => prev.filter((_, i) => i !== index))}
+                            className="ms-auto text-xs text-rose-600 hover:text-rose-700"
+                          >
+                            הסרה
+                          </button>
+                        )}
+                      </div>
+                      <AzureMapsAddressInput
+                        value={entry.raw}
+                        onChange={(v) => setAddressField(index, { raw: v })}
+                        onSelectionChange={(sel) => setAddressField(index, { selection: sel })}
+                        placeholder="חיפוש כתובת או הקלדה ידנית…"
+                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          value={entry.floor}
+                          onChange={(e) => setAddressField(index, { floor: e.target.value })}
+                          placeholder="קומה"
+                          className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                        />
+                        <input
+                          value={entry.apartment}
+                          onChange={(e) => setAddressField(index, { apartment: e.target.value })}
+                          placeholder="דירה"
+                          className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setAddresses((prev) => [...prev, emptyAddress()])}
+                    className="text-xs text-primary-700 hover:text-primary-800"
+                  >
+                    + הוספת כתובת
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -514,6 +565,11 @@ export default function NewProjectWizard() {
 
         {step === 4 && (
           <div className="space-y-4">
+            {dateError && (
+              <div className="rounded-lg bg-danger-bg border border-danger/30 text-danger text-xs px-3 py-2">
+                {dateError}
+              </div>
+            )}
             {components.map((type) => {
               const estimate = getEstimate(type);
               const hours = estimateWorkerHours({
