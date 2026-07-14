@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 export const CustomerSchema = z.object({
   firstName: z.string().min(1),
-  lastName: z.string().min(1),
+  lastName: z.string().optional().default(''),
   phone: z.string().min(9),
   email: z.string().email(),
   preferredContact: z.enum(['PHONE', 'EMAIL', 'WHATSAPP']).optional(),
