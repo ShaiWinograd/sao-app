@@ -47,6 +47,36 @@ export function getCaseStepIndex(status: CaseStatusValue): number {
   return LEGACY_STEP_INDEX[status] ?? -1;
 }
 
+// The five per-step states from the spec (§3 Progress stepper).
+export type CaseStepState = 'complete' | 'current' | 'attention' | 'blocked' | 'not-started';
+
+// Statuses where the current step is stuck waiting on an admin/customer action
+// and should be highlighted as "requires attention".
+const ATTENTION_STATUSES: CaseStatusValue[] = [
+  'AWAITING_APPROVAL',
+  'APPROVED_NO_DATES',
+  'PARTIALLY_SCHEDULED',
+  'AWAITING_COMPLETION',
+  'AWAITING_BILLING',
+  'AWAITING_PAYMENT',
+];
+
+// Resolves the state of a single step given the project status. Steps before the
+// current one are complete, later steps are not-started, and the current step is
+// either "current", "attention", or (when explicitly blocked) "blocked".
+export function getCaseStepState(
+  status: CaseStatusValue,
+  stepIndex: number,
+  options?: { blocked?: boolean },
+): CaseStepState {
+  const current = getCaseStepIndex(status);
+  if (current === -1) return 'not-started';
+  if (stepIndex < current) return 'complete';
+  if (stepIndex > current) return 'not-started';
+  if (options?.blocked) return 'blocked';
+  return ATTENTION_STATUSES.includes(status) ? 'attention' : 'current';
+}
+
 export type CaseDetailTab = 'overview' | 'quotations' | 'jobs' | 'activity';
 
 export type CaseNextAction = {

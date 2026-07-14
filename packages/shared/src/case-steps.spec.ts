@@ -3,6 +3,7 @@ import {
   CASE_LIFECYCLE_STEPS,
   getCaseNextAction,
   getCaseStepIndex,
+  getCaseStepState,
 } from './case-steps';
 
 describe('case lifecycle steps', () => {
@@ -48,5 +49,32 @@ describe('getCaseNextAction', () => {
   it('returns null when the project is paid or cancelled', () => {
     expect(getCaseNextAction('PAID')).toBeNull();
     expect(getCaseNextAction('CANCELLED')).toBeNull();
+  });
+});
+
+describe('getCaseStepState', () => {
+  it('marks earlier steps complete and later steps not-started', () => {
+    const index = getCaseStepIndex('IN_PROGRESS');
+    expect(getCaseStepState('IN_PROGRESS', index - 1)).toBe('complete');
+    expect(getCaseStepState('IN_PROGRESS', index + 1)).toBe('not-started');
+  });
+
+  it('marks the current step as current for in-progress statuses', () => {
+    const index = getCaseStepIndex('IN_PROGRESS');
+    expect(getCaseStepState('IN_PROGRESS', index)).toBe('current');
+  });
+
+  it('marks the current step as attention for stuck statuses', () => {
+    const index = getCaseStepIndex('APPROVED_NO_DATES');
+    expect(getCaseStepState('APPROVED_NO_DATES', index)).toBe('attention');
+  });
+
+  it('marks the current step blocked when explicitly flagged', () => {
+    const index = getCaseStepIndex('PARTIALLY_SCHEDULED');
+    expect(getCaseStepState('PARTIALLY_SCHEDULED', index, { blocked: true })).toBe('blocked');
+  });
+
+  it('returns not-started for statuses off the stepper', () => {
+    expect(getCaseStepState('CANCELLED', 0)).toBe('not-started');
   });
 });
