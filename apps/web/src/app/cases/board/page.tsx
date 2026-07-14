@@ -217,7 +217,26 @@ export default function ProjectBoardPage() {
         </select>
       </div>
 
-      {view === 'board' && board && (
+      {!isLoading && board && allCases.length === 0 && (
+        <div
+          className="rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-12 text-center"
+          data-testid="board-empty"
+        >
+          <p className="text-base font-semibold text-gray-800">עדיין אין פרויקטים</p>
+          <p className="mt-1 text-sm text-gray-500 max-w-md mx-auto">
+            צרי את הפרויקט הראשון כדי להתחיל לנהל לקוחות, הצעות מחיר ועבודות במקום אחד.
+          </p>
+          <Link
+            href="/cases/new"
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+          >
+            <Plus className="w-4 h-4" />
+            יצירת פרויקט
+          </Link>
+        </div>
+      )}
+
+      {view === 'board' && board && allCases.length > 0 && (
         <div className="mb-5 flex gap-2" role="tablist">
           {board.tabs.map((t, index) => (
             <button
@@ -237,7 +256,7 @@ export default function ProjectBoardPage() {
         </div>
       )}
 
-      {view === 'board' &&
+      {view === 'board' && (allCases.length > 0 || isLoading) &&
         (isLoading ? (
           <div className="text-sm text-gray-500">טוען…</div>
         ) : !tab ? (
@@ -316,7 +335,7 @@ export default function ProjectBoardPage() {
         </div>
         ))}
 
-      {view === 'list' &&
+      {view === 'list' && (allCases.length > 0 || isLoading) &&
         (isLoading ? (
           <div className="text-sm text-gray-500">טוען…</div>
         ) : (
