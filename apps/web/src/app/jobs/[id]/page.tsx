@@ -220,6 +220,26 @@ export default function JobDetailPage() {
     }
   }, [job, assignSlotId, assignWorkerId, getToken, load]);
 
+  const removeShift = useCallback(
+    async (shiftId: string, workerName: string) => {
+      if (typeof window !== 'undefined' && !window.confirm(`להסיר את ${workerName} מהעבודה? הפעולה תפנה את העמדה.`)) {
+        return;
+      }
+      setBusy(true);
+      setError(null);
+      try {
+        const auth = await authHeaders(getToken);
+        await api.delete(`/shifts/${shiftId}`, auth);
+        await load();
+      } catch {
+        setError('הסרת העובד נכשלה (ייתכן שהעובד כבר דיווח נוכחות)');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [getToken, load],
+  );
+
   const jobBadge = useMemo(() => {
     if (!job) return null;
     const assignedWorkerCount = workerSlots.filter((slot) => shiftForSlot(slot.id)).length;
@@ -396,7 +416,19 @@ export default function JobDetailPage() {
                           {shift ? shift.workerNameSnapshot : 'מקום פנוי'}
                         </span>
                         {shift ? (
-                          renderShiftStatus(shift)
+                          <div className="flex items-center gap-2">
+                            {renderShiftStatus(shift)}
+                            {shift.attendanceStatus === 'SCHEDULED' && (
+                              <button
+                                onClick={() => void removeShift(shift.id, shift.workerNameSnapshot)}
+                                disabled={busy}
+                                aria-label={`הסרת ${shift.workerNameSnapshot}`}
+                                className="px-2 py-1 text-[11px] rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                              >
+                                הסרה
+                              </button>
+                            )}
+                          </div>
                         ) : (
                           <div className="flex items-center gap-2">
                             <StatusBadge tone="warning" label="לא מאויש" />
@@ -459,7 +491,19 @@ export default function JobDetailPage() {
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-gray-800">{shift ? shift.workerNameSnapshot : 'מקום פנוי'}</span>
                         {shift ? (
-                          renderShiftStatus(shift)
+                          <div className="flex items-center gap-2">
+                            {renderShiftStatus(shift)}
+                            {shift.attendanceStatus === 'SCHEDULED' && (
+                              <button
+                                onClick={() => void removeShift(shift.id, shift.workerNameSnapshot)}
+                                disabled={busy}
+                                aria-label={`הסרת ${shift.workerNameSnapshot}`}
+                                className="px-2 py-1 text-[11px] rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                              >
+                                הסרה
+                              </button>
+                            )}
+                          </div>
                         ) : (
                           <div className="flex items-center gap-2">
                             <StatusBadge tone="neutral" label="פנוי" />
