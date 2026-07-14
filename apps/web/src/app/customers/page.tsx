@@ -25,6 +25,7 @@ type Customer = {
   addresses: CustomerAddress[];
   caseName: string;
   caseStatus: 'planned' | 'in_progress' | 'completed_unpaid' | 'completed_paid';
+  notes?: string;
 };
 
 type CustomerCaseFilter = 'all' | Customer['caseStatus'] | 'not_executed';
@@ -203,8 +204,9 @@ export default function CustomersPage() {
   const [notExecutedCustomers, setNotExecutedCustomers] = useState<Set<string>>(new Set());
   const [openedCustomerId, setOpenedCustomerId] = useState<string | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
-  const [cardTab, setCardTab] = useState<'details' | 'works' | 'communication'>('details');
+  const [cardTab, setCardTab] = useState<'details' | 'works' | 'communication' | 'notes'>('details');
   const [cardMessage, setCardMessage] = useState('');
+  const [cardNotes, setCardNotes] = useState('');
 
   const [cardFirstName, setCardFirstName] = useState('');
   const [cardLastName, setCardLastName] = useState('');
@@ -317,6 +319,7 @@ export default function CustomersPage() {
     setTemplate('quote');
     setCardCaseName(customer.caseName);
     setCardCaseStatus(customer.caseStatus);
+    setCardNotes(customer.notes ?? '');
     const quote = getTemplateContent('quote', `${customer.firstName} ${customer.lastName}`, customer.caseName);
     setMessageSubject(quote.subject);
     setMessageBody(quote.body);
@@ -333,6 +336,7 @@ export default function CustomersPage() {
     setCardEmail('');
     setCardCaseName('');
     setCardCaseStatus('planned');
+    setCardNotes('');
     setCardAddressLabel('דירה חדשה');
     setCardAddressInput('');
     setCardAddressSelection(null);
@@ -387,6 +391,7 @@ export default function CustomersPage() {
         email: cardEmail.trim(),
         caseName: cardCaseName.trim() || `${cardFirstName.trim()} ${cardLastName.trim()} - פרוייקט חדש`,
         caseStatus: cardCaseStatus,
+        notes: cardNotes.trim() || undefined,
         addresses: [{
           id: `a-${Date.now()}`,
           label: cardAddressLabel,
@@ -422,6 +427,7 @@ export default function CustomersPage() {
               email: cardEmail.trim(),
               caseName: cardCaseName.trim() || customer.caseName,
               caseStatus: cardCaseStatus,
+              notes: cardNotes.trim() || undefined,
               addresses:
                 cardAddressInput.trim()
                   ? [
@@ -601,7 +607,7 @@ export default function CustomersPage() {
                 }}
                 className={`px-3 py-1.5 text-xs rounded-md border ${cardTab === 'details' ? 'bg-primary-50 border-primary-300 text-primary-700' : 'border-gray-300 text-gray-700'}`}
               >
-                פרטי לקוח
+                פרטים
               </button>
               <button
                 type="button"
@@ -612,7 +618,7 @@ export default function CustomersPage() {
                 disabled={isCreatingNew}
                 className={`px-3 py-1.5 text-xs rounded-md border ${cardTab === 'works' ? 'bg-primary-50 border-primary-300 text-primary-700' : 'border-gray-300 text-gray-700'} disabled:opacity-50`}
               >
-                עבודות קשורות
+                פרויקטים
               </button>
               <button
                 type="button"
@@ -622,7 +628,17 @@ export default function CustomersPage() {
                 }}
                 className={`px-3 py-1.5 text-xs rounded-md border ${cardTab === 'communication' ? 'bg-primary-50 border-primary-300 text-primary-700' : 'border-gray-300 text-gray-700'}`}
               >
-                תקשורת לקוח
+                הודעות
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCardTab('notes');
+                  setCardMessage('');
+                }}
+                className={`px-3 py-1.5 text-xs rounded-md border ${cardTab === 'notes' ? 'bg-primary-50 border-primary-300 text-primary-700' : 'border-gray-300 text-gray-700'}`}
+              >
+                הערות
               </button>
             </div>
 
@@ -786,6 +802,23 @@ export default function CustomersPage() {
                   >
                     {channel === 'email' ? 'שליחת אימייל' : 'שליחה בוואטסאפ'}
                   </button>
+                </div>
+              )}
+
+              {cardTab === 'notes' && (
+                <div className="space-y-2">
+                  <div className="rounded-lg border border-primary-100 bg-primary-50 px-3 py-2">
+                    <p className="text-xs text-primary-700">
+                      הערות פנימיות ללקוח (לא נשלחות ללקוח). מתאים לרגישויות, העדפות או פרטים תפעוליים.
+                    </p>
+                  </div>
+                  <textarea
+                    value={cardNotes}
+                    onChange={(e) => setCardNotes(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right min-h-[140px]"
+                    placeholder="הוספת הערה פנימית..."
+                  />
+                  <p className="text-xs text-gray-500">ההערה נשמרת עם לחיצה על "שמירת שינויים".</p>
                 </div>
               )}
 
