@@ -42,3 +42,78 @@ input[type='number']::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
+
+/* Consistent, on-brand checkboxes & radios across the app */
+input[type='checkbox'],
+input[type='radio'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1.5px solid var(--color-border-strong);
+  background: var(--color-surface);
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+input[type='checkbox'] {
+  border-radius: 0.35rem;
+}
+
+input[type='radio'] {
+  border-radius: 9999px;
+}
+
+input[type='checkbox']:hover,
+input[type='radio']:hover {
+  border-color: var(--color-primary-500);
+}
+
+input[type='checkbox']::before {
+  content: '';
+  width: 0.65rem;
+  height: 0.65rem;
+  transform: scale(0);
+  transition: transform 0.12s ease;
+  transform-origin: center;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+  background: #ffffff;
+}
+
+input[type='radio']::before {
+  content: '';
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 9999px;
+  transform: scale(0);
+  transition: transform 0.12s ease;
+  background: #ffffff;
+}
+
+input[type='checkbox']:checked,
+input[type='radio']:checked {
+  background: var(--color-primary-600);
+  border-color: var(--color-primary-600);
+}
+
+input[type='checkbox']:checked::before,
+input[type='radio']:checked::before {
+  transform: scale(1);
+}
+
+input[type='checkbox']:focus-visible,
+input[type='radio']:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+input[type='checkbox']:disabled,
+input[type='radio']:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+

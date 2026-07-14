@@ -44,7 +44,7 @@ type ComponentEstimate = {
 };
 
 function emptyEstimate(): ComponentEstimate {
-  return { estimatedWorkdays: '2', workersPerDay: '4', hoursPerDay: '5', requiresManager: true };
+  return { estimatedWorkdays: '1', workersPerDay: '4', hoursPerDay: '5', requiresManager: true };
 }
 
 export default function NewProjectWizard() {
@@ -66,7 +66,7 @@ export default function NewProjectWizard() {
   const [selection, setSelection] = useState<ServiceSelection | null>(null);
 
   // Step 3 — timing
-  const [timing, setTiming] = useState<TimingChoice>('none');
+  const [timing, setTiming] = useState<TimingChoice>('all_known');
 
   // Step 4 — estimates per planned component
   const components = useMemo<ServiceType[]>(
@@ -90,7 +90,7 @@ export default function NewProjectWizard() {
   );
 
   // Step 5 — forms & requirements
-  const [reservedManagerPositions, setReservedManagerPositions] = useState('1');
+  const [reserveManager, setReserveManager] = useState(true);
   const [packingSuppliesForm, setPackingSuppliesForm] = useState(true);
   const [workerEndForm, setWorkerEndForm] = useState(true);
   const [internalNotes, setInternalNotes] = useState('');
@@ -98,6 +98,7 @@ export default function NewProjectWizard() {
   // Step 6 — pricing
   const [pricingModel, setPricingModel] = useState<'HOURLY' | 'FIXED' | 'DAILY'>('HOURLY');
   const [pricingAmount, setPricingAmount] = useState('');
+  const [hourlyRate, setHourlyRate] = useState('175');
 
   const totalEstimatedHours = useMemo(
     () =>
@@ -118,11 +119,17 @@ export default function NewProjectWizard() {
   const customerName = `${firstName} ${lastName}`.trim();
   const serviceLabel = selection ? SERVICE_CARDS.find((c) => c.value === selection)?.label ?? '' : '';
 
+  const HOURLY_RATE_OPTIONS = [150, 175, 200, 225, 250];
+  const computedPrice = useMemo(() => {
+    if (pricingModel === 'HOURLY') return totalEstimatedHours * (Number(hourlyRate) || 0);
+    return Number(pricingAmount) || 0;
+  }, [pricingModel, totalEstimatedHours, hourlyRate, pricingAmount]);
+
   const canContinue = useMemo(() => {
-    if (step === 1) return firstName.trim() && lastName.trim() && phone.trim().length >= 9;
+    if (step === 1) return firstName.trim() && phone.trim().length >= 9;
     if (step === 2) return Boolean(selection);
     return true;
-  }, [step, firstName, lastName, phone, selection]);
+  }, [step, firstName, phone, selection]);
 
   const finish = useCallback(
     async (action: FinishAction) => {
@@ -171,15 +178,21 @@ export default function NewProjectWizard() {
               workersPerDay: Number(estimate.workersPerDay) || undefined,
               hoursPerDay: Number(estimate.hoursPerDay) || undefined,
               requiresManager: estimate.requiresManager,
-              reservedManagerPositions: Number(reservedManagerPositions) || 0,
+              reservedManagerPositions: reserveManager ? 1 : 0,
             },
             auth,
           );
         }
 
         router.push(`/cases/${caseId}`);
-      } catch {
-        setError('יצירת הפרויקט נכשלה. נסי שוב.');
+      } catch (err) {
+        const isNetwork =
+          typeof err === 'object' && err !== null && 'message' in err && String((err as { message?: string }).message).includes('Network');
+        setError(
+          isNetwork
+            ? 'לא ניתן להתחבר לשרת. ודאי שה-API פועל (localhost:3001) ונסי שוב.'
+            : 'יצירת הפרויקט נכשלה. נסי שוב.',
+        );
         setSubmitting(false);
       }
     },
@@ -197,7 +210,7 @@ export default function NewProjectWizard() {
       components,
       getEstimate,
       timing,
-      reservedManagerPositions,
+      reserveManager,
       router,
     ],
   );
@@ -251,7 +264,7 @@ export default function NewProjectWizard() {
               <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
             </label>
             <label className="text-sm">
-              <span className="text-gray-600">שם משפחה *</span>
+              <span className="text-gray-600">שם משפחה</span>
               <input value={lastName} onChange={(e) => setLastName(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
             </label>
             <label className="text-sm">
@@ -344,9 +357,9 @@ export default function NewProjectWizard() {
                       <input type="number" min={0} value={estimate.hoursPerDay} onChange={(e) => setEstimateField(type, 'hoursPerDay', e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm" />
                     </label>
                   </div>
-                  <label className="mt-2 inline-flex items-center gap-2 text-xs text-gray-700">
+                  <label className="mt-3 flex items-center gap-2 text-sm text-gray-700">
                     <input type="checkbox" checked={estimate.requiresManager} onChange={(e) => setEstimateField(type, 'requiresManager', e.target.checked)} />
-                    דורש מנהל עבודה
+                    ראש צוות
                   </label>
                   <p className="mt-2 text-xs text-gray-500">
                     סה״כ משוער: <span className="font-semibold text-gray-800">{hours} שעות עבודה</span>
@@ -358,16 +371,16 @@ export default function NewProjectWizard() {
         )}
 
         {step === 5 && (
-          <div className="space-y-3">
-            <label className="text-sm block">
-              <span className="text-gray-600">מספר עמדות מנהל שמורות</span>
-              <input type="number" min={0} value={reservedManagerPositions} onChange={(e) => setReservedManagerPositions(e.target.value)} className="mt-1 w-32 rounded-lg border border-gray-200 px-3 py-2" />
+          <div className="space-y-4">
+            <label className="flex items-center gap-2.5 text-sm text-gray-800">
+              <input type="checkbox" checked={reserveManager} onChange={(e) => setReserveManager(e.target.checked)} />
+              שמירת עמדת ראש צוות (עד 1)
             </label>
-            <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+            <label className="flex items-center gap-2.5 text-sm text-gray-800">
               <input type="checkbox" checked={packingSuppliesForm} onChange={(e) => setPackingSuppliesForm(e.target.checked)} />
               טופס ציוד לאריזה
             </label>
-            <label className="inline-flex items-center gap-2 text-sm text-gray-700 block">
+            <label className="flex items-center gap-2.5 text-sm text-gray-800">
               <input type="checkbox" checked={workerEndForm} onChange={(e) => setWorkerEndForm(e.target.checked)} />
               טופס סיום עבודה לעובד (ברירת מחדל)
             </label>
@@ -410,7 +423,7 @@ export default function NewProjectWizard() {
               <dt className="text-gray-500">שעות משוערות</dt>
               <dd className="text-gray-900">{totalEstimatedHours}</dd>
               <dt className="text-gray-500">תמחור</dt>
-              <dd className="text-gray-900">{pricingAmount ? `₪${pricingAmount}` : '—'}</dd>
+              <dd className="text-gray-900">{computedPrice > 0 ? `₪${computedPrice.toLocaleString()}` : '—'}</dd>
             </dl>
             <div className="flex flex-wrap gap-2 pt-2">
               <button
