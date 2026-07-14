@@ -28,7 +28,7 @@ export const CASE_LIFECYCLE_STEPS: CaseLifecycleStep[] = [
   },
   { key: 'execution', label: 'ביצוע', statuses: ['IN_PROGRESS'] },
   { key: 'summary', label: 'סיכום', statuses: ['AWAITING_COMPLETION', 'AWAITING_BILLING'] },
-  { key: 'closure', label: 'השלמה', statuses: ['AWAITING_PAYMENT', 'PAID'] },
+  { key: 'closure', label: 'תשלום', statuses: ['AWAITING_PAYMENT', 'PAID'] },
 ];
 
 // Best-effort mapping for legacy statuses so the stepper still renders.

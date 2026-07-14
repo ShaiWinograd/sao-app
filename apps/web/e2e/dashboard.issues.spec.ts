@@ -74,6 +74,10 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await expect(page.getByText('מחכות לאישור', { exact: true })).toBeVisible();
     await expect(page.getByText('עבודות היום', { exact: true })).toBeVisible();
 
+    // Header quick actions
+    await expect(page.getByRole('link', { name: 'יצירת פרויקט חדש' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'יצירת עבודה מהירה' })).toBeVisible();
+
     const urgentPanel = page.getByTestId('dashboard-urgent-panel');
     await expect(urgentPanel).toBeVisible();
     await expect(urgentPanel.getByRole('heading', { name: 'דורש טיפול' })).toBeVisible();
