@@ -88,6 +88,56 @@ export async function shiftsRoutes(app: FastifyInstance) {
     });
   });
 
+  // Admin: directly assign a worker to a job slot (creates an approved shift)
+  app.post('/admin-assign', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { jobId, workerId, slotId } = req.body as { jobId: string; workerId: string; slotId?: string };
+    if (!jobId || !workerId) {
+      return reply.status(400).send({ error: 'jobId and workerId are required' });
+    }
+
+    const job = await prisma.job.findUnique({ where: { id: jobId } });
+    if (!job) return reply.status(404).send({ error: 'Job not found' });
+
+    const worker = await prisma.worker.findUnique({ where: { id: workerId } });
+    if (!worker) return reply.status(404).send({ error: 'Worker not found' });
+
+    // Prevent double-booking on the same date
+    const overlap = await prisma.shift.findFirst({
+      where: {
+        workerId: worker.id,
+        joinRequestStatus: 'APPROVED',
+        job: { date: job.date },
+      },
+    });
+    if (overlap) return reply.status(409).send({ error: 'Worker already has a confirmed shift on this date' });
+
+    // Prevent assigning the same slot twice
+    if (slotId) {
+      const slotTaken = await prisma.shift.findFirst({
+        where: { slotId, joinRequestStatus: 'APPROVED' },
+      });
+      if (slotTaken) return reply.status(409).send({ error: 'This slot is already assigned' });
+    }
+
+    const shift = await prisma.shift.create({
+      data: {
+        workerId: worker.id,
+        jobId: job.id,
+        slotId: slotId ?? null,
+        scheduledStart: job.plannedStart,
+        scheduledEnd: job.plannedEnd,
+        joinRequestStatus: 'APPROVED',
+        attendanceStatus: 'SCHEDULED',
+        hourlyWageSnapshot: worker.hourlyWage,
+        dailyPaymentSnapshot: worker.dailyPaymentAmount,
+        workerNameSnapshot: `${worker.firstName} ${worker.lastName}`,
+      },
+    });
+
+    reply.status(201);
+    return { shift };
+  });
+
   // Get single shift detail
   app.get('/:id', { preHandler: [authenticate] }, async (req, reply) => {
     const { id } = req.params as { id: string };
