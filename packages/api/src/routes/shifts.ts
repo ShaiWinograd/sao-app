@@ -138,9 +138,20 @@ export async function shiftsRoutes(app: FastifyInstance) {
     return { shift };
   });
 
-  // Get single shift detail
-  app.get('/:id', { preHandler: [authenticate] }, async (req, reply) => {
+  // Admin: remove a worker from a job (deletes the shift / frees the slot)
+  app.delete('/:id', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
+    const shift = await prisma.shift.findUnique({ where: { id } });
+    if (!shift) return reply.status(404).send({ error: 'Shift not found' });
+    if (shift.attendanceStatus !== 'SCHEDULED') {
+      return reply.status(409).send({ error: 'Cannot remove a worker who has already clocked in' });
+    }
+    await prisma.shift.delete({ where: { id } });
+    return { success: true };
+  });
+
+  // Get single shift detail
+  app.get('/:id', { preHandler: [authenticate] }, async (req, reply) => {    const { id } = req.params as { id: string };
     const shift = await prisma.shift.findUnique({
       where: { id },
       include: {
