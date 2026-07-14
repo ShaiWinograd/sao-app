@@ -11,6 +11,7 @@ import {
   type ServiceType,
 } from '@workforce/shared';
 import { api, authHeaders } from '../../../lib/api';
+import AzureMapsAddressInput, { type AddressSelection } from '../../../components/forms/AzureMapsAddressInput';
 
 type TimingChoice = 'all_known' | 'partial' | 'none';
 type FinishAction = 'lead' | 'quote' | 'schedule';
@@ -47,6 +48,43 @@ function emptyEstimate(): ComponentEstimate {
   return { estimatedWorkdays: '1', workersPerDay: '4', hoursPerDay: '5', requiresManager: true };
 }
 
+type AddressLabel = 'NEW_APARTMENT' | 'OLD_APARTMENT' | 'STORAGE' | 'OFFICE' | 'OTHER';
+
+const ADDRESS_LABELS: Record<AddressLabel, string> = {
+  NEW_APARTMENT: 'דירה חדשה',
+  OLD_APARTMENT: 'דירה נוכחית',
+  STORAGE: 'מחסן',
+  OFFICE: 'משרד',
+  OTHER: 'אחר',
+};
+
+type AddressEntry = {
+  label: AddressLabel;
+  raw: string;
+  selection: AddressSelection | null;
+  floor: string;
+  apartment: string;
+};
+
+function emptyAddress(): AddressEntry {
+  return { label: 'NEW_APARTMENT', raw: '', selection: null, floor: '', apartment: '' };
+}
+
+function buildFullAddress(entry: AddressEntry): string {
+  const base = entry.selection?.formattedAddress ?? entry.raw.trim();
+  const parts = [base];
+  if (entry.floor.trim()) parts.push(`קומה ${entry.floor.trim()}`);
+  if (entry.apartment.trim()) parts.push(`דירה ${entry.apartment.trim()}`);
+  return parts.join(', ');
+}
+
+function addHoursToTime(start: string, hours: number): string {
+  const [h, m] = start.split(':').map(Number);
+  const total = h * 60 + m + Math.round((Number.isFinite(hours) ? hours : 0) * 60);
+  const safe = ((total % 1440) + 1440) % 1440;
+  return `${String(Math.floor(safe / 60)).padStart(2, '0')}:${String(safe % 60).padStart(2, '0')}`;
+}
+
 export default function NewProjectWizard() {
   const router = useRouter();
   const { getToken } = useAuth();
@@ -62,6 +100,14 @@ export default function NewProjectWizard() {
   const [email, setEmail] = useState('');
   const [customerNotes, setCustomerNotes] = useState('');
 
+  // Step 1 — addresses
+  const [addresses, setAddresses] = useState<AddressEntry[]>([emptyAddress()]);
+  const setAddressField = useCallback(
+    (index: number, patch: Partial<AddressEntry>) =>
+      setAddresses((prev) => prev.map((a, i) => (i === index ? { ...a, ...patch } : a))),
+    [],
+  );
+
   // Step 2 — service
   const [selection, setSelection] = useState<ServiceSelection | null>(null);
 
@@ -74,6 +120,25 @@ export default function NewProjectWizard() {
     [selection],
   );
   const [estimates, setEstimates] = useState<Record<string, ComponentEstimate>>({});
+
+  // Step 4 — specific job dates per component (used when timing is known)
+  const [datesByType, setDatesByType] = useState<Record<string, string[]>>({});
+  const addDateFor = useCallback(
+    (type: ServiceType, date: string) => {
+      if (!date) return;
+      setDatesByType((prev) => {
+        const existing = prev[type] ?? [];
+        if (existing.includes(date)) return prev;
+        return { ...prev, [type]: [...existing, date].sort() };
+      });
+    },
+    [],
+  );
+  const removeDateFor = useCallback(
+    (type: ServiceType, date: string) =>
+      setDatesByType((prev) => ({ ...prev, [type]: (prev[type] ?? []).filter((d) => d !== date) })),
+    [],
+  );
 
   const getEstimate = useCallback(
     (type: ServiceType) => estimates[type] ?? emptyEstimate(),
@@ -151,6 +216,24 @@ export default function NewProjectWizard() {
         );
         const customerId = customerRes.data.id;
 
+        // Create validated addresses (Azure Maps selection required to persist).
+        const createdAddressIds: string[] = [];
+        for (const entry of addresses) {
+          if (!entry.selection && !entry.raw.trim()) continue;
+          const addrRes = await api.post<{ id: string }>(
+            '/addresses',
+            {
+              customerId,
+              fullAddress: buildFullAddress(entry),
+              label: entry.label,
+              ...(entry.apartment.trim() ? { apartmentDetails: entry.apartment.trim() } : {}),
+            },
+            auth,
+          );
+          createdAddressIds.push(addrRes.data.id);
+        }
+        const primaryAddressId = createdAddressIds[0];
+
         const status = action === 'lead' ? 'LEAD' : 'QUOTATION_DRAFT';
         const caseRes = await api.post<{ id: string }>(
           '/cases',
@@ -184,6 +267,39 @@ export default function NewProjectWizard() {
           );
         }
 
+        // Create scheduled jobs for any dates the user added (needs an address).
+        if (primaryAddressId) {
+          for (const type of components) {
+            const dates = datesByType[type] ?? [];
+            if (dates.length === 0) continue;
+            const estimate = getEstimate(type);
+            const workers = Number(estimate.workersPerDay) || 1;
+            const start = '09:00';
+            const end = addHoursToTime(start, Number(estimate.hoursPerDay) || 5);
+            for (const date of dates) {
+              await api.post(
+                '/jobs',
+                {
+                  caseId,
+                  customerId,
+                  addressId: primaryAddressId,
+                  jobType: type,
+                  date: `${date}T00:00:00.000Z`,
+                  plannedStart: `${date}T${start}:00.000Z`,
+                  plannedEnd: `${date}T${end}:00.000Z`,
+                  requiredWorkerCount: workers,
+                  staffingMode: 'MANAGER_APPROVAL',
+                  workerSlots: [
+                    ...(estimate.requiresManager ? [{ requiredSkill: 'SHIFT_LEADER' as const }] : []),
+                    ...Array.from({ length: workers }, () => ({})),
+                  ],
+                },
+                auth,
+              );
+            }
+          }
+        }
+
         router.push(`/cases/${caseId}`);
       } catch (err) {
         const isNetwork =
@@ -204,12 +320,14 @@ export default function NewProjectWizard() {
       phone,
       email,
       customerNotes,
+      addresses,
       serviceLabel,
       customerName,
       internalNotes,
       components,
       getEstimate,
       timing,
+      datesByType,
       reserveManager,
       router,
     ],
@@ -258,27 +376,90 @@ export default function NewProjectWizard() {
 
       <div className="mt-5 rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
         {step === 1 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <label className="text-sm">
-              <span className="text-gray-600">שם פרטי *</span>
-              <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
-            </label>
-            <label className="text-sm">
-              <span className="text-gray-600">שם משפחה</span>
-              <input value={lastName} onChange={(e) => setLastName(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
-            </label>
-            <label className="text-sm">
-              <span className="text-gray-600">טלפון *</span>
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
-            </label>
-            <label className="text-sm">
-              <span className="text-gray-600">אימייל</span>
-              <input value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
-            </label>
-            <label className="text-sm md:col-span-2">
-              <span className="text-gray-600">הערות</span>
-              <textarea value={customerNotes} onChange={(e) => setCustomerNotes(e.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
-            </label>
+          <div className="space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <label className="text-sm">
+                <span className="text-gray-600">שם פרטי *</span>
+                <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
+              </label>
+              <label className="text-sm">
+                <span className="text-gray-600">שם משפחה</span>
+                <input value={lastName} onChange={(e) => setLastName(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
+              </label>
+              <label className="text-sm">
+                <span className="text-gray-600">טלפון *</span>
+                <input value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
+              </label>
+              <label className="text-sm">
+                <span className="text-gray-600">אימייל</span>
+                <input value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
+              </label>
+              <label className="text-sm md:col-span-2">
+                <span className="text-gray-600">הערות</span>
+                <textarea value={customerNotes} onChange={(e) => setCustomerNotes(e.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
+              </label>
+            </div>
+
+            <div className="border-t border-gray-100 pt-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-gray-900">כתובות</h3>
+                <span className="text-[11px] text-gray-400">בחירה מתוך Azure Maps כדי לשמור כתובת</span>
+              </div>
+              <div className="space-y-3">
+                {addresses.map((entry, index) => (
+                  <div key={index} className="rounded-lg border border-gray-200 p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={entry.label}
+                        onChange={(e) => setAddressField(index, { label: e.target.value as AddressLabel })}
+                        aria-label="סוג כתובת"
+                        className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm bg-white"
+                      >
+                        {(Object.keys(ADDRESS_LABELS) as AddressLabel[]).map((key) => (
+                          <option key={key} value={key}>{ADDRESS_LABELS[key]}</option>
+                        ))}
+                      </select>
+                      {addresses.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setAddresses((prev) => prev.filter((_, i) => i !== index))}
+                          className="ms-auto text-xs text-rose-600 hover:text-rose-700"
+                        >
+                          הסרה
+                        </button>
+                      )}
+                    </div>
+                    <AzureMapsAddressInput
+                      value={entry.raw}
+                      onChange={(v) => setAddressField(index, { raw: v })}
+                      onSelectionChange={(sel) => setAddressField(index, { selection: sel })}
+                      placeholder="חיפוש כתובת…"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        value={entry.floor}
+                        onChange={(e) => setAddressField(index, { floor: e.target.value })}
+                        placeholder="קומה"
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                      />
+                      <input
+                        value={entry.apartment}
+                        onChange={(e) => setAddressField(index, { apartment: e.target.value })}
+                        placeholder="דירה"
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setAddresses((prev) => [...prev, emptyAddress()])}
+                  className="text-xs text-primary-700 hover:text-primary-800"
+                >
+                  + הוספת כתובת
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -361,6 +542,29 @@ export default function NewProjectWizard() {
                     <input type="checkbox" checked={estimate.requiresManager} onChange={(e) => setEstimateField(type, 'requiresManager', e.target.checked)} />
                     ראש צוות
                   </label>
+                  {timing !== 'none' && (
+                    <div className="mt-3">
+                      <span className="text-xs text-gray-600">תאריכי עבודה</span>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        {(datesByType[type] ?? []).map((d) => (
+                          <span key={d} className="inline-flex items-center gap-1 rounded-full bg-primary-50 border border-primary-200 px-2 py-0.5 text-[11px] text-primary-700">
+                            {d}
+                            <button type="button" onClick={() => removeDateFor(type, d)} aria-label="הסרת תאריך" className="text-primary-500 hover:text-primary-700">✕</button>
+                          </span>
+                        ))}
+                        <input
+                          type="date"
+                          onChange={(e) => {
+                            addDateFor(type, e.target.value);
+                            e.target.value = '';
+                          }}
+                          aria-label="הוספת תאריך עבודה"
+                          className="rounded-lg border border-gray-200 px-2 py-1 text-xs"
+                        />
+                      </div>
+                      <p className="mt-1 text-[11px] text-gray-400">הוספת תאריכים תיצור עבודות מתוזמנות (דורש כתובת אחת לפחות)</p>
+                    </div>
+                  )}
                   <p className="mt-2 text-xs text-gray-500">
                     סה״כ משוער: <span className="font-semibold text-gray-800">{hours} שעות עבודה</span>
                   </p>
