@@ -40,6 +40,7 @@ export default function MultiDayScheduler({ caseId, customerId, addresses, getTo
   const [rows, setRows] = useState<Row[]>([newRow()]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [offerUnpacking, setOfferUnpacking] = useState(false);
 
   const canSave = useMemo(
     () => Boolean(addressId) && rows.some((r) => r.date && r.start && r.end && r.workers > 0),
@@ -80,6 +81,10 @@ export default function MultiDayScheduler({ caseId, customerId, addresses, getTo
       }
       setMessage(`${created} ימי עבודה נשמרו כטיוטה.`);
       setRows([newRow()]);
+      // §6/§12: after saving packing days, offer to schedule unpacking too.
+      if (jobType === 'PACKING' && created > 0) {
+        setOfferUnpacking(true);
+      }
       await onCreated();
     } catch {
       setMessage(`נשמרו ${created} מתוך ${validRows.length} ימים. חלק מהימים נכשלו — ודאי שהתאריכים תקינים.`);
@@ -94,6 +99,33 @@ export default function MultiDayScheduler({ caseId, customerId, addresses, getTo
         <CalendarPlus className="w-4 h-4 text-primary-600" />
         <h2 className="text-sm font-semibold text-gray-900">תזמון מספר ימי עבודה</h2>
       </div>
+      {offerUnpacking && (
+        <div className="mb-3 rounded-lg border border-primary-200 bg-primary-50 p-3">
+          <p className="text-sm text-gray-900">ימי האריזה נשמרו.</p>
+          <p className="text-xs text-gray-600 mt-0.5">האם תרצי לקבוע עכשיו גם את ימי הפריקה?</p>
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setJobType('UNPACKING');
+                setRows([newRow()]);
+                setOfferUnpacking(false);
+                setMessage('');
+              }}
+              className="px-3 py-1.5 text-xs rounded-lg bg-primary-600 text-white hover:bg-primary-700"
+            >
+              קביעת פריקה
+            </button>
+            <button
+              type="button"
+              onClick={() => setOfferUnpacking(false)}
+              className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+            >
+              אחר כך
+            </button>
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
         <label className="text-sm">
           <span className="text-gray-600">סוג עבודה</span>
