@@ -17,6 +17,10 @@ import {
   getCaseNextAction,
   getCaseStepIndex,
   getCaseStepState,
+  computeFinalAmount,
+  evaluateFinalReview,
+  FINAL_REVIEW_REASON_LABELS,
+  type FinalReviewReason,
   type CaseStatusValue,
   type HoursComparisonEntry,
   type QuotationStatus,
@@ -569,6 +573,27 @@ export default function ProjectDetailPage() {
     return buildHoursComparison(entries);
   }, [planned, kase]);
 
+  const finalReview = useMemo(() => {
+    const reasons: FinalReviewReason[] = [];
+    if (hoursComparison.totals.actual === null) reasons.push('ATTENDANCE_CORRECTION_PENDING');
+    if (hub && !hub.readyForFinalReport) reasons.push('MISSING_FORM');
+    return evaluateFinalReview(reasons);
+  }, [hoursComparison, hub]);
+
+  const customerFinalAmount = useMemo(
+    () =>
+      computeFinalAmount({
+        quotationEstimate: comparison.approvedQuoteTotal,
+        scheduledEstimate: comparison.approvedQuoteTotal,
+        actualBillableHours: null,
+        fixedFees: 0,
+        supplies: 0,
+        discounts: 0,
+        hourlyRate: 0,
+      }),
+    [comparison],
+  );
+
   const packingAutomation = useMemo(() => {
     const jobs = kase?.jobs ?? [];
     const packingJobs = jobs.filter((job) => job.jobType === 'PACKING');
@@ -926,6 +951,61 @@ export default function ProjectDetailPage() {
 
       {tab === 'pricing' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm lg:col-span-2">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-900">סיכום תמחור ללקוח</h2>
+              <StatusBadge tone={finalReview.tone} label={finalReview.label} />
+            </div>
+            <dl className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+              <div>
+                <dt className="text-xs text-gray-500">הערכת הצעת מחיר</dt>
+                <dd className="text-gray-900 font-medium">{formatCurrency(comparison.approvedQuoteTotal)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-gray-500">שעות מתוזמנות</dt>
+                <dd className="text-gray-900 font-medium">{roundHours(hoursComparison.totals.scheduled)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-gray-500">שעות בפועל לחיוב</dt>
+                <dd className="text-gray-900 font-medium">
+                  {hoursComparison.totals.actual === null ? '—' : roundHours(hoursComparison.totals.actual)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-gray-500">עמלות קבועות</dt>
+                <dd className="text-gray-400">—</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-gray-500">חומרים</dt>
+                <dd className="text-gray-400">—</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-gray-500">הנחות</dt>
+                <dd className="text-gray-400">—</dd>
+              </div>
+            </dl>
+            <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
+              <span className="text-sm text-gray-600">סכום סופי</span>
+              <span className="text-lg font-bold text-gray-900">{formatCurrency(customerFinalAmount)}</span>
+            </div>
+            {finalReview.requiresReview && (
+              <div className="mt-3 rounded-lg border border-warning/40 bg-warning-bg p-3">
+                <p className="text-xs font-semibold text-warning mb-1">{finalReview.label}</p>
+                <ul className="text-xs text-gray-700 list-disc pe-4 space-y-0.5">
+                  {finalReview.reasons.map((reason) => (
+                    <li key={reason}>{FINAL_REVIEW_REASON_LABELS[reason]}</li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  onClick={() => setTab('activity')}
+                  className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-primary-600 text-white hover:bg-primary-700"
+                >
+                  בדיקת הסכום הסופי
+                </button>
+              </div>
+            )}
+          </section>
           <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-gray-900 mb-3">השוואת שעות עבודה</h2>
             <div className="overflow-x-auto">

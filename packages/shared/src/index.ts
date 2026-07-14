@@ -15,6 +15,7 @@ export * from './job-readiness';
 export * from './job-status';
 export * from './worker-availability';
 export * from './date-finder';
+export * from './pricing-review';
 export * from './staffing-insights';
 export * from './utils';
 export * from './dashboard-issues';
