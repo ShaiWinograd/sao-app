@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useUser, useAuth } from '@clerk/nextjs';
 import { dashboardIssueActionLabel, extractUrgentDashboardIssues, orderDashboardWorkflowSections } from '@workforce/shared';
-import { AlertTriangle, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, XCircle } from 'lucide-react';
+import { AlertTriangle, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Plus, XCircle } from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
 import { canViewSensitiveFinancials, resolveAppViewerRole } from '../../lib/viewer-access';
@@ -1145,12 +1145,27 @@ export default function DashboardPage() {
           <h1 className="text-xl font-bold text-gray-900">לוח בקרה</h1>
           <p className="text-sm text-gray-600 mt-0.5">{greetingText}</p>
         </div>
-        <a
-          href={feedbackMailtoHref}
-          className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50"
-        >
-          דיווח באג או בקשה
-        </a>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/cases/new"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            יצירת פרויקט חדש
+          </Link>
+          <Link
+            href="/jobs"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50"
+          >
+            יצירת עבודה מהירה
+          </Link>
+          <a
+            href={feedbackMailtoHref}
+            className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50"
+          >
+            דיווח באג או בקשה
+          </a>
+        </div>
       </div>
 
       {/* At-a-glance stat cards */}
