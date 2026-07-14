@@ -72,6 +72,21 @@ test.describe('Projects lifecycle board', () => {
     await expect(leadColumn.getByText('מעבר דירה משפחת כהן')).toBeVisible();
   });
 
+  test('shows a filterable list view', async ({ page }) => {
+    await page.goto('/cases/board');
+
+    await page.getByRole('button', { name: 'רשימה' }).click();
+    const list = page.getByTestId('projects-list');
+    await expect(list).toBeVisible();
+    await expect(list.getByText('מעבר דירה משפחת כהן')).toBeVisible();
+
+    await page.getByPlaceholder('חיפוש לפי שם פרויקט או לקוח').fill('לוי');
+    await expect(list.getByText('לא נמצאו פרויקטים')).toBeVisible();
+
+    await page.getByPlaceholder('חיפוש לפי שם פרויקט או לקוח').fill('כהן');
+    await expect(list.getByText('מעבר דירה משפחת כהן')).toBeVisible();
+  });
+
   test('changing a status issues a PATCH honoring allowed transitions', async ({ page }) => {
     let patched = false;
     await page.route('**/api/v1/cases/case-lead-1', async (route) => {
