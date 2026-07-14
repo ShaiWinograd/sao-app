@@ -972,7 +972,10 @@ export default function ProjectDetailPage() {
           </section>
 
           {quotations.length === 0 ? (
-            <p className="text-sm text-gray-500">אין הצעות מחיר לפרוייקט זה</p>
+            <div className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center">
+              <p className="text-sm font-medium text-gray-700">עדיין לא הוכנה הצעת מחיר</p>
+              <p className="mt-1 text-xs text-gray-500">הצעת המחיר תתבסס על היקף העבודה המשוער של הפרויקט.</p>
+            </div>
           ) : (
             <ul className="space-y-3">
               {quotations.map((quotation) => {
@@ -1095,7 +1098,10 @@ export default function ProjectDetailPage() {
         <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-gray-900 mb-3">עבודות הפרוייקט</h2>
           {kase.jobs.length === 0 ? (
-            <p className="text-sm text-gray-400">טרם נקבעו עבודות לפרוייקט זה</p>
+            <div className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center">
+              <p className="text-sm font-medium text-gray-700">עדיין לא נקבעו עבודות לפרויקט</p>
+              <p className="mt-1 text-xs text-gray-500">אפשר לשלוח ולאשר הצעת מחיר גם לפני שהתאריכים ידועים.</p>
+            </div>
           ) : (
             <ul className="divide-y divide-gray-100">
               {[...kase.jobs]
@@ -1129,7 +1135,7 @@ export default function ProjectDetailPage() {
       {tab === 'activity' && (
         <div className="space-y-5">
           <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-gray-900 mb-3">אוטומציות</h2>
+            <h2 className="text-sm font-semibold text-gray-900 mb-3">שליחות מתוזמנות</h2>
             <div className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2">
               <div>
                 <p className="text-sm text-gray-800">טופס ציוד לאריזה</p>
