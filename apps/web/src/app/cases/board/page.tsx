@@ -73,6 +73,7 @@ export default function ProjectBoardPage() {
   const [view, setView] = useState<'board' | 'list'>('board');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | CaseStatusValue>('ALL');
+  const [jobTypeFilter, setJobTypeFilter] = useState<'ALL' | 'PACKING' | 'UNPACKING' | 'HOME_ORGANIZATION'>('ALL');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -168,17 +169,23 @@ export default function ProjectBoardPage() {
     [draggedId, columnPrimaryStatus, allCases, changeStatus],
   );
 
+  const matchesJobType = useCallback(
+    (kase: BoardCase) => jobTypeFilter === 'ALL' || kase.jobs.some((job) => job.jobType === jobTypeFilter),
+    [jobTypeFilter],
+  );
+
   const filteredCases = useMemo(() => {
     const query = search.trim().toLowerCase();
     return allCases
       .filter((kase) => {
         if (statusFilter !== 'ALL' && kase.status !== statusFilter) return false;
+        if (!matchesJobType(kase)) return false;
         if (!query) return true;
         const haystack = `${kase.name} ${kase.customer.firstName} ${kase.customer.lastName}`.toLowerCase();
         return haystack.includes(query);
       })
       .sort((a, b) => a.name.localeCompare(b.name, 'he'));
-  }, [allCases, search, statusFilter]);
+  }, [allCases, search, statusFilter, matchesJobType]);
 
   return (
     <div className="p-6" dir="rtl">
@@ -243,6 +250,17 @@ export default function ProjectBoardPage() {
             </option>
           ))}
         </select>
+        <select
+          aria-label="סינון לפי סוג עבודה"
+          value={jobTypeFilter}
+          onChange={(event) => setJobTypeFilter(event.target.value as 'ALL' | 'PACKING' | 'UNPACKING' | 'HOME_ORGANIZATION')}
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+        >
+          <option value="ALL">כל סוגי העבודה</option>
+          <option value="PACKING">אריזה</option>
+          <option value="UNPACKING">פריקה</option>
+          <option value="HOME_ORGANIZATION">סידור</option>
+        </select>
       </div>
 
       {!isLoading && board && allCases.length === 0 && (
@@ -302,15 +320,15 @@ export default function ProjectBoardPage() {
               <header className="px-3 py-2 border-b border-gray-200 flex items-center justify-between">
                 <span className="text-sm font-semibold text-gray-800">{column.title}</span>
                 <span className="text-xs text-gray-500 bg-white rounded-full px-2 py-0.5 border border-gray-200">
-                  {column.items.length}
+                  {column.items.filter(matchesJobType).length}
                 </span>
               </header>
 
               <div className="p-2 space-y-2 min-h-[80px]">
-                {column.items.length === 0 ? (
+                {column.items.filter(matchesJobType).length === 0 ? (
                   <p className="text-xs text-gray-400 text-center py-4">אין פרוייקטים</p>
                 ) : (
-                  column.items.map((kase) => {
+                  column.items.filter(matchesJobType).map((kase) => {
                     const transitions = getAllowedCaseTransitions(kase.status);
                     return (
                       <article
