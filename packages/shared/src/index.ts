@@ -9,6 +9,7 @@ export * from './schemas';
 export * from './quotations';
 export * from './planned-services';
 export * from './plan-variance';
+export * from './hours-comparison';
 export * from './job-readiness';
 export * from './worker-availability';
 export * from './staffing-insights';
