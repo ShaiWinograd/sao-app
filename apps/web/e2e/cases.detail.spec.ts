@@ -117,6 +117,10 @@ test.describe('Project detail page', () => {
     await expect(page.getByRole('heading', { name: 'השוואת תכנון מול ביצוע' })).toBeVisible();
     await expect(page.getByText('חיוב מול הצעה מאושרת')).toBeVisible();
     await expect(page.getByText('תשלום מול חיוב')).toBeVisible();
+
+    // Estimated / scheduled / actual hours table
+    await expect(page.getByRole('heading', { name: 'השוואת שעות עבודה' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'מתוזמן' })).toBeVisible();
   });
 
   test('shows the lifecycle stepper and next-action card', async ({ page }) => {

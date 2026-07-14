@@ -12,9 +12,11 @@ import {
   caseStatusTone,
   computePlanVariance,
   formatVariancePct,
+  buildHoursComparison,
   getCaseNextAction,
   getCaseStepIndex,
   type CaseStatusValue,
+  type HoursComparisonEntry,
   type QuotationStatus,
   type StatusTone,
 } from '@workforce/shared';
@@ -45,12 +47,22 @@ type TimingPrecision =
   | 'EXPECTED_YEAR'
   | 'UNKNOWN';
 
+type ApiCaseShift = {
+  id: string;
+  approvedHours: number | string | null;
+  actualStart: string | null;
+  actualEnd: string | null;
+};
+
 type ApiCaseJob = {
   id: string;
   date: string;
   jobType: ServiceType;
   status: string;
   requiredWorkerCount: number;
+  plannedStart?: string | null;
+  plannedEnd?: string | null;
+  shifts?: ApiCaseShift[];
   address?: { fullAddress: string } | null;
 };
 
@@ -188,6 +200,10 @@ function formatDate(value: string | null | undefined): string {
   if (!value) return '—';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('he-IL');
+}
+
+function roundHours(value: number): number {
+  return Number.isInteger(value) ? value : Math.round(value * 10) / 10;
 }
 
 export default function ProjectDetailPage() {
@@ -434,6 +450,39 @@ export default function ProjectDetailPage() {
     }, 0);
     return { estimatedHours, approvedQuoteTotal };
   }, [planned, quotations]);
+
+  const hoursComparison = useMemo(() => {
+    const entries: HoursComparisonEntry[] = planned.map((ps) => ({
+      serviceType: ps.serviceType,
+      estimated: estimateWorkerHours({
+        estimatedWorkdays: ps.estimatedWorkdays,
+        workersPerDay: ps.workersPerDay,
+        hoursPerDay: typeof ps.hoursPerDay === 'string' ? Number(ps.hoursPerDay) : ps.hoursPerDay,
+      }),
+    }));
+    for (const job of kase?.jobs ?? []) {
+      const durationHours =
+        job.plannedStart && job.plannedEnd
+          ? Math.max(0, (new Date(job.plannedEnd).getTime() - new Date(job.plannedStart).getTime()) / 3_600_000)
+          : 0;
+      let actual: number | null = null;
+      for (const shift of job.shifts ?? []) {
+        const approved = shift.approvedHours != null ? Number(shift.approvedHours) : null;
+        const fromActual =
+          shift.actualStart && shift.actualEnd
+            ? Math.max(0, (new Date(shift.actualEnd).getTime() - new Date(shift.actualStart).getTime()) / 3_600_000)
+            : null;
+        const value = approved ?? fromActual;
+        if (value != null) actual = (actual ?? 0) + value;
+      }
+      entries.push({
+        serviceType: job.jobType,
+        scheduled: job.requiredWorkerCount * durationHours,
+        actual,
+      });
+    }
+    return buildHoursComparison(entries);
+  }, [planned, kase]);
 
   if (isLoading) {
     return (
@@ -750,6 +799,48 @@ export default function ProjectDetailPage() {
                 ))}
               </ul>
             )}
+          </section>
+
+          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <h2 className="text-sm font-semibold text-gray-900 mb-3">השוואת שעות עבודה</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-gray-500 border-b border-gray-100">
+                    <th className="text-right font-medium py-2">שירות</th>
+                    <th className="text-right font-medium py-2">משוער</th>
+                    <th className="text-right font-medium py-2">מתוזמן</th>
+                    <th className="text-right font-medium py-2">בפועל</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {hoursComparison.rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="py-3 text-gray-400">אין נתוני שעות לפרוייקט זה</td>
+                    </tr>
+                  ) : (
+                    hoursComparison.rows.map((row) => (
+                      <tr key={row.serviceType} className="border-b border-gray-50">
+                        <td className="py-2 text-gray-700">{SERVICE_LABELS[row.serviceType as ServiceType] ?? row.serviceType}</td>
+                        <td className="py-2 text-gray-900">{roundHours(row.estimated)}</td>
+                        <td className="py-2 text-gray-900">{roundHours(row.scheduled)}</td>
+                        <td className="py-2 text-gray-900">{row.actual === null ? '—' : roundHours(row.actual)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {hoursComparison.rows.length > 0 && (
+                  <tfoot>
+                    <tr className="font-semibold text-gray-900">
+                      <td className="py-2">סה״כ</td>
+                      <td className="py-2">{roundHours(hoursComparison.totals.estimated)}</td>
+                      <td className="py-2">{roundHours(hoursComparison.totals.scheduled)}</td>
+                      <td className="py-2">{hoursComparison.totals.actual === null ? '—' : roundHours(hoursComparison.totals.actual)}</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
           </section>
 
           <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
