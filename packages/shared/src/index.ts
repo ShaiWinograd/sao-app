@@ -12,6 +12,7 @@ export * from './plan-variance';
 export * from './hours-comparison';
 export * from './job-readiness';
 export * from './worker-availability';
+export * from './date-finder';
 export * from './staffing-insights';
 export * from './utils';
 export * from './dashboard-issues';
