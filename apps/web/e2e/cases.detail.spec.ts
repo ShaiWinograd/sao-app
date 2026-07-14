@@ -152,6 +152,35 @@ test.describe('Project detail page', () => {
     await expect.poll(() => approved).toBe(true);
   });
 
+  test('opens a quotation preview from the quotations tab', async ({ page }) => {
+    await page.route('**/api/v1/quotations/quote-1/preview', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          quotationId: 'quote-1',
+          caseName: 'מעבר דירה משפחת כהן',
+          versionNumber: 1,
+          status: 'SENT',
+          estimatedTotal: 5400,
+          includedServices: ['אריזת דירה 4 חדרים'],
+          datePrecision: 'EXPECTED_MONTH',
+          timingNote: null,
+          validUntil: null,
+          datesFinal: false,
+        }),
+      });
+    });
+
+    await page.goto('/cases/case-1');
+    await page.getByRole('tab', { name: 'הצעות מחיר' }).click();
+    await page.getByRole('button', { name: 'תצוגה מקדימה' }).click();
+
+    await expect(page.getByRole('heading', { name: 'תצוגה מקדימה — הצעת מחיר' })).toBeVisible();
+    await expect(page.getByText('אריזת דירה 4 חדרים')).toBeVisible();
+    await expect(page.getByText('המועדים המדויקים יתואמו בהמשך ובהתאם לזמינות.')).toBeVisible();
+  });
+
   test('adds planned services from a moving selection', async ({ page }) => {
     let fromSelection = false;
     await page.route('**/api/v1/planned-services/from-selection', async (route) => {

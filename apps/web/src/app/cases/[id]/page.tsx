@@ -103,6 +103,19 @@ type ApiQuotation = {
   versions: ApiQuotationVersion[];
 };
 
+type ApiQuotationPreview = {
+  quotationId: string;
+  caseName: string;
+  versionNumber: number;
+  status: QuotationStatus;
+  estimatedTotal: number | string;
+  includedServices: string[];
+  datePrecision: string;
+  timingNote: string | null;
+  validUntil: string | null;
+  datesFinal: boolean;
+};
+
 type FormCompletionStatus = 'COMPLETED' | 'PARTIALLY_COMPLETED' | 'NOT_COMPLETED';
 
 type ApiCaseHubForm = {
@@ -171,6 +184,14 @@ const QUOTATION_STATUS_LABELS: Record<QuotationStatus, string> = {
   EXPIRED: 'פג תוקף',
 };
 
+const DATE_PRECISION_PREVIEW: Record<string, string> = {
+  EXACT: 'תאריכים מדויקים',
+  PARTIAL: 'תאריכים חלקיים',
+  EXPECTED_MONTH: 'חודש משוער',
+  DATE_RANGE: 'טווח תאריכים',
+  TO_BE_DETERMINED: 'טרם נקבעו',
+};
+
 const JOB_STATUS_LABELS: Record<string, string> = {
   DRAFT: 'טיוטה',
   PUBLISHED: 'פורסמה',
@@ -218,6 +239,7 @@ export default function ProjectDetailPage() {
   const [quotations, setQuotations] = useState<ApiQuotation[]>([]);
   const [comms, setComms] = useState<ProjectCommunicationLogEntry[]>([]);
   const [hub, setHub] = useState<ApiCaseHub | null>(null);
+  const [preview, setPreview] = useState<ApiQuotationPreview | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -955,6 +977,23 @@ export default function ProjectDetailPage() {
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <button
+                        onClick={() => {
+                          void (async () => {
+                            try {
+                              const auth = await authHeaders(getToken);
+                              const res = await api.get<ApiQuotationPreview>(`/quotations/${quotation.id}/preview`, auth);
+                              setPreview(res.data);
+                            } catch {
+                              setError('טעינת התצוגה המקדימה נכשלה');
+                            }
+                          })();
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        תצוגה מקדימה
+                      </button>
+                      <button
                         onClick={() =>
                           void runQuotationAction(async () => {
                             const auth = await authHeaders(getToken);
@@ -966,6 +1005,19 @@ export default function ProjectDetailPage() {
                       >
                         <Send className="w-3.5 h-3.5" />
                         שלח בוואטסאפ
+                      </button>
+                      <button
+                        onClick={() =>
+                          void runQuotationAction(async () => {
+                            const auth = await authHeaders(getToken);
+                            await api.post(`/quotations/${quotation.id}/send`, { channel: 'EMAIL', recipient: kase.customer.email }, auth);
+                          }, 'רישום שליחת הצעת המחיר נכשל')
+                        }
+                        disabled={busy || isApproved}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        שלח באימייל
                       </button>
                       <button
                         onClick={() =>
@@ -992,6 +1044,19 @@ export default function ProjectDetailPage() {
                       >
                         <XCircle className="w-3.5 h-3.5" />
                         סמן כנדחתה
+                      </button>
+                      <button
+                        onClick={() =>
+                          void runQuotationAction(async () => {
+                            const auth = await authHeaders(getToken);
+                            await api.post(`/quotations/${quotation.id}/expire`, {}, auth);
+                          }, 'סימון פג תוקף נכשל')
+                        }
+                        disabled={busy || isApproved}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+                      >
+                        <Clock className="w-3.5 h-3.5" />
+                        סמן כפג תוקף
                       </button>
                       <span className="ms-auto inline-flex items-center gap-1 text-[11px] text-gray-400">
                         <FileText className="w-3.5 h-3.5" />
@@ -1169,6 +1234,46 @@ export default function ProjectDetailPage() {
               </ul>
             )}
           </section>
+        </div>
+      )}
+
+      {preview && (
+        <div
+          className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4"
+          onClick={() => setPreview(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl bg-white shadow-xl p-5"
+            onClick={(event) => event.stopPropagation()}
+            dir="rtl"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-bold text-gray-900">תצוגה מקדימה — הצעת מחיר</h3>
+              <button onClick={() => setPreview(null)} className="text-gray-400 hover:text-gray-600">
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-700">
+              {preview.caseName} · גרסה {preview.versionNumber}
+            </p>
+            <p className="mt-2 text-lg font-bold text-gray-900">{formatCurrency(preview.estimatedTotal)}</p>
+            {preview.includedServices.length > 0 && (
+              <ul className="mt-2 text-sm text-gray-600 list-disc pr-5 space-y-0.5">
+                {preview.includedServices.map((service, index) => (
+                  <li key={index}>{service}</li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-3 text-xs text-gray-500">
+              דיוק תאריכים: {DATE_PRECISION_PREVIEW[preview.datePrecision] ?? preview.datePrecision}
+            </p>
+            {!preview.datesFinal && (
+              <p className="mt-1 text-xs text-amber-700">המועדים המדויקים יתואמו בהמשך ובהתאם לזמינות.</p>
+            )}
+            {preview.validUntil && (
+              <p className="mt-1 text-xs text-gray-500">בתוקף עד: {formatDate(preview.validUntil)}</p>
+            )}
+          </div>
         </div>
       )}
     </div>
