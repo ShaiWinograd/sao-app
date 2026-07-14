@@ -100,6 +100,9 @@ export default function JobDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [assignSlotId, setAssignSlotId] = useState<string | null>(null);
+  const [assignCandidates, setAssignCandidates] = useState<Array<{ id: string; name: string; available: boolean }>>([]);
+  const [assignWorkerId, setAssignWorkerId] = useState('');
 
   const load = useCallback(async () => {
     if (!jobId) return;
@@ -176,6 +179,46 @@ export default function JobDetailPage() {
     (slotId: string) => job?.shifts.find((shift) => shift.slotId === slotId) ?? null,
     [job],
   );
+
+  const openAssign = useCallback(
+    async (slot: { id: string; requiredSkill: string | null }) => {
+      if (!job) return;
+      setAssignSlotId(slot.id);
+      setAssignWorkerId('');
+      setAssignCandidates([]);
+      try {
+        const auth = await authHeaders(getToken);
+        const date = job.date.slice(0, 10);
+        const requiresManager = slot.requiredSkill === MANAGER_SKILL;
+        const skillParam = slot.requiredSkill ? `&skill=${encodeURIComponent(slot.requiredSkill)}` : '';
+        const res = await api.get<Array<{ id: string; name: string; available: boolean }>>(
+          `/workers/availability?date=${date}${skillParam}&requiresManager=${requiresManager}`,
+          auth,
+        );
+        setAssignCandidates(res.data);
+      } catch {
+        setError('טעינת העובדים הזמינים נכשלה');
+      }
+    },
+    [job, getToken],
+  );
+
+  const assignWorker = useCallback(async () => {
+    if (!job || !assignSlotId || !assignWorkerId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const auth = await authHeaders(getToken);
+      await api.post('/shifts/admin-assign', { jobId: job.id, workerId: assignWorkerId, slotId: assignSlotId }, auth);
+      setAssignSlotId(null);
+      setAssignWorkerId('');
+      await load();
+    } catch {
+      setError('שיבוץ העובד נכשל (ייתכן שהעובד כבר משובץ באותו יום או שהעמדה תפוסה)');
+    } finally {
+      setBusy(false);
+    }
+  }, [job, assignSlotId, assignWorkerId, getToken, load]);
 
   const jobBadge = useMemo(() => {
     if (!job) return null;
@@ -346,15 +389,55 @@ export default function JobDetailPage() {
                 {managerSlots.map((slot) => {
                   const shift = shiftForSlot(slot.id);
                   return (
-                    <li key={slot.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2">
-                      <span className="inline-flex items-center gap-2 text-sm text-gray-800">
-                        <UserCheck className="w-4 h-4 text-gray-400" />
-                        {shift ? shift.workerNameSnapshot : 'מקום פנוי'}
-                      </span>
-                      {shift ? (
-                        renderShiftStatus(shift)
-                      ) : (
-                        <StatusBadge tone="warning" label="לא מאויש" />
+                    <li key={slot.id} className="rounded-lg border border-gray-100 px-3 py-2">
+                      <div className="flex items-center justify-between">
+                        <span className="inline-flex items-center gap-2 text-sm text-gray-800">
+                          <UserCheck className="w-4 h-4 text-gray-400" />
+                          {shift ? shift.workerNameSnapshot : 'מקום פנוי'}
+                        </span>
+                        {shift ? (
+                          renderShiftStatus(shift)
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <StatusBadge tone="warning" label="לא מאויש" />
+                            <button
+                              onClick={() => void openAssign(slot)}
+                              className="px-2.5 py-1 text-[11px] rounded-lg border border-primary-200 text-primary-700 hover:bg-primary-50"
+                            >
+                              שיבוץ
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {!shift && assignSlotId === slot.id && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <select
+                            value={assignWorkerId}
+                            onChange={(e) => setAssignWorkerId(e.target.value)}
+                            aria-label="בחירת עובד לשיבוץ"
+                            className="flex-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs bg-white"
+                          >
+                            <option value="">בחירת עובד…</option>
+                            {assignCandidates.map((c) => (
+                              <option key={c.id} value={c.id} disabled={!c.available}>
+                                {c.name}{c.available ? '' : ' (לא זמין)'}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => void assignWorker()}
+                            disabled={busy || !assignWorkerId}
+                            className="px-3 py-1.5 text-xs rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+                          >
+                            אישור
+                          </button>
+                          <button
+                            onClick={() => setAssignSlotId(null)}
+                            className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                          >
+                            ביטול
+                          </button>
+                        </div>
                       )}
                     </li>
                   );
@@ -372,12 +455,52 @@ export default function JobDetailPage() {
                 {workerSlots.map((slot) => {
                   const shift = shiftForSlot(slot.id);
                   return (
-                    <li key={slot.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2">
-                      <span className="text-sm text-gray-800">{shift ? shift.workerNameSnapshot : 'מקום פנוי'}</span>
-                      {shift ? (
-                        renderShiftStatus(shift)
-                      ) : (
-                        <StatusBadge tone="neutral" label="פנוי" />
+                    <li key={slot.id} className="rounded-lg border border-gray-100 px-3 py-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-800">{shift ? shift.workerNameSnapshot : 'מקום פנוי'}</span>
+                        {shift ? (
+                          renderShiftStatus(shift)
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <StatusBadge tone="neutral" label="פנוי" />
+                            <button
+                              onClick={() => void openAssign(slot)}
+                              className="px-2.5 py-1 text-[11px] rounded-lg border border-primary-200 text-primary-700 hover:bg-primary-50"
+                            >
+                              שיבוץ
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {!shift && assignSlotId === slot.id && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <select
+                            value={assignWorkerId}
+                            onChange={(e) => setAssignWorkerId(e.target.value)}
+                            aria-label="בחירת עובד לשיבוץ"
+                            className="flex-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs bg-white"
+                          >
+                            <option value="">בחירת עובד…</option>
+                            {assignCandidates.map((c) => (
+                              <option key={c.id} value={c.id} disabled={!c.available}>
+                                {c.name}{c.available ? '' : ' (לא זמין)'}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => void assignWorker()}
+                            disabled={busy || !assignWorkerId}
+                            className="px-3 py-1.5 text-xs rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+                          >
+                            אישור
+                          </button>
+                          <button
+                            onClick={() => setAssignSlotId(null)}
+                            className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                          >
+                            ביטול
+                          </button>
+                        </div>
                       )}
                     </li>
                   );
