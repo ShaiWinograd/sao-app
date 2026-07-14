@@ -249,6 +249,12 @@ export default function ProjectDetailPage() {
   const [newTotal, setNewTotal] = useState('');
   const [newServices, setNewServices] = useState('');
 
+  const [approvalFor, setApprovalFor] = useState<string | null>(null);
+  const [approvalMethod, setApprovalMethod] = useState('DIGITAL');
+  const [approvalNotes, setApprovalNotes] = useState('');
+  const [approvalAttachment, setApprovalAttachment] = useState('');
+  const [shareMessage, setShareMessage] = useState('');
+
   const [plannedForm, setPlannedForm] = useState({
     serviceType: 'PACKING' as ServiceType,
     timingPrecision: 'UNKNOWN' as TimingPrecision,
@@ -311,6 +317,54 @@ export default function ProjectDetailPage() {
       }
     },
     [caseId, getToken],
+  );
+
+  const createQuotationVersion = useCallback(
+    (quotationId: string, isAddendum: boolean) =>
+      runQuotationAction(async () => {
+        const auth = await authHeaders(getToken);
+        const preview = await api.get<ApiQuotationPreview>(`/quotations/${quotationId}/preview`, auth);
+        await api.post(
+          `/quotations/${quotationId}/versions`,
+          {
+            estimatedTotal: Number(preview.data.estimatedTotal),
+            includedServices: preview.data.includedServices,
+            datePrecision: preview.data.datePrecision,
+            isAddendum,
+          },
+          auth,
+        );
+      }, isAddendum ? 'יצירת תוספת נכשלה' : 'יצירת גרסה חדשה נכשלה'),
+    [getToken, runQuotationAction],
+  );
+
+  const copyQuotationLink = useCallback((quotationId: string) => {
+    if (typeof window === 'undefined') return;
+    const link = `${window.location.origin}/quotations/${quotationId}`;
+    void navigator.clipboard?.writeText(link).then(
+      () => setShareMessage('קישור השיתוף הועתק ללוח'),
+      () => setShareMessage(link),
+    );
+  }, []);
+
+  const submitApproval = useCallback(
+    (quotationId: string) =>
+      runQuotationAction(async () => {
+        const auth = await authHeaders(getToken);
+        await api.post(
+          `/quotations/${quotationId}/approve`,
+          {
+            approvalMethod,
+            approvalNotes: approvalNotes.trim() || undefined,
+            approvalAttachmentUrl: approvalAttachment.trim() || undefined,
+          },
+          auth,
+        );
+        setApprovalFor(null);
+        setApprovalNotes('');
+        setApprovalAttachment('');
+      }, 'תיעוד אישור הלקוח נכשל'),
+    [getToken, runQuotationAction, approvalMethod, approvalNotes, approvalAttachment],
   );
 
   const handleCreateQuotation = useCallback(() => {
@@ -966,6 +1020,11 @@ export default function ProjectDetailPage() {
 
       {tab === 'quotations' && (
         <div className="space-y-5">
+          {shareMessage && (
+            <div className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-xs text-primary-700">
+              {shareMessage}
+            </div>
+          )}
           <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-gray-900 mb-3">הצעת מחיר חדשה</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1071,12 +1130,12 @@ export default function ProjectDetailPage() {
                         שלח באימייל
                       </button>
                       <button
-                        onClick={() =>
-                          void runQuotationAction(async () => {
-                            const auth = await authHeaders(getToken);
-                            await api.post(`/quotations/${quotation.id}/approve`, { approvalMethod: 'MANUAL' }, auth);
-                          }, 'תיעוד אישור הלקוח נכשל')
-                        }
+                        onClick={() => {
+                          setApprovalFor(quotation.id);
+                          setApprovalMethod('DIGITAL');
+                          setApprovalNotes('');
+                          setApprovalAttachment('');
+                        }}
                         disabled={busy || isApproved}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
                       >
@@ -1115,11 +1174,82 @@ export default function ProjectDetailPage() {
                         <Clock className="w-3.5 h-3.5" />
                         סמן כפג תוקף
                       </button>
+                      <button
+                        onClick={() => void createQuotationVersion(quotation.id, false)}
+                        disabled={busy}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        גרסה חדשה
+                      </button>
+                      <button
+                        onClick={() => void createQuotationVersion(quotation.id, true)}
+                        disabled={busy}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        תוספת להצעה
+                      </button>
+                      <button
+                        onClick={() => copyQuotationLink(quotation.id)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        העתקת קישור
+                      </button>
                       <span className="ms-auto inline-flex items-center gap-1 text-[11px] text-gray-400">
                         <FileText className="w-3.5 h-3.5" />
                         {quotation.versions.length} גרסאות
                       </span>
                     </div>
+                    {approvalFor === quotation.id && (
+                      <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+                        <p className="text-xs font-semibold text-emerald-800">תיעוד אישור לקוח</p>
+                        <label className="block text-xs text-gray-700">
+                          <span className="block mb-1">אופן האישור</span>
+                          <select
+                            value={approvalMethod}
+                            onChange={(e) => setApprovalMethod(e.target.value)}
+                            className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-xs bg-white"
+                          >
+                            <option value="DIGITAL">אישור דיגיטלי</option>
+                            <option value="SIGNED">מסמך חתום</option>
+                            <option value="WHATSAPP">וואטסאפ</option>
+                            <option value="EMAIL">אימייל</option>
+                            <option value="VERBAL">אישור טלפוני/בעל פה</option>
+                            <option value="MANUAL">הזנה ידנית</option>
+                          </select>
+                        </label>
+                        <textarea
+                          value={approvalNotes}
+                          onChange={(e) => setApprovalNotes(e.target.value)}
+                          placeholder="הערות (אופציונלי)"
+                          className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-xs min-h-[60px]"
+                        />
+                        <input
+                          value={approvalAttachment}
+                          onChange={(e) => setApprovalAttachment(e.target.value)}
+                          placeholder="קישור לצילום מסך / מסמך (אופציונלי)"
+                          className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-xs"
+                        />
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => void submitApproval(quotation.id)}
+                            disabled={busy}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            שמירת האישור
+                          </button>
+                          <button
+                            onClick={() => setApprovalFor(null)}
+                            className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                          >
+                            ביטול
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </li>
                 );
               })}
