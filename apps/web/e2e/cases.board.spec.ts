@@ -72,6 +72,26 @@ test.describe('Projects lifecycle board', () => {
     await expect(leadColumn.getByText('מעבר דירה משפחת כהן')).toBeVisible();
   });
 
+  test('shows the no-projects empty state with a create CTA', async ({ page }) => {
+    await page.route('**/api/v1/cases/board', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          tabs: [{ key: 'sale_planning', title: 'מכירה ותכנון', columns: [{ key: 'lead', title: 'ליד חדש', items: [] }] }],
+          unplaced: [],
+        }),
+      });
+    });
+
+    await page.goto('/cases/board');
+
+    const empty = page.getByTestId('board-empty');
+    await expect(empty).toBeVisible();
+    await expect(empty.getByText('עדיין אין פרויקטים')).toBeVisible();
+    await expect(empty.getByRole('link', { name: 'יצירת פרויקט' })).toBeVisible();
+  });
+
   test('shows a filterable list view', async ({ page }) => {
     await page.goto('/cases/board');
 
