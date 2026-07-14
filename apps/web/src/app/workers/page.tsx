@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useUser } from '@clerk/nextjs';
 import { Briefcase, Check, Mail, MessageCircle, Plus, Search, Users, Wallet } from 'lucide-react';
 import { canViewSensitiveFinancials, resolveAppViewerRole } from '../../lib/viewer-access';
@@ -395,13 +396,21 @@ export default function WorkersPage() {
                 <tr key={worker.id} className="hover:bg-primary-50/40">
                   <td className="px-4 py-3 text-sm font-semibold text-gray-900">
                     {workersView === 'active' ? (
-                      <button
-                        type="button"
-                        onClick={() => openEditWorker(worker)}
-                        className="text-primary-700 hover:text-primary-800 hover:underline underline-offset-2"
-                      >
-                        {worker.name}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openEditWorker(worker)}
+                          className="text-primary-700 hover:text-primary-800 hover:underline underline-offset-2"
+                        >
+                          {worker.name}
+                        </button>
+                        <Link
+                          href={`/workers/${worker.id}`}
+                          className="text-[11px] text-gray-400 hover:text-primary-600"
+                        >
+                          פרופיל
+                        </Link>
+                      </div>
                     ) : (
                       worker.name
                     )}
