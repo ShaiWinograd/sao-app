@@ -10,6 +10,7 @@ export * from './quotations';
 export * from './planned-services';
 export * from './plan-variance';
 export * from './job-readiness';
+export * from './worker-availability';
 export * from './staffing-insights';
 export * from './utils';
 export * from './dashboard-issues';
