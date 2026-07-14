@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Plus } from 'lucide-react';
 import { caseStatusTone, getAllowedCaseTransitions, type CaseStatusValue } from '@workforce/shared';
 import { api, authHeaders } from '../../../lib/api';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
@@ -115,13 +115,22 @@ export default function ProjectBoardPage() {
           <h1 className="text-2xl font-bold text-gray-900">לוח פרוייקטים</h1>
           <p className="text-sm text-gray-500 mt-1">מעקב אחר פרוייקטים לאורך מחזור החיים</p>
         </div>
-        <button
-          onClick={() => void loadBoard()}
-          className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
-        >
-          <RefreshCw className="w-4 h-4" />
-          רענון
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/cases/new"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700"
+          >
+            <Plus className="w-4 h-4" />
+            יצירת פרויקט חדש
+          </Link>
+          <button
+            onClick={() => void loadBoard()}
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+          >
+            <RefreshCw className="w-4 h-4" />
+            רענון
+          </button>
+        </div>
       </div>
 
       {error && (
