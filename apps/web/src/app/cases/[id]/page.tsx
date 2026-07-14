@@ -235,7 +235,7 @@ export default function ProjectDetailPage() {
   const caseId = params?.id;
   const { getToken } = useAuth();
 
-  const [tab, setTab] = useState<'overview' | 'quotations' | 'jobs' | 'activity' | 'forms'>('overview');
+  const [tab, setTab] = useState<'overview' | 'quotations' | 'jobs' | 'activity' | 'forms' | 'pricing'>('overview');
   const [kase, setKase] = useState<ApiCaseDetail | null>(null);
   const [planned, setPlanned] = useState<ApiPlannedService[]>([]);
   const [quotations, setQuotations] = useState<ApiQuotation[]>([]);
@@ -655,7 +655,7 @@ export default function ProjectDetailPage() {
           onClick={() => setTab('quotations')}
           className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === 'quotations' ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
         >
-          הצעות מחיר
+          הצעת מחיר
         </button>
         <button
           role="tab"
@@ -667,19 +667,27 @@ export default function ProjectDetailPage() {
         </button>
         <button
           role="tab"
+          aria-selected={tab === 'forms'}
+          onClick={() => setTab('forms')}
+          className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === 'forms' ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+        >
+          טפסים והודעות
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === 'pricing'}
+          onClick={() => setTab('pricing')}
+          className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === 'pricing' ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+        >
+          שעות ותמחור
+        </button>
+        <button
+          role="tab"
           aria-selected={tab === 'activity'}
           onClick={() => setTab('activity')}
           className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === 'activity' ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
         >
           פעילות
-        </button>
-        <button
-          role="tab"
-          aria-selected={tab === 'forms'}
-          onClick={() => setTab('forms')}
-          className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === 'forms' ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-        >
-          טפסים
         </button>
         <button
           onClick={() => void load()}
@@ -859,7 +867,11 @@ export default function ProjectDetailPage() {
               </ul>
             )}
           </section>
+        </div>
+      )}
 
+      {tab === 'pricing' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-gray-900 mb-3">השוואת שעות עבודה</h2>
             <div className="overflow-x-auto">
