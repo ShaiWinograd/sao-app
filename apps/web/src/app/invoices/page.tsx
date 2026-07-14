@@ -368,6 +368,30 @@ function InvoicesPageLegacy() {
 
                   <div>
                     <h3 className="text-sm font-semibold text-gray-900">תשלומים שנרשמו</h3>
+                    {canSeeFinancials && (() => {
+                      const paidTotal = (selectedInvoice.payments ?? []).reduce((sum, p) => sum + toNumber(p.amount), 0);
+                      const remaining = Math.max(0, toNumber(selectedInvoice.total) - paidTotal);
+                      const isPartial = paidTotal > 0 && remaining > 0;
+                      const isMismatch = paidTotal > toNumber(selectedInvoice.total) + 0.5;
+                      return (
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          <div className="rounded-xl border border-gray-200 bg-white p-3">
+                            <p className="text-xs text-gray-500">שולם עד כה</p>
+                            <p className="mt-1 text-sm font-semibold text-gray-900">{formatCurrency(paidTotal)}</p>
+                          </div>
+                          <div className="rounded-xl border border-gray-200 bg-white p-3">
+                            <p className="text-xs text-gray-500">יתרה לתשלום</p>
+                            <p className={`mt-1 text-sm font-semibold ${remaining > 0 ? 'text-warning' : 'text-success'}`}>{formatCurrency(remaining)}</p>
+                          </div>
+                          {isPartial && (
+                            <p className="col-span-2 rounded-lg border border-warning/40 bg-warning-bg px-3 py-1.5 text-xs text-warning">תשלום חלקי — נותרה יתרה לגבייה</p>
+                          )}
+                          {isMismatch && (
+                            <p className="col-span-2 rounded-lg border border-danger/40 bg-danger-bg px-3 py-1.5 text-xs text-danger">אי-התאמה בסכום — סך התשלומים גבוה מסכום החשבונית</p>
+                          )}
+                        </div>
+                      );
+                    })()}
                     <div className="mt-2 space-y-2">
                       {(selectedInvoice.payments ?? []).length === 0 ? (
                         <div className="rounded-xl border border-dashed border-gray-200 px-3 py-4 text-sm text-gray-500">עדיין לא נרשמו תשלומים לחשבונית זו.</div>
