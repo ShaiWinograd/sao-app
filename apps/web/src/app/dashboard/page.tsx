@@ -1021,7 +1021,12 @@ export default function DashboardPage() {
     const awaitingApprovalCount =
       workflowSections.find((section) => section.key === 'quote-awaiting-approval')?.items.length ?? 0;
     const todayJobsCount = dashboardWorks.filter((work) => work.dateKey === todayDateKey).length;
-    return { exceptionsCount, awaitingApprovalCount, todayJobsCount };
+    const workersTodayCount = new Set(
+      dashboardWorks
+        .filter((work) => work.dateKey === todayDateKey)
+        .flatMap((work) => work.assignedWorkers.map((worker) => worker.name)),
+    ).size;
+    return { exceptionsCount, awaitingApprovalCount, todayJobsCount, workersTodayCount };
   }, [workflowSections, dashboardWorks, todayDateKey]);
 
   const activeWorkflowSection = useMemo(
@@ -1169,7 +1174,7 @@ export default function DashboardPage() {
       </div>
 
       {/* At-a-glance stat cards */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="rounded-xl border border-danger/30 bg-danger-bg p-3 flex items-center gap-3">
           <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/70">
             <AlertTriangle className="w-5 h-5 text-danger" />
@@ -1195,6 +1200,15 @@ export default function DashboardPage() {
           <div>
             <p className="text-xl font-bold text-success leading-none">{dashboardStats.todayJobsCount}</p>
             <p className="text-xs text-gray-700 mt-1">עבודות היום</p>
+          </div>
+        </div>
+        <div className="rounded-xl border border-info/30 bg-info-bg p-3 flex items-center gap-3">
+          <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/70">
+            <CalendarDays className="w-5 h-5 text-info" />
+          </span>
+          <div>
+            <p className="text-xl font-bold text-info leading-none">{dashboardStats.workersTodayCount}</p>
+            <p className="text-xs text-gray-700 mt-1">עובדים היום</p>
           </div>
         </div>
       </div>
