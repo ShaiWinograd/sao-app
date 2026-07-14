@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
-import { CreateWorkerSchema, UpdateWorkerSchema, UserRole } from '@workforce/shared';
+import { CreateWorkerSchema, UpdateWorkerSchema, UserRole, rankWorkerAvailability } from '@workforce/shared';
 
 export async function workersRoutes(app: FastifyInstance) {
   app.get('/', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
@@ -14,6 +14,54 @@ export async function workersRoutes(app: FastifyInstance) {
       },
       orderBy: { firstName: 'asc' },
     });
+  });
+
+  // Worker availability finder — ranks active workers best-fit first for a date.
+  app.get('/availability', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const query = req.query as {
+      date?: string;
+      skill?: string;
+      requiresManager?: string;
+      area?: string;
+    };
+    if (!query.date || !/^\d{4}-\d{2}-\d{2}$/.test(query.date)) {
+      return reply.status(400).send({ error: 'A valid date (YYYY-MM-DD) query parameter is required' });
+    }
+
+    const workers = await prisma.worker.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        skills: true,
+        isActive: true,
+        homeArea: true,
+        shifts: { select: { job: { select: { date: true } } } },
+      },
+    });
+
+    const candidates = workers.map((worker) => ({
+      id: worker.id,
+      name: `${worker.firstName} ${worker.lastName}`.trim(),
+      skills: worker.skills as string[],
+      isActive: worker.isActive,
+      homeArea: worker.homeArea,
+      bookedDates: worker.shifts
+        .map((shift) => shift.job?.date)
+        .filter((date): date is Date => Boolean(date))
+        .map((date) => date.toISOString().slice(0, 10)),
+    }));
+
+    return rankWorkerAvailability(
+      {
+        date: query.date,
+        requiredSkill: query.skill ?? null,
+        requiresManager: query.requiresManager === 'true',
+        area: query.area ?? null,
+      },
+      candidates,
+    );
   });
 
   app.get('/:id', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
