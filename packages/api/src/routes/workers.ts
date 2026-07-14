@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
-import { CreateWorkerSchema, UpdateWorkerSchema, UserRole, rankWorkerAvailability } from '@workforce/shared';
+import { CreateWorkerSchema, UpdateWorkerSchema, UserRole, rankWorkerAvailability, findCandidateDates } from '@workforce/shared';
 
 export async function workersRoutes(app: FastifyInstance) {
   app.get('/', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
@@ -61,6 +61,63 @@ export async function workersRoutes(app: FastifyInstance) {
         area: query.area ?? null,
       },
       candidates,
+    );
+  });
+
+  // Candidate-date finder — ranks dates in a range by staffing coverage.
+  app.get('/available-dates', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const query = req.query as {
+      start?: string;
+      end?: string;
+      requiredWorkers?: string;
+      requiresManager?: string;
+      weekdays?: string;
+    };
+    if (
+      !query.start ||
+      !query.end ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(query.start) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(query.end)
+    ) {
+      return reply.status(400).send({ error: 'Valid start and end dates (YYYY-MM-DD) are required' });
+    }
+
+    const workers = await prisma.worker.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        isActive: true,
+        skills: true,
+        shifts: { select: { job: { select: { date: true } } } },
+      },
+    });
+
+    const finderWorkers = workers.map((worker) => ({
+      id: worker.id,
+      isActive: worker.isActive,
+      isManager: (worker.skills as string[]).includes('SHIFT_LEADER'),
+      bookedDates: worker.shifts
+        .map((shift) => shift.job?.date)
+        .filter((date): date is Date => Boolean(date))
+        .map((date) => date.toISOString().slice(0, 10)),
+    }));
+
+    const allowedWeekdays = query.weekdays
+      ? query.weekdays
+          .split(',')
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6)
+      : undefined;
+
+    return findCandidateDates(
+      {
+        startDate: query.start,
+        endDate: query.end,
+        requiredWorkers: Math.max(0, Number(query.requiredWorkers) || 0),
+        requiresManager: query.requiresManager === 'true',
+        allowedWeekdays,
+      },
+      finderWorkers,
     );
   });
 

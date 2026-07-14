@@ -199,6 +199,31 @@ test.describe('Project detail page', () => {
     await expect(finder.getByText('עמוס', { exact: true })).toBeVisible();
   });
 
+  test('finds candidate dates from the jobs tab', async ({ page }) => {
+    await page.route('**/api/v1/workers/available-dates**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          { date: '2026-08-02', availableWorkers: 6, availableManagers: 2, suitable: true },
+          { date: '2026-08-03', availableWorkers: 2, availableManagers: 0, suitable: false },
+        ]),
+      });
+    });
+
+    await page.goto('/cases/case-1');
+    await page.getByRole('tab', { name: 'עבודות' }).click();
+
+    const finder = page.getByTestId('date-finder');
+    await expect(finder).toBeVisible();
+    await finder.locator('input[type=date]').nth(1).fill('2026-08-10');
+    await finder.getByRole('button', { name: 'חיפוש' }).click();
+
+    await expect(finder.getByText(/6 עובדים זמינים/)).toBeVisible();
+    await expect(finder.getByText('מתאים', { exact: true })).toBeVisible();
+    await expect(finder.getByText('לא מתאים')).toBeVisible();
+  });
+
   test('shows the communication timeline and sends a message from the activity tab', async ({ page }) => {
     let sent = false;
     await page.route('**/api/v1/cases/case-1/communications', async (route) => {

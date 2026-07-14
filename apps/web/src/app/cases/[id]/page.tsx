@@ -23,6 +23,7 @@ import {
 import { api, authHeaders } from '../../../lib/api';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { AvailabilityFinder } from '../../../components/scheduling/AvailabilityFinder';
+import { DateFinder } from '../../../components/scheduling/DateFinder';
 import {
   communicationChannelLabel,
   communicationTemplateTitle,
@@ -1037,6 +1038,7 @@ export default function ProjectDetailPage() {
           )}
         </section>
           <AvailabilityFinder defaultDate={nextJob ? nextJob.date.slice(0, 10) : ''} />
+          <DateFinder defaultStart={nextJob ? nextJob.date.slice(0, 10) : ''} />
         </div>
       )}
 
