@@ -267,6 +267,8 @@ test.describe('Project detail page', () => {
     await page.goto('/cases/case-1');
     await page.getByRole('tab', { name: 'פעילות' }).click();
 
+    await expect(page.getByText('אוטומציות')).toBeVisible();
+    await expect(page.getByText('טופס ציוד לאריזה')).toBeVisible();
     await expect(page.getByText('ציר תקשורת')).toBeVisible();
     await page.getByRole('button', { name: 'ואטסאפ' }).first().click();
 
