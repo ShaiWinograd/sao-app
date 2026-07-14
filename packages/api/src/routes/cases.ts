@@ -101,7 +101,7 @@ export async function casesRoutes(app: FastifyInstance) {
     const kase = await prisma.customerCase.findUnique({
       where: { id },
       include: {
-        customer: true,
+        customer: { include: { addresses: true } },
         jobs: { include: { address: true, shifts: { include: { worker: true } } } },
         invoices: true,
         assignedAdmin: { select: { id: true, firstName: true, lastName: true } },

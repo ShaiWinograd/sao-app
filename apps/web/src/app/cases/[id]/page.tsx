@@ -30,6 +30,7 @@ import { api, authHeaders } from '../../../lib/api';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { AvailabilityFinder } from '../../../components/scheduling/AvailabilityFinder';
 import { DateFinder } from '../../../components/scheduling/DateFinder';
+import MultiDayScheduler from '../../../components/scheduling/MultiDayScheduler';
 import {
   communicationChannelLabel,
   communicationTemplateTitle,
@@ -78,7 +79,14 @@ type ApiCaseDetail = {
   name: string;
   status: CaseStatusValue;
   internalNotes: string | null;
-  customer: { firstName: string; lastName: string; phone: string; email: string };
+  customer: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    phone: string;
+    email: string;
+    addresses?: Array<{ id: string; fullAddress: string }>;
+  };
   jobs: ApiCaseJob[];
   invoices: Array<{ id: string; total: number | string; status: string }>;
 };
@@ -1372,6 +1380,13 @@ export default function ProjectDetailPage() {
             </ul>
           )}
         </section>
+          <MultiDayScheduler
+            caseId={kase.id}
+            customerId={kase.customer.id}
+            addresses={kase.customer.addresses ?? []}
+            getToken={getToken}
+            onCreated={load}
+          />
           <AvailabilityFinder defaultDate={nextJob ? nextJob.date.slice(0, 10) : ''} />
           <DateFinder defaultStart={nextJob ? nextJob.date.slice(0, 10) : ''} />
         </div>
