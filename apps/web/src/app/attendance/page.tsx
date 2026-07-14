@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Clock3, MapPin, ShieldAlert } from 'lucide-react';
 import { api } from '../../lib/api';
 
@@ -109,6 +109,46 @@ export default function AttendancePage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | AttendanceStatus>('all');
   const [message, setMessage] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editClockIn, setEditClockIn] = useState('');
+  const [editClockOut, setEditClockOut] = useState('');
+  const [editReason, setEditReason] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const approveRecord = async (shiftId: string) => {
+    setBusyId(shiftId);
+    try {
+      await api.post('/attendance/correct', { shiftId, reason: 'אושר על ידי אדמין' });
+      setMessage('הנוכחות אושרה.');
+      await loadData();
+    } catch {
+      setMessage('אישור הנוכחות נכשל. נסי שוב.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const saveCorrection = async (shiftId: string) => {
+    setBusyId(shiftId);
+    try {
+      await api.post('/attendance/correct', {
+        shiftId,
+        ...(editClockIn ? { clockIn: editClockIn } : {}),
+        ...(editClockOut ? { clockOut: editClockOut } : {}),
+        reason: editReason.trim() || 'תיקון ידני',
+      });
+      setEditingId(null);
+      setEditClockIn('');
+      setEditClockOut('');
+      setEditReason('');
+      setMessage('התיקון נשמר.');
+      await loadData();
+    } catch {
+      setMessage('שמירת התיקון נכשלה. נסי שוב.');
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   useEffect(() => {
     void loadData();
@@ -265,15 +305,17 @@ export default function AttendancePage() {
                 <th className="px-2 py-2 font-medium">מרחק התחלה / סיום</th>
                 <th className="px-2 py-2 font-medium">שיטה</th>
                 <th className="px-2 py-2 font-medium">סטטוס</th>
+                <th className="px-2 py-2 font-medium">פעולות</th>
               </tr>
             </thead>
             <tbody>
               {filteredRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-2 py-6 text-center text-sm text-gray-500">אין רשומות נוכחות הדורשות בדיקה כרגע.</td>
+                  <td colSpan={8} className="px-2 py-6 text-center text-sm text-gray-500">אין רשומות נוכחות הדורשות בדיקה כרגע.</td>
                 </tr>
               ) : filteredRecords.map((record) => (
-                <tr key={record.id} className="border-b border-gray-50 last:border-b-0">
+                <Fragment key={record.id}>
+                <tr className="border-b border-gray-50 last:border-b-0">
                   <td className="px-2 py-2">{record.workerName}</td>
                   <td className="px-2 py-2">{record.customerName}</td>
                   <td className="px-2 py-2">{record.date}</td>
@@ -289,7 +331,60 @@ export default function AttendancePage() {
                       {record.status}
                     </span>
                   </td>
+                  <td className="px-2 py-2">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => void approveRecord(record.id)}
+                        disabled={busyId === record.id}
+                        className="px-2 py-1 text-[11px] rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+                      >
+                        אישור
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingId(editingId === record.id ? null : record.id);
+                          setEditClockIn('');
+                          setEditClockOut('');
+                          setEditReason('');
+                        }}
+                        className="px-2 py-1 text-[11px] rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+                      >
+                        תיקון
+                      </button>
+                    </div>
+                  </td>
                 </tr>
+                {editingId === record.id && (
+                  <tr className="bg-gray-50/60">
+                    <td colSpan={8} className="px-3 py-3">
+                      <div className="flex flex-wrap items-end gap-3">
+                        <label className="text-xs text-gray-600">
+                          <span className="block mb-1">כניסה מתוקנת</span>
+                          <input type="datetime-local" value={editClockIn} onChange={(e) => setEditClockIn(e.target.value)} className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
+                        </label>
+                        <label className="text-xs text-gray-600">
+                          <span className="block mb-1">יציאה מתוקנת</span>
+                          <input type="datetime-local" value={editClockOut} onChange={(e) => setEditClockOut(e.target.value)} className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
+                        </label>
+                        <label className="text-xs text-gray-600 flex-1 min-w-[200px]">
+                          <span className="block mb-1">סיבת התיקון</span>
+                          <input value={editReason} onChange={(e) => setEditReason(e.target.value)} placeholder="למשל: העובד שכח להחתים יציאה" className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => void saveCorrection(record.id)}
+                          disabled={busyId === record.id}
+                          className="px-3 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+                        >
+                          שמירת תיקון
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>
