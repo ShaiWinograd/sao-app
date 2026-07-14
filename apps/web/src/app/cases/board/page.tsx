@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { RefreshCw, Plus } from 'lucide-react';
-import { caseStatusTone, getAllowedCaseTransitions, getCaseNextAction, type CaseStatusValue } from '@workforce/shared';
+import { caseStatusTone, getAllowedCaseTransitions, getCaseNextAction, CASE_BOARD_TABS, type CaseStatusValue } from '@workforce/shared';
 import { api, authHeaders } from '../../../lib/api';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 
@@ -126,6 +126,8 @@ export default function ProjectBoardPage() {
     [getToken, loadBoard],
   );
 
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+
   const tab = useMemo(() => board?.tabs[activeTab], [board, activeTab]);
 
   const allCases = useMemo(() => {
@@ -139,6 +141,32 @@ export default function ProjectBoardPage() {
     for (const kase of board.unplaced ?? []) byId.set(kase.id, kase);
     return [...byId.values()];
   }, [board]);
+
+  // Primary target status for a board column (first non-legacy lifecycle status).
+  const columnPrimaryStatus = useCallback((columnKey: string): CaseStatusValue | null => {
+    for (const boardTab of CASE_BOARD_TABS) {
+      const column = boardTab.columns.find((c) => c.key === columnKey);
+      if (column) return column.statuses[0] ?? null;
+    }
+    return null;
+  }, []);
+
+  const handleDrop = useCallback(
+    (columnKey: string) => {
+      if (!draggedId) return;
+      const target = columnPrimaryStatus(columnKey);
+      setDraggedId(null);
+      if (!target) return;
+      const dragged = allCases.find((c) => c.id === draggedId);
+      if (!dragged || dragged.status === target) return;
+      if (!getAllowedCaseTransitions(dragged.status).includes(target)) {
+        setError('לא ניתן להעביר את הפרויקט לעמודה זו לפי כללי מחזור החיים');
+        return;
+      }
+      void changeStatus(draggedId, target);
+    },
+    [draggedId, columnPrimaryStatus, allCases, changeStatus],
+  );
 
   const filteredCases = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -267,6 +295,8 @@ export default function ProjectBoardPage() {
             <section
               key={column.key}
               data-testid={`board-column-${column.key}`}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => handleDrop(column.key)}
               className="rounded-xl border border-gray-200 bg-gray-50/60 flex flex-col"
             >
               <header className="px-3 py-2 border-b border-gray-200 flex items-center justify-between">
@@ -285,7 +315,10 @@ export default function ProjectBoardPage() {
                     return (
                       <article
                         key={kase.id}
-                        className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm"
+                        draggable
+                        onDragStart={() => setDraggedId(kase.id)}
+                        onDragEnd={() => setDraggedId(null)}
+                        className={`rounded-lg border border-gray-200 bg-white p-3 shadow-sm cursor-grab active:cursor-grabbing ${draggedId === kase.id ? 'opacity-50' : ''}`}
                       >
                         <Link
                           href={`/cases/${kase.id}`}
