@@ -146,6 +146,20 @@ function getShiftTypeCardClasses(jobType: JobType) {
   return 'border-sky-200 bg-sky-50 hover:border-sky-300 hover:bg-sky-100';
 }
 
+function InfoHint({ text }: { text: string }) {
+  return (
+    <span className="group relative inline-flex items-center">
+      <Info className="w-3.5 h-3.5 text-gray-400" />
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute bottom-full right-0 z-30 mb-1 hidden w-52 rounded-lg bg-gray-900 px-2.5 py-1.5 text-right text-[11px] font-normal leading-snug text-white shadow-lg group-hover:block"
+      >
+        {text}
+      </span>
+    </span>
+  );
+}
+
 const caseStatusMeta: Record<CaseStatus, { label: string; className: string }> = {
   DRAFT: { label: 'משוריין', className: 'border-amber-200 bg-amber-50 text-amber-700' },
   ACTIVE: { label: 'עבודה אושרה', className: 'border-blue-200 bg-blue-50 text-blue-700' },
@@ -1198,9 +1212,7 @@ export default function DashboardPage() {
             <p className="text-xl font-bold text-danger leading-none">{dashboardStats.exceptionsCount}</p>
             <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
               חריגות
-              <span title="עבודות או משמרות הדורשות התייחסות דחופה — חוסר עובדים, חוסר ראש צוות או חריגות נוכחות." className="cursor-help text-gray-400">
-                <Info className="w-3.5 h-3.5" />
-              </span>
+              <InfoHint text="עבודות או משמרות הדורשות התייחסות דחופה — חוסר עובדים, חוסר ראש צוות או חריגות נוכחות." />
             </p>
           </div>
         </div>
@@ -1212,9 +1224,7 @@ export default function DashboardPage() {
             <p className="text-xl font-bold text-warning leading-none">{dashboardStats.awaitingApprovalCount}</p>
             <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
               מחכות לאישור
-              <span title="בקשות הצטרפות של עובדים לעבודות הממתינות לאישור שלך." className="cursor-help text-gray-400">
-                <Info className="w-3.5 h-3.5" />
-              </span>
+              <InfoHint text="בקשות הצטרפות של עובדים לעבודות הממתינות לאישור שלך." />
             </p>
           </div>
         </div>
@@ -1226,9 +1236,7 @@ export default function DashboardPage() {
             <p className="text-xl font-bold text-success leading-none">{dashboardStats.todayJobsCount}</p>
             <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
               עבודות היום
-              <span title="מספר העבודות המתוזמנות להיום." className="cursor-help text-gray-400">
-                <Info className="w-3.5 h-3.5" />
-              </span>
+              <InfoHint text="מספר העבודות המתוזמנות להיום." />
             </p>
           </div>
         </div>
@@ -1240,9 +1248,7 @@ export default function DashboardPage() {
             <p className="text-xl font-bold text-info leading-none">{dashboardStats.workersTodayCount}</p>
             <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
               עובדים היום
-              <span title="מספר העובדים המשובצים לעבודות של היום." className="cursor-help text-gray-400">
-                <Info className="w-3.5 h-3.5" />
-              </span>
+              <InfoHint text="מספר העובדים המשובצים לעבודות של היום." />
             </p>
           </div>
         </div>
