@@ -265,6 +265,13 @@ export default function ProjectDetailPage() {
 
   const [newTotal, setNewTotal] = useState('');
   const [newServices, setNewServices] = useState('');
+  const [newScope, setNewScope] = useState('');
+  const [newStartDate, setNewStartDate] = useState('');
+  const [newEndDate, setNewEndDate] = useState('');
+  const [newDepositAmount, setNewDepositAmount] = useState('');
+  const [newDepositDate, setNewDepositDate] = useState('');
+  const [newLineItems, setNewLineItems] = useState<{ description: string; hours: string; price: string }[]>([]);
+  const [showQuoteDetails, setShowQuoteDetails] = useState(false);
 
   const [approvalFor, setApprovalFor] = useState<string | null>(null);
   const [approvalMethod, setApprovalMethod] = useState('DIGITAL');
@@ -393,17 +400,55 @@ export default function ProjectDetailPage() {
       setError('יש למלא סכום משוער ולפחות שירות אחד');
       return;
     }
+    const lineItems = newLineItems
+      .map((li) => ({
+        description: li.description.trim(),
+        hours: li.hours.trim() || undefined,
+        price: li.price.trim() ? Number(li.price) : undefined,
+      }))
+      .filter((li) => li.description);
+    const details: Record<string, unknown> = {};
+    if (newScope.trim()) details.scopeOfWork = newScope.trim();
+    if (newStartDate) details.projectStartDate = newStartDate;
+    if (newEndDate) details.projectEndDate = newEndDate;
+    if (newDepositAmount.trim()) details.depositAmount = Number(newDepositAmount);
+    if (newDepositDate) details.depositDueDate = newDepositDate;
+    if (lineItems.length > 0) details.lineItems = lineItems;
+
     void runQuotationAction(async () => {
       const auth = await authHeaders(getToken);
       await api.post(
         '/quotations',
-        { caseId, estimatedTotal: Number(newTotal), includedServices: services },
+        {
+          caseId,
+          estimatedTotal: Number(newTotal),
+          includedServices: services,
+          ...(Object.keys(details).length > 0 ? { details } : {}),
+        },
         auth,
       );
       setNewTotal('');
       setNewServices('');
+      setNewScope('');
+      setNewStartDate('');
+      setNewEndDate('');
+      setNewDepositAmount('');
+      setNewDepositDate('');
+      setNewLineItems([]);
     }, 'יצירת הצעת המחיר נכשלה');
-  }, [newTotal, newServices, caseId, getToken, runQuotationAction]);
+  }, [
+    newTotal,
+    newServices,
+    newScope,
+    newStartDate,
+    newEndDate,
+    newDepositAmount,
+    newDepositDate,
+    newLineItems,
+    caseId,
+    getToken,
+    runQuotationAction,
+  ]);
 
   const runPlannedAction = useCallback(
     async (action: () => Promise<unknown>, failureMessage: string) => {
@@ -563,7 +608,8 @@ export default function ProjectDetailPage() {
 
   // Seed the "new quotation" form once from the planned scope so the owner
   // isn't retyping the wizard's estimate. Only when no quotation exists yet and
-  // the fields are still untouched.
+  // the fields are still untouched. Detail fields (dates, deposit) are
+  // auto-derived with sensible defaults the owner can still edit.
   const quotePrefilled = useRef(false);
   useEffect(() => {
     if (quotePrefilled.current) return;
@@ -573,8 +619,34 @@ export default function ProjectDetailPage() {
     const total = Math.round(comparison.estimatedHours * DEFAULT_QUOTE_HOURLY_RATE);
     if (total > 0) setNewTotal(String(total));
     const services = planned.map((ps) => SERVICE_LABELS[ps.serviceType]).filter(Boolean);
-    if (services.length > 0) setNewServices(services.join('\n'));
-  }, [planned, quotations, comparison.estimatedHours, newTotal, newServices]);
+    if (services.length > 0) {
+      setNewServices(services.join('\n'));
+      setNewScope(services.join(', '));
+      setNewLineItems([
+        {
+          description: services.join(', '),
+          hours: comparison.estimatedHours > 0 ? String(comparison.estimatedHours) : '',
+          price: total > 0 ? String(total) : '',
+        },
+      ]);
+    }
+    // Project dates from scheduled jobs; deposit due 2 weeks before the start.
+    const jobDates = (kase?.jobs ?? [])
+      .map((job) => job.date?.slice(0, 10))
+      .filter((d): d is string => Boolean(d))
+      .sort();
+    if (jobDates.length > 0) {
+      const start = jobDates[0];
+      const end = jobDates[jobDates.length - 1];
+      setNewStartDate(start);
+      setNewEndDate(end);
+      const startMs = new Date(start).getTime();
+      if (Number.isFinite(startMs)) {
+        setNewDepositDate(new Date(startMs - 14 * 86_400_000).toISOString().slice(0, 10));
+      }
+    }
+    if (total > 0) setNewDepositAmount(String(Math.round((total * 0.25) / 50) * 50));
+  }, [planned, quotations, comparison.estimatedHours, newTotal, newServices, kase]);
 
   const hoursComparison = useMemo(() => {
     const entries: HoursComparisonEntry[] = planned.map((ps) => ({
@@ -1165,6 +1237,138 @@ export default function ProjectDetailPage() {
                 />
               </label>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setShowQuoteDetails((v) => !v)}
+              className="mt-3 text-xs font-medium text-primary-700 hover:text-primary-800"
+            >
+              {showQuoteDetails ? '▾ ' : '▸ '}
+              פרטים מלאים להצעה (מולאו אוטומטית — ניתן לערוך)
+            </button>
+
+            {showQuoteDetails && (
+              <div className="mt-3 space-y-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <label className="block text-sm">
+                  <span className="text-gray-600">היקף העבודה</span>
+                  <input
+                    type="text"
+                    value={newScope}
+                    onChange={(event) => setNewScope(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 bg-white"
+                    placeholder="אריזה, פריקה וסידור"
+                  />
+                </label>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block text-sm">
+                    <span className="text-gray-600">תחילת הפרויקט</span>
+                    <input
+                      type="date"
+                      value={newStartDate}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setNewStartDate(value);
+                        if (value) {
+                          const ms = new Date(value).getTime();
+                          if (Number.isFinite(ms)) {
+                            setNewDepositDate(new Date(ms - 14 * 86_400_000).toISOString().slice(0, 10));
+                          }
+                        }
+                      }}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 bg-white"
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="text-gray-600">סיום עד</span>
+                    <input
+                      type="date"
+                      value={newEndDate}
+                      onChange={(event) => setNewEndDate(event.target.value)}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 bg-white"
+                    />
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block text-sm">
+                    <span className="text-gray-600">מקדמה (₪)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={newDepositAmount}
+                      onChange={(event) => setNewDepositAmount(event.target.value)}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 bg-white"
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="text-gray-600">תאריך תשלום מקדמה</span>
+                    <input
+                      type="date"
+                      value={newDepositDate}
+                      onChange={(event) => setNewDepositDate(event.target.value)}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 bg-white"
+                    />
+                    <span className="mt-1 block text-[11px] text-gray-400">מוגדר אוטומטית לשבועיים לפני תחילת הפרויקט</span>
+                  </label>
+                </div>
+
+                <div>
+                  <span className="text-sm text-gray-600">פירוט שורות (תיאור · שעות · מחיר)</span>
+                  <div className="mt-1 space-y-2">
+                    {newLineItems.map((item, index) => (
+                      <div key={index} className="flex gap-2">
+                        <input
+                          type="text"
+                          value={item.description}
+                          onChange={(event) =>
+                            setNewLineItems((prev) => prev.map((li, i) => (i === index ? { ...li, description: event.target.value } : li)))
+                          }
+                          className="flex-1 rounded-lg border border-gray-200 px-2 py-1.5 text-sm bg-white"
+                          placeholder="תיאור"
+                        />
+                        <input
+                          type="text"
+                          value={item.hours}
+                          onChange={(event) =>
+                            setNewLineItems((prev) => prev.map((li, i) => (i === index ? { ...li, hours: event.target.value } : li)))
+                          }
+                          className="w-16 rounded-lg border border-gray-200 px-2 py-1.5 text-sm bg-white"
+                          placeholder="שעות"
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          value={item.price}
+                          onChange={(event) =>
+                            setNewLineItems((prev) => prev.map((li, i) => (i === index ? { ...li, price: event.target.value } : li)))
+                          }
+                          className="w-24 rounded-lg border border-gray-200 px-2 py-1.5 text-sm bg-white"
+                          placeholder="₪"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setNewLineItems((prev) => prev.filter((_, i) => i !== index))}
+                          aria-label="מחיקת שורה"
+                          className="px-2 text-gray-400 hover:text-red-600"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setNewLineItems((prev) => [...prev, { description: '', hours: '', price: '' }])}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 hover:text-primary-800"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      הוסף שורה
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <button
               onClick={handleCreateQuotation}
               disabled={busy}
