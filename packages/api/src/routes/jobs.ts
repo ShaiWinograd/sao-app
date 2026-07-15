@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
+import { refreshScheduleStatus } from '../services/caseSchedule.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { CreateJobSchema, UpdateJobSchema } from '@workforce/shared';
 import { UserRole } from '@workforce/shared';
@@ -211,6 +212,8 @@ export async function jobsRoutes(app: FastifyInstance) {
       include: { slots: true },
     });
 
+    await refreshScheduleStatus(prisma, job.caseId);
+
     reply.status(201);
     return job;
   });
@@ -287,6 +290,8 @@ export async function jobsRoutes(app: FastifyInstance) {
   // Cancel a job
   app.post('/:id/cancel', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    return prisma.job.update({ where: { id }, data: { status: 'CANCELLED' } });
+    const cancelled = await prisma.job.update({ where: { id }, data: { status: 'CANCELLED' } });
+    await refreshScheduleStatus(prisma, cancelled.caseId);
+    return cancelled;
   });
 }
