@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useUser, useAuth } from '@clerk/nextjs';
 import { dashboardIssueActionLabel, extractUrgentDashboardIssues, orderDashboardWorkflowSections } from '@workforce/shared';
-import { AlertTriangle, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Plus, XCircle } from 'lucide-react';
+import { AlertTriangle, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Info, Plus, XCircle } from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
 import { canViewSensitiveFinancials, resolveAppViewerRole } from '../../lib/viewer-access';
@@ -852,7 +852,6 @@ export default function DashboardPage() {
     }
     const worksForDay = displayedWorks.filter((work) => work.dateKey === dateKey);
     if (worksForDay.length === 0) {
-      openCreateModal(dateKey);
       return;
     }
     if (worksForDay.length === 1) {
@@ -1188,7 +1187,12 @@ export default function DashboardPage() {
           </span>
           <div>
             <p className="text-xl font-bold text-danger leading-none">{dashboardStats.exceptionsCount}</p>
-            <p className="text-xs text-gray-700 mt-1">חריגות</p>
+            <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
+              חריגות
+              <span title="עבודות או משמרות הדורשות התייחסות דחופה — חוסר עובדים, חוסר ראש צוות או חריגות נוכחות." className="cursor-help text-gray-400">
+                <Info className="w-3.5 h-3.5" />
+              </span>
+            </p>
           </div>
         </div>
         <div className="rounded-xl border border-warning/30 bg-warning-bg p-3 flex items-center gap-3">
@@ -1197,7 +1201,12 @@ export default function DashboardPage() {
           </span>
           <div>
             <p className="text-xl font-bold text-warning leading-none">{dashboardStats.awaitingApprovalCount}</p>
-            <p className="text-xs text-gray-700 mt-1">מחכות לאישור</p>
+            <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
+              מחכות לאישור
+              <span title="בקשות הצטרפות של עובדים לעבודות הממתינות לאישור שלך." className="cursor-help text-gray-400">
+                <Info className="w-3.5 h-3.5" />
+              </span>
+            </p>
           </div>
         </div>
         <div className="rounded-xl border border-success/30 bg-success-bg p-3 flex items-center gap-3">
@@ -1206,7 +1215,12 @@ export default function DashboardPage() {
           </span>
           <div>
             <p className="text-xl font-bold text-success leading-none">{dashboardStats.todayJobsCount}</p>
-            <p className="text-xs text-gray-700 mt-1">עבודות היום</p>
+            <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
+              עבודות היום
+              <span title="מספר העבודות המתוזמנות להיום." className="cursor-help text-gray-400">
+                <Info className="w-3.5 h-3.5" />
+              </span>
+            </p>
           </div>
         </div>
         <div className="rounded-xl border border-info/30 bg-info-bg p-3 flex items-center gap-3">
@@ -1215,7 +1229,12 @@ export default function DashboardPage() {
           </span>
           <div>
             <p className="text-xl font-bold text-info leading-none">{dashboardStats.workersTodayCount}</p>
-            <p className="text-xs text-gray-700 mt-1">עובדים היום</p>
+            <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
+              עובדים היום
+              <span title="מספר העובדים המשובצים לעבודות של היום." className="cursor-help text-gray-400">
+                <Info className="w-3.5 h-3.5" />
+              </span>
+            </p>
           </div>
         </div>
       </div>
@@ -1463,11 +1482,9 @@ export default function DashboardPage() {
                       <div className="mt-0.5 text-[10px]">{nonWorkingLabel}</div>
                     </div>
                   ) : (
-                    <button
+                    <div
                       key={`head-${dateKey}`}
-                      type="button"
-                      onClick={() => openCreateModal(dateKey)}
-                      className={`min-w-0 p-2.5 text-center border-l border-gray-200 text-gray-700 hover:bg-emerald-50 ${isToday ? 'bg-emerald-50 text-emerald-700' : ''}`}
+                      className={`min-w-0 p-2.5 text-center border-l border-gray-200 text-gray-700 ${isToday ? 'bg-emerald-50 text-emerald-700' : ''}`}
                     >
                       <div className="flex items-center justify-center gap-1">
                         {isToday && <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>}
@@ -1475,7 +1492,7 @@ export default function DashboardPage() {
                       </div>
                       <div className="text-xs font-semibold">{date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}</div>
                       {nonWorkingLabel && <div className="text-[10px] text-amber-700">{nonWorkingLabel}</div>}
-                    </button>
+                    </div>
                   );
                 })}
               </div>
