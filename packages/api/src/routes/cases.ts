@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
+import { resolveActor } from '../lib/actor.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import {
   CaseStatusSchema,
@@ -240,16 +241,7 @@ export async function casesRoutes(app: FastifyInstance) {
     const kase = await prisma.customerCase.findUnique({ where: { id }, select: { id: true } });
     if (!kase) return reply.status(404).send({ error: 'Case not found' });
 
-    const performedBy =
-      (user?.id ? await prisma.user.findUnique({ where: { id: user.id }, select: { id: true, firstName: true, lastName: true } }) : null) ??
-      (await prisma.user.findFirst({
-        where: { role: { in: ['OWNER', 'ADMIN'] }, isActive: true },
-        select: { id: true, firstName: true, lastName: true },
-      }));
-
-    if (!performedBy) {
-      return reply.status(500).send({ error: 'No active admin user available for audit logging' });
-    }
+    const performedBy = await resolveActor(user);
 
     const log = await prisma.auditLog.create({
       data: {
@@ -377,12 +369,7 @@ export async function casesRoutes(app: FastifyInstance) {
     const kase = await prisma.customerCase.findUnique({ where: { id } });
     if (!kase) return reply.status(404).send({ error: 'Case not found' });
 
-    const performedBy =
-      (user?.id ? await prisma.user.findUnique({ where: { id: user.id }, select: { id: true } }) : null) ??
-      (await prisma.user.findFirst({
-        where: { role: { in: ['OWNER', 'ADMIN'] }, isActive: true },
-        select: { id: true },
-      }));
+    const performedBy = await resolveActor(user);
 
     const archiveNote = `[ארכוב ${new Date().toISOString()}] ${reason.trim()}`;
     const nextInternalNotes = [kase.internalNotes, archiveNote].filter(Boolean).join('\n');

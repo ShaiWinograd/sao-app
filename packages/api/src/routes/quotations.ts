@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
+import { resolveActor } from '../lib/actor.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import {
   CreateQuotationSchema,
@@ -21,18 +22,7 @@ const QuotationsListQuerySchema = z.object({
 type RequestUser = { id?: string } | undefined;
 
 async function resolvePerformedBy(user: RequestUser) {
-  return (
-    (user?.id
-      ? await prisma.user.findUnique({
-          where: { id: user.id },
-          select: { id: true, firstName: true, lastName: true },
-        })
-      : null) ??
-    (await prisma.user.findFirst({
-      where: { role: { in: ['OWNER', 'ADMIN'] }, isActive: true },
-      select: { id: true, firstName: true, lastName: true },
-    }))
-  );
+  return resolveActor(user);
 }
 
 const quotationWithVersions = {
