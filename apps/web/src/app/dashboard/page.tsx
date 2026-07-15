@@ -1143,6 +1143,17 @@ export default function DashboardPage() {
     });
   }, [visibleShiftDates, displayedWorks]);
 
+  const unassignedWorksByDate = useMemo(() => {
+    const map = new Map<string, Array<{ work: ActiveWork; open: number }>>();
+    displayedWorks.forEach((work) => {
+      const open = Math.max(work.requiredWorkers - work.assignedWorkers.length, 0);
+      if (open > 0) {
+        map.set(work.dateKey, [...(map.get(work.dateKey) ?? []), { work, open }]);
+      }
+    });
+    return map;
+  }, [displayedWorks]);
+
   const shiftCountByWorkerName = useMemo(() => {
     const map = new Map<string, number>();
     displayedWorks.forEach((work) => {
@@ -1444,6 +1455,44 @@ export default function DashboardPage() {
                       <div className="text-xs font-semibold">{date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}</div>
                       {isToday && <div className="text-[10px] font-semibold text-emerald-700 leading-3">היום</div>}
                       {nonWorkingLabel && <div className="text-[10px] text-amber-700">{nonWorkingLabel}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="grid border-b border-gray-200 bg-amber-50/40" style={shiftGridStyle}>
+                <div className="p-2.5 border-l border-gray-200 flex items-center gap-1.5 text-xs font-semibold text-gray-700">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                  משמרות לא מאוישות
+                </div>
+                {visibleShiftDates.map((date) => {
+                  const dateKey = toDateKeyFromDate(date);
+                  const isNonWorkingDay = isWorkCreationBlockedDay(dateKey);
+                  const isToday = dateKey === todayDateKey;
+                  const openWorks = unassignedWorksByDate.get(dateKey) ?? [];
+                  return (
+                    <div
+                      key={`unassigned-${dateKey}`}
+                      className={`min-h-[56px] border-l border-gray-100 p-1.5 ${isNonWorkingDay ? 'bg-gray-100' : isToday ? 'bg-emerald-50/40' : ''}`}
+                    >
+                      {isNonWorkingDay || openWorks.length === 0 ? null : (
+                        <div className="space-y-1">
+                          {openWorks.slice(0, 2).map(({ work, open }) => (
+                            <button
+                              key={`unassigned-${work.id}`}
+                              type="button"
+                              onClick={() => openWorkModal(work)}
+                              className={`w-full rounded-md border px-2 py-1 text-right ${getShiftTypeCardClasses(work.jobType)}`}
+                            >
+                              <p className="text-[11px] font-semibold text-gray-900">{work.customerName}</p>
+                              <p className="text-[11px] font-medium text-amber-700">חסרים {open} עובדים</p>
+                            </button>
+                          ))}
+                          {openWorks.length > 2 && (
+                            <p className="text-center text-[11px] text-gray-500">+{openWorks.length - 2} נוספות</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
