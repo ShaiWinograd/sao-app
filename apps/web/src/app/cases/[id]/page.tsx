@@ -357,7 +357,7 @@ export default function ProjectDetailPage() {
 
   const copyQuotationLink = useCallback((quotationId: string) => {
     if (typeof window === 'undefined') return;
-    const link = `${window.location.origin}/quotations/${quotationId}`;
+    const link = `${window.location.origin}/q/${quotationId}`;
     void navigator.clipboard?.writeText(link).then(
       () => setShareMessage('קישור השיתוף הועתק ללוח'),
       () => setShareMessage(link),
@@ -1221,7 +1221,7 @@ export default function ProjectDetailPage() {
                       </button>
                       <button
                         onClick={() => {
-                          const link = `${window.location.origin}/quotations/${quotation.id}`;
+                          const link = `${window.location.origin}/q/${quotation.id}`;
                           const amount = current ? formatCurrency(current.estimatedTotal) : '';
                           const message = `שלום ${kase.customer.firstName}, הצעת מחיר עבור "${kase.name}"${amount ? ` על סך ${amount}` : ''}. לצפייה ואישור: ${link}`;
                           openMessagingChannel(whatsAppUrl(kase.customer.phone, message));
@@ -1238,7 +1238,7 @@ export default function ProjectDetailPage() {
                       </button>
                       <button
                         onClick={() => {
-                          const link = `${window.location.origin}/quotations/${quotation.id}`;
+                          const link = `${window.location.origin}/q/${quotation.id}`;
                           const amount = current ? formatCurrency(current.estimatedTotal) : '';
                           const subject = `הצעת מחיר — ${kase.name}`;
                           const body = `שלום ${kase.customer.firstName},\n\nהצעת מחיר עבור "${kase.name}"${amount ? ` על סך ${amount}` : ''}.\nלצפייה ואישור: ${link}`;
