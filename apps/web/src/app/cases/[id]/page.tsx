@@ -639,6 +639,15 @@ export default function ProjectDetailPage() {
     if (total > 0) setNewDepositAmount(String(Math.round((total * 0.25) / 50) * 50));
   }, [planned, quotations, comparison.estimatedHours, newTotal, newServices, kase]);
 
+  // Keep the hourly amount in sync with the planned hours whenever the amount
+  // field is empty — e.g. when recreating a quotation after the first was sent,
+  // so the owner never retypes it. A value the owner typed is left untouched.
+  useEffect(() => {
+    if (newTotal !== '' || comparison.estimatedHours <= 0) return;
+    const total = Math.round(comparison.estimatedHours * DEFAULT_QUOTE_HOURLY_RATE);
+    if (total > 0) setNewTotal(String(total));
+  }, [newTotal, comparison.estimatedHours]);
+
   const hoursComparison = useMemo(() => {
     const entries: HoursComparisonEntry[] = planned.map((ps) => ({
       serviceType: ps.serviceType,
