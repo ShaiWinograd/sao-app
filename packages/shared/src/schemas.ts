@@ -91,6 +91,25 @@ export const QuotationApprovalMethodSchema = z.enum([
   'MANUAL',
 ]);
 
+export const QuotationLineItemSchema = z.object({
+  description: z.string().min(1),
+  detail: z.string().optional(),
+  hours: z.string().optional(),
+  price: z.number().optional(),
+});
+
+export const QuotationDetailsSchema = z.object({
+  scopeOfWork: z.string().optional(),
+  projectStartDate: z.string().optional(),
+  projectEndDate: z.string().optional(),
+  lineItems: z.array(QuotationLineItemSchema).optional(),
+  depositAmount: z.number().optional(),
+  depositDueDate: z.string().optional(),
+  notes: z.string().optional(),
+});
+export type QuotationLineItem = z.infer<typeof QuotationLineItemSchema>;
+export type QuotationDetails = z.infer<typeof QuotationDetailsSchema>;
+
 export const CreateQuotationSchema = z.object({
   caseId: z.string(),
   estimatedTotal: z.number().nonnegative(),
@@ -99,6 +118,7 @@ export const CreateQuotationSchema = z.object({
   timingNote: z.string().optional(),
   validUntil: z.string().optional(),
   notes: z.string().optional(),
+  details: QuotationDetailsSchema.optional(),
 });
 
 export const UpdateQuotationVersionSchema = z
@@ -109,6 +129,7 @@ export const UpdateQuotationVersionSchema = z
     timingNote: z.string(),
     validUntil: z.string(),
     notes: z.string(),
+    details: QuotationDetailsSchema,
   })
   .partial();
 
@@ -119,6 +140,7 @@ export const CreateQuotationVersionSchema = z.object({
   timingNote: z.string().optional(),
   validUntil: z.string().optional(),
   notes: z.string().optional(),
+  details: QuotationDetailsSchema.optional(),
   isAddendum: z.boolean().optional(),
 });
 

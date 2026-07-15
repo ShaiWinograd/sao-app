@@ -831,6 +831,7 @@ model QuotationVersion {
   timingNote            String?
   validUntil            DateTime?
   notes                 String?
+  details               Json?
   isAddendum            Boolean                  @default(false)
   replacesVersionId     String?
   createdById           String?
