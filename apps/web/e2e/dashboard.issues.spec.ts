@@ -67,7 +67,7 @@ test.describe('Dashboard urgent and workflow sections', () => {
     });
   });
 
-  test('shows a focused urgent panel with only near-term understaffed shifts', async ({ page }) => {
+  test('shows workflow sections with direct actions and no separate urgent panel', async ({ page }) => {
     await page.goto('/dashboard');
 
     // At-a-glance stat cards
@@ -78,13 +78,13 @@ test.describe('Dashboard urgent and workflow sections', () => {
     // Header quick action
     await expect(page.getByRole('link', { name: 'יצירת פרויקט חדש' })).toBeVisible();
 
-    const urgentPanel = page.getByTestId('dashboard-urgent-panel');
-    await expect(urgentPanel).toBeVisible();
-    await expect(urgentPanel.getByRole('heading', { name: 'דורש טיפול' })).toBeVisible();
-    await expect(urgentPanel.getByText('חסרים 3 עובדים', { exact: true })).toBeVisible();
-    await expect(urgentPanel.getByRole('link', { name: 'פתיחת העבודה' }).first()).toBeVisible();
+    // The separate 'must handle' urgent panel was removed.
+    await expect(page.getByTestId('dashboard-urgent-panel')).toHaveCount(0);
 
-    // The noisy workflow board was removed.
-    await expect(page.getByTestId('dashboard-workflow-sections')).toHaveCount(0);
+    const workflow = page.getByTestId('dashboard-workflow-sections');
+    await expect(workflow).toBeVisible();
+    await expect(workflow.getByText('מחכה לאישור הצעת מחיר')).toBeVisible();
+    await expect(workflow.getByText('עבודות לא מאוישות')).toBeVisible();
+    await expect(workflow.getByText('חסר ראש צוות')).toBeVisible();
   });
 });
