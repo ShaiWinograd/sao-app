@@ -19,6 +19,7 @@ import { formsRoutes } from './routes/forms.js';
 import { invoicesRoutes } from './routes/invoices.js';
 import { workerPayrollRoutes } from './routes/workerPayroll.js';
 import { workersRoutes } from './routes/workers.js';
+import { adminRoutes } from './routes/admin.js';
 import { expensesRoutes } from './routes/expenses.js';
 import { reportsRoutes } from './routes/reports.js';
 import { settingsRoutes } from './routes/settings.js';
@@ -133,6 +134,7 @@ async function build() {
   await app.register(reportsRoutes,        { prefix: `${prefix}/reports` });
   await app.register(settingsRoutes,       { prefix: `${prefix}/settings` });
   await app.register(notificationsRoutes,  { prefix: `${prefix}/notifications` });
+  await app.register(adminRoutes,          { prefix: `${prefix}/admin` });
   await app.register(auditRoutes,          { prefix: `${prefix}/audit` });
   await app.register(webhooksRoutes,       { prefix: `/webhooks` });
 
