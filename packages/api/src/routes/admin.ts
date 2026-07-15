@@ -189,5 +189,35 @@ export async function adminRoutes(app: FastifyInstance) {
     const remaining = await prisma.customerCase.count();
     return { deletedCases: cases.length, remainingCases: remaining };
   });
+
+  // Full data reset for a clean testing slate: wipes all projects, customers,
+  // addresses and workers (keeps owner/admin logins). BOOTSTRAP_SECRET guarded.
+  app.post('/reset-data', async (req, reply) => {
+    const secret = process.env.BOOTSTRAP_SECRET;
+    if (!secret) return reply.status(404).send({ error: 'Not found' });
+    if (req.headers['x-seed-secret'] !== secret) {
+      return reply.status(403).send({ error: 'Forbidden' });
+    }
+
+    const cases = await prisma.customerCase.findMany({ select: { id: true } });
+    for (const c of cases) {
+      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        await deleteCaseCascade(tx, c.id);
+      });
+    }
+
+    await prisma.address.deleteMany({});
+    const customers = await prisma.customer.deleteMany({});
+    await prisma.workerPayment.deleteMany({});
+    await prisma.workerAdjustment.deleteMany({});
+    const workers = await prisma.worker.deleteMany({});
+    await prisma.user.deleteMany({ where: { role: UserRole.WORKER } });
+
+    return {
+      deletedCases: cases.length,
+      deletedCustomers: customers.count,
+      deletedWorkers: workers.count,
+    };
+  });
 }
 
