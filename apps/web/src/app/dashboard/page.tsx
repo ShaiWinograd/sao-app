@@ -152,7 +152,7 @@ function InfoHint({ text }: { text: string }) {
       <Info className="w-3.5 h-3.5 text-gray-400" />
       <span
         role="tooltip"
-        className="pointer-events-none absolute bottom-full right-0 z-30 mb-1 hidden w-52 rounded-lg bg-gray-900 px-2.5 py-1.5 text-right text-[11px] font-normal leading-snug text-white shadow-lg group-hover:block"
+        className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 z-30 mb-1 hidden w-max max-w-[220px] whitespace-normal rounded-lg bg-gray-900 px-2.5 py-1.5 text-right text-[11px] font-normal leading-snug text-white shadow-lg group-hover:block"
       >
         {text}
       </span>
@@ -1458,7 +1458,7 @@ export default function DashboardPage() {
               <div className="grid border-b border-gray-200 bg-amber-50/40" style={shiftGridStyle}>
                 <div className="p-2.5 border-l border-gray-200 flex items-center gap-1.5 text-xs font-semibold text-gray-700">
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                  משמרות לא מאוישות
+                  פערי איוש
                 </div>
                 {visibleShiftDates.map((date) => {
                   const dateKey = toDateKeyFromDate(date);
