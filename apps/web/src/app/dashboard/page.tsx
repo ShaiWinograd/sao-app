@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useUser, useAuth } from '@clerk/nextjs';
-import { dashboardIssueActionLabel, extractUrgentDashboardIssues, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone } from '@workforce/shared';
+import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone } from '@workforce/shared';
 import { AlertTriangle, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Info, Plus, XCircle } from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
@@ -908,9 +908,13 @@ export default function DashboardPage() {
       completionRate,
     };
   }, [displayedWorks]);
+  const futureWorks = useMemo(
+    () => dashboardWorks.filter((work) => work.dateKey >= todayDateKey),
+    [dashboardWorks, todayDateKey],
+  );
   const workflowSections = useMemo(() => {
     const worksByCaseId = new Map<string, ActiveWork[]>();
-    displayedWorks.forEach((work) => {
+    futureWorks.forEach((work) => {
       worksByCaseId.set(work.caseId, [...(worksByCaseId.get(work.caseId) ?? []), work]);
     });
 
@@ -925,9 +929,9 @@ export default function DashboardPage() {
       );
     });
 
-    const jobsWithWorkerShortage = displayedWorks.filter((work) => work.assignedWorkers.length < work.requiredWorkers);
-    const jobsMissingManager = displayedWorks.filter((work) => work.requiredTeamLeads > 0 && !work.actualTeamLeadName);
-    const attendanceExceptions = displayedWorks.filter(
+    const jobsWithWorkerShortage = futureWorks.filter((work) => work.assignedWorkers.length < work.requiredWorkers);
+    const jobsMissingManager = futureWorks.filter((work) => work.requiredTeamLeads > 0 && !work.actualTeamLeadName);
+    const attendanceExceptions = futureWorks.filter(
       (work) => (work.status === 'active' || work.status === 'done') && work.assignedWorkers.length > 0,
     );
     const awaitingBillingCases = cases.filter((item) => item.status === 'READY_FOR_REVIEW');
@@ -1044,12 +1048,7 @@ export default function DashboardPage() {
         actionLabel: dashboardIssueActionLabel(section.key),
       })),
     }));
-  }, [cases, displayedWorks, todayDateKey]);
-
-  const urgentIssues = useMemo(
-    () => extractUrgentDashboardIssues(workflowSections, 8),
-    [workflowSections],
-  );
+  }, [cases, futureWorks, todayDateKey]);
 
   const dashboardStats = useMemo(() => {
     const allItems = workflowSections.flatMap((section) => section.items);
@@ -1366,51 +1365,6 @@ export default function DashboardPage() {
         )}
 
       </div>
-
-      {/* Main Content */}
-      <section className="bg-white rounded-lg border border-gray-200 p-3" data-testid="dashboard-urgent-panel">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-gray-900">דורש טיפול</h2>
-          <span className="text-[11px] text-gray-500">{urgentIssues.length} פריטים דחופים</span>
-        </div>
-        {urgentIssues.length === 0 ? (
-          <p className="mt-2 text-xs text-emerald-700">אין כרגע דברים דחופים שדורשים טיפול</p>
-        ) : (
-          <div className="mt-2 space-y-2">
-            {urgentIssues.map((item) => (
-              <div
-                key={`urgent-${item.id}`}
-                className={`rounded-lg border px-3 py-2 ${
-                  item.severity === 'high' ? 'border-danger/30 bg-danger-bg' : 'border-warning/30 bg-warning-bg'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-start gap-2 text-right">
-                    <span className="mt-0.5 shrink-0">
-                      {item.severity === 'high' ? (
-                        <AlertTriangle className="w-4 h-4 text-danger" />
-                      ) : (
-                        <Clock className="w-4 h-4 text-warning" />
-                      )}
-                    </span>
-                    <div>
-                      <p className="text-xs font-semibold text-gray-900">{item.projectName}</p>
-                      <p className="text-xs text-gray-700 mt-0.5">{item.issue}</p>
-                      {item.dateLabel ? <p className="text-[11px] text-gray-600 mt-0.5">תאריך: {item.dateLabel}</p> : null}
-                    </div>
-                  </div>
-                  <Link
-                    href={item.href}
-                    className="inline-flex items-center rounded-md bg-primary-600 px-2.5 py-1.5 text-[11px] font-medium text-white hover:bg-primary-700 whitespace-nowrap"
-                  >
-                    {item.actionLabel ?? 'פעולה ישירה'}
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
 
       <div className="flex flex-col gap-2.5 lg:h-[calc(100vh-180px)] lg:min-h-[620px] min-h-0">
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden flex-1 min-h-[430px] flex flex-col">
