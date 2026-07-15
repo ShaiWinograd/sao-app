@@ -90,6 +90,20 @@ export default function PublicQuotationPage() {
     }
   }, [quote]);
 
+  const handleReject = useCallback(async () => {
+    if (!quote) return;
+    if (!window.confirm('לדחות את הצעת המחיר? לא ניתן לבטל פעולה זו.')) return;
+    setApproving(true);
+    setApproveError(null);
+    try {
+      await api.post(`/quotations/${quote.id}/public-reject`, {});
+      setQuote({ ...quote, status: 'REJECTED' });
+    } catch {
+      setApproveError('דחיית ההצעה נכשלה. נסו שוב או צרו קשר עם העסק.');
+    } finally {
+      setApproving(false);
+    }
+  }, [quote]);
   const details = quote?.details ?? null;
   const lineItems = details?.lineItems ?? [];
   const hasDateRange = Boolean(details?.projectStartDate || details?.projectEndDate);
@@ -259,6 +273,14 @@ export default function PublicQuotationPage() {
                   >
                     {approving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
                     אישור הצעת המחיר
+                  </button>
+                  <button
+                    onClick={() => void handleReject()}
+                    disabled={approving}
+                    className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    דחיית ההצעה
                   </button>
                   {approveError && <p className="mt-2 text-xs text-red-600 text-center">{approveError}</p>}
                   <p className="mt-3 text-center text-xs text-gray-400">לשאלות ותיאומים ניתן להשיב להודעה שקיבלתם.</p>

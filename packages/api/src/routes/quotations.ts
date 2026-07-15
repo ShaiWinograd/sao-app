@@ -20,6 +20,10 @@ const QuotationsListQuerySchema = z.object({
   caseId: z.string().optional(),
 });
 
+// A shared quotation link stops working once the deal is closed: the project was
+// cancelled or the work has been completed/paid.
+const CLOSED_CASE_STATUSES = new Set(['CANCELLED', 'COMPLETED', 'PAID']);
+
 type RequestUser = { id?: string } | undefined;
 
 async function resolvePerformedBy(user: RequestUser) {
@@ -95,10 +99,14 @@ export async function quotationsRoutes(app: FastifyInstance) {
       where: { id },
       include: {
         versions: { orderBy: { versionNumber: 'asc' as const } },
-        case: { select: { name: true, customer: { select: { firstName: true } } } },
+        case: { select: { name: true, status: true, customer: { select: { firstName: true } } } },
       },
     });
     if (!quotation) return reply.status(404).send({ error: 'Quotation not found' });
+
+    if (CLOSED_CASE_STATUSES.has(quotation.case.status)) {
+      return reply.status(410).send({ error: 'expired' });
+    }
 
     const current = getCurrentQuotationVersion(quotation.versions);
     if (!current) return reply.status(404).send({ error: 'Quotation has no versions' });
@@ -123,9 +131,13 @@ export async function quotationsRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const quotation = await prisma.quotation.findUnique({
       where: { id },
-      include: { versions: true },
+      include: { versions: true, case: { select: { status: true } } },
     });
     if (!quotation) return reply.status(404).send({ error: 'Quotation not found' });
+
+    if (CLOSED_CASE_STATUSES.has(quotation.case.status)) {
+      return reply.status(410).send({ error: 'expired' });
+    }
 
     const current = getCurrentQuotationVersion(quotation.versions);
     if (!current) return reply.status(404).send({ error: 'Quotation has no versions' });
@@ -169,6 +181,36 @@ export async function quotationsRoutes(app: FastifyInstance) {
     });
 
     return { status: 'APPROVED' };
+  });
+
+  // Customer rejects the sent quotation via the shared link (no auth).
+  app.post('/:id/public-reject', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const quotation = await prisma.quotation.findUnique({
+      where: { id },
+      include: { versions: true, case: { select: { status: true } } },
+    });
+    if (!quotation) return reply.status(404).send({ error: 'Quotation not found' });
+
+    if (CLOSED_CASE_STATUSES.has(quotation.case.status)) {
+      return reply.status(410).send({ error: 'expired' });
+    }
+
+    const current = getCurrentQuotationVersion(quotation.versions);
+    if (!current) return reply.status(404).send({ error: 'Quotation has no versions' });
+    if (current.status === 'REJECTED') {
+      return { status: 'REJECTED', alreadyRejected: true };
+    }
+    if (current.status !== 'SENT') {
+      return reply.status(409).send({ error: 'Quotation is not available for rejection' });
+    }
+
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await tx.quotationVersion.update({ where: { id: current.id }, data: { status: 'REJECTED' } });
+      await tx.quotation.update({ where: { id }, data: { status: 'REJECTED' } });
+    });
+
+    return { status: 'REJECTED' };
   });
 
   // Create a quotation (with its first draft version) for a project
