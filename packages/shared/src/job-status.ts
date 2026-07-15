@@ -35,7 +35,7 @@ export function deriveJobStatusBadge(input: JobStatusInput): JobStatusBadge {
         return { label: 'חסרים עובדים', tone: 'warning' };
       }
       if (input.requiresManager && !input.hasManager) {
-        return { label: 'חסר מנהל', tone: 'warning' };
+        return { label: 'חסר ראש צוות', tone: 'warning' };
       }
       return { label: 'מאוישת', tone: 'success' };
     }

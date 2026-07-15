@@ -16,20 +16,9 @@ type RankedCandidate = {
   reasons: string[];
 };
 
-const SKILL_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: '', label: 'כל כישור' },
-  { value: 'SHIFT_LEADER', label: 'מנהל עבודה' },
-  { value: 'PACKING_SPECIALIST', label: 'מומחה אריזה' },
-  { value: 'UNPACKING_SPECIALIST', label: 'מומחה פריקה' },
-  { value: 'ORGANIZATION_SPECIALIST', label: 'מומחה סידור' },
-  { value: 'DRIVER', label: 'נהג' },
-  { value: 'GENERAL_WORKER', label: 'עובד כללי' },
-];
-
 export function AvailabilityFinder({ defaultDate = '' }: { defaultDate?: string }) {
   const { getToken } = useAuth();
   const [date, setDate] = useState(defaultDate);
-  const [skill, setSkill] = useState('');
   const [requiresManager, setRequiresManager] = useState(false);
   const [results, setResults] = useState<RankedCandidate[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -45,7 +34,6 @@ export function AvailabilityFinder({ defaultDate = '' }: { defaultDate?: string 
     try {
       const auth = await authHeaders(getToken);
       const params = new URLSearchParams({ date });
-      if (skill) params.set('skill', skill);
       if (requiresManager) params.set('requiresManager', 'true');
       const res = await api.get<RankedCandidate[]>(`/workers/availability?${params.toString()}`, auth);
       setResults(res.data);
@@ -55,7 +43,7 @@ export function AvailabilityFinder({ defaultDate = '' }: { defaultDate?: string 
     } finally {
       setLoading(false);
     }
-  }, [date, skill, requiresManager, getToken]);
+  }, [date, requiresManager, getToken]);
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm" data-testid="availability-finder">
@@ -70,27 +58,13 @@ export function AvailabilityFinder({ defaultDate = '' }: { defaultDate?: string 
             className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
           />
         </label>
-        <label className="text-xs text-gray-600">
-          <span className="block mb-1">כישור נדרש</span>
-          <select
-            value={skill}
-            onChange={(event) => setSkill(event.target.value)}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
-          >
-            {SKILL_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
         <label className="inline-flex items-center gap-2 text-xs text-gray-700 pb-2">
           <input
             type="checkbox"
             checked={requiresManager}
             onChange={(event) => setRequiresManager(event.target.checked)}
           />
-          דרוש מנהל עבודה
+          ראש צוות בלבד
         </label>
         <button
           onClick={() => void search()}

@@ -184,7 +184,7 @@ export default function MultiDayScheduler({ caseId, customerId, addresses, getTo
                   <input type="number" min={1} value={row.workers} onChange={(e) => updateRow(row.key, { workers: Number(e.target.value) })} aria-label="מספר עובדים" className="w-16 rounded-md border border-gray-300 px-2 py-1 text-xs" />
                 </td>
                 <td className="py-2 pe-2">
-                  <input type="checkbox" checked={row.requiresManager} onChange={(e) => updateRow(row.key, { requiresManager: e.target.checked })} aria-label="נדרש מנהל עבודה" className="h-4 w-4" />
+                  <input type="checkbox" checked={row.requiresManager} onChange={(e) => updateRow(row.key, { requiresManager: e.target.checked })} aria-label="נדרש ראש צוות" className="h-4 w-4" />
                 </td>
                 <td className="py-2">
                   <button

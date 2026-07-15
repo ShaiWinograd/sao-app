@@ -401,9 +401,9 @@ export default function JobDetailPage() {
       {tab === 'staffing' && (
         <div className="space-y-5">
           <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-gray-900 mb-3">מנהל עבודה</h2>
+            <h2 className="text-sm font-semibold text-gray-900 mb-3">ראש צוות</h2>
             {managerSlots.length === 0 ? (
-              <p className="text-sm text-gray-400">לא הוגדרה עמדת מנהל עבודה</p>
+              <p className="text-sm text-gray-400">לא הוגדרה עמדת ראש צוות</p>
             ) : (
               <ul className="space-y-2">
                 {managerSlots.map((slot) => {
