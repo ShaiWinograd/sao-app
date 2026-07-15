@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useUser, useAuth } from '@clerk/nextjs';
-import { dashboardIssueActionLabel, extractUrgentDashboardIssues, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone } from '@workforce/shared';
+import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone } from '@workforce/shared';
 import { AlertTriangle, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Info, Plus, XCircle } from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
@@ -362,7 +362,6 @@ export default function DashboardPage() {
   const [workerVisibleNotes, setWorkerVisibleNotes] = useState('');
   const [customerMode, setCustomerMode] = useState<'existing' | 'new'>('new');
   const [dayJobsPickerDateKey, setDayJobsPickerDateKey] = useState<string | null>(null);
-  const [activeSectionKey, setActiveSectionKey] = useState<string | null>(null);
 
   // Load form templates when the create modal is opened
   useEffect(() => {
@@ -908,9 +907,13 @@ export default function DashboardPage() {
       completionRate,
     };
   }, [displayedWorks]);
+  const futureWorks = useMemo(
+    () => dashboardWorks.filter((work) => work.dateKey >= todayDateKey),
+    [dashboardWorks, todayDateKey],
+  );
   const workflowSections = useMemo(() => {
     const worksByCaseId = new Map<string, ActiveWork[]>();
-    displayedWorks.forEach((work) => {
+    futureWorks.forEach((work) => {
       worksByCaseId.set(work.caseId, [...(worksByCaseId.get(work.caseId) ?? []), work]);
     });
 
@@ -925,9 +928,9 @@ export default function DashboardPage() {
       );
     });
 
-    const jobsWithWorkerShortage = displayedWorks.filter((work) => work.assignedWorkers.length < work.requiredWorkers);
-    const jobsMissingManager = displayedWorks.filter((work) => work.requiredTeamLeads > 0 && !work.actualTeamLeadName);
-    const attendanceExceptions = displayedWorks.filter(
+    const jobsWithWorkerShortage = futureWorks.filter((work) => work.assignedWorkers.length < work.requiredWorkers);
+    const jobsMissingManager = futureWorks.filter((work) => work.requiredTeamLeads > 0 && !work.actualTeamLeadName);
+    const attendanceExceptions = futureWorks.filter(
       (work) => (work.status === 'active' || work.status === 'done') && work.assignedWorkers.length > 0,
     );
     const awaitingBillingCases = cases.filter((item) => item.status === 'READY_FOR_REVIEW');
@@ -1044,12 +1047,22 @@ export default function DashboardPage() {
         actionLabel: dashboardIssueActionLabel(section.key),
       })),
     }));
-  }, [cases, displayedWorks, todayDateKey]);
+  }, [cases, futureWorks, todayDateKey]);
 
-  const urgentIssues = useMemo(
-    () => extractUrgentDashboardIssues(workflowSections, 8),
-    [workflowSections],
-  );
+  const urgentIssues = useMemo(() => {
+    const horizonKey = addDaysToDateKey(todayDateKey, 2);
+    return futureWorks
+      .filter((work) => work.dateKey <= horizonKey && work.assignedWorkers.length < work.requiredWorkers)
+      .map((work) => ({
+        id: String(work.id),
+        projectName: work.caseName,
+        issue: `חסרים ${Math.max(work.requiredWorkers - work.assignedWorkers.length, 0)} עובדים`,
+        href: `/jobs/${work.id}`,
+        dateLabel: toDisplayDateFromDateKey(work.dateKey),
+        severity: 'high' as const,
+        actionLabel: 'פתיחת העבודה',
+      }));
+  }, [futureWorks, todayDateKey]);
 
   const dashboardStats = useMemo(() => {
     const allItems = workflowSections.flatMap((section) => section.items);
@@ -1064,11 +1077,6 @@ export default function DashboardPage() {
     ).size;
     return { exceptionsCount, awaitingApprovalCount, todayJobsCount, workersTodayCount };
   }, [workflowSections, dashboardWorks, todayDateKey]);
-
-  const activeWorkflowSection = useMemo(
-    () => workflowSections.find((section) => section.key === activeSectionKey) ?? null,
-    [workflowSections, activeSectionKey],
-  );
 
   const visibleShiftDates = useMemo(() => {
     if (selectedRange === 'today') {
@@ -1595,49 +1603,6 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
-
-          <div className="px-3 py-2.5">
-            <h3 className="font-semibold text-gray-900 text-sm mb-2">זרימות עבודה</h3>
-            <div className="space-y-2" data-testid="dashboard-workflow-sections">
-              {workflowSections.map((section) => {
-                const previewItems = section.items.slice(0, 5);
-                return (
-                  <div key={section.key} className="rounded-lg border border-gray-200 bg-white p-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs font-semibold text-gray-900">{section.title}</p>
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${section.items.length > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'}`}>
-                        {section.items.length}
-                      </span>
-                    </div>
-                    <div className="mt-1 space-y-1">
-                      {previewItems.length === 0 ? (
-                        <p className="text-[11px] text-emerald-700">אין פריטים פתוחים</p>
-                      ) : (
-                        previewItems.map((item) => (
-                          <Link
-                            key={`${section.key}-${item.id}`}
-                            href={item.href}
-                            className="block rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-100"
-                          >
-                            {item.projectName} • {item.issue}
-                          </Link>
-                        ))
-                      )}
-                    </div>
-                    {section.items.length > 5 ? (
-                      <button
-                        type="button"
-                        onClick={() => setActiveSectionKey(section.key)}
-                        className="mt-1.5 text-[11px] font-medium text-emerald-700 hover:text-emerald-800"
-                      >
-                        הצגת הכל
-                      </button>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
         </div>
       </div>
 
@@ -2051,44 +2016,6 @@ export default function DashboardPage() {
                   </p>
                 </button>
               ))}
-            </div>
-          </div>
-        </div>
-      )}
-      {activeWorkflowSection && (
-        <div
-          className="fixed inset-0 z-50 bg-black/30 flex items-start justify-center overflow-y-auto p-4 py-6"
-          onMouseDown={() => setActiveSectionKey(null)}
-        >
-          <div
-            className="w-full max-w-md rounded-lg border border-gray-200 bg-white shadow-xl max-h-[70vh] overflow-y-auto"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setActiveSectionKey(null)}
-                className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
-              >
-                סגירה
-              </button>
-              <h3 className="font-semibold text-gray-900 text-sm">{activeWorkflowSection.title}</h3>
-            </div>
-            <div className="p-3 space-y-2">
-              {activeWorkflowSection.items.map((item) => (
-                <Link
-                  key={item.id}
-                  href={item.href}
-                  onClick={() => setActiveSectionKey(null)}
-                  className="block w-full rounded-lg border border-gray-200 bg-white hover:bg-emerald-50 hover:border-emerald-300 px-3 py-2 text-right text-sm text-gray-900"
-                >
-                  <div>{item.projectName}</div>
-                  <div className="text-xs text-gray-600 mt-0.5">{item.issue}</div>
-                </Link>
-              ))}
-              {activeWorkflowSection.items.length === 0 && (
-                <p className="text-sm text-gray-500 text-center py-4">אין פריטים להצגה</p>
-              )}
             </div>
           </div>
         </div>

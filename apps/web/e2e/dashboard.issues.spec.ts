@@ -43,6 +43,7 @@ test.describe('Dashboard urgent and workflow sections', () => {
     });
 
     await page.route('**/api/v1/jobs', async (route) => {
+      const soonIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -51,7 +52,7 @@ test.describe('Dashboard urgent and workflow sections', () => {
             id: 'job-1',
             customerId: 'customer-1',
             caseId: 'case-active',
-            date: '2026-07-12T08:00:00.000Z',
+            date: soonIso,
             status: 'PUBLISHED',
             jobType: 'PACKING',
             requiredWorkerCount: 4,
@@ -66,7 +67,7 @@ test.describe('Dashboard urgent and workflow sections', () => {
     });
   });
 
-  test('shows urgent panel and separated workflow sections with direct actions', async ({ page }) => {
+  test('shows a focused urgent panel with only near-term understaffed shifts', async ({ page }) => {
     await page.goto('/dashboard');
 
     // At-a-glance stat cards
@@ -74,21 +75,16 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await expect(page.getByText('מחכות לאישור', { exact: true })).toBeVisible();
     await expect(page.getByText('עבודות היום', { exact: true })).toBeVisible();
 
-    // Header quick actions
+    // Header quick action
     await expect(page.getByRole('link', { name: 'יצירת פרויקט חדש' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'יצירת עבודה מהירה' })).toBeVisible();
 
     const urgentPanel = page.getByTestId('dashboard-urgent-panel');
     await expect(urgentPanel).toBeVisible();
     await expect(urgentPanel.getByRole('heading', { name: 'דורש טיפול' })).toBeVisible();
     await expect(urgentPanel.getByText('חסרים 3 עובדים', { exact: true })).toBeVisible();
-    await expect(urgentPanel.getByText('לעבודה אין מנהל עבודה משויך', { exact: true })).toBeVisible();
     await expect(urgentPanel.getByRole('link', { name: 'פתיחת העבודה' }).first()).toBeVisible();
 
-    const workflow = page.getByTestId('dashboard-workflow-sections');
-    await expect(workflow).toBeVisible();
-    await expect(workflow.getByText('מחכה לאישור הצעת מחיר')).toBeVisible();
-    await expect(workflow.getByText('עבודות לא מאוישות')).toBeVisible();
-    await expect(workflow.getByText('חסר מנהל עבודה')).toBeVisible();
+    // The noisy workflow board was removed.
+    await expect(page.getByTestId('dashboard-workflow-sections')).toHaveCount(0);
   });
 });
