@@ -146,5 +146,26 @@ export async function adminRoutes(app: FastifyInstance) {
 
     return { seeded: true, quotationId: quotation.id, link: `/q/${quotation.id}` };
   });
+
+  // One-shot cleanup of the seeded demo workers (email @sao.local, user id
+  // seed-worker-*) so the owner starts from a clean list. Same BOOTSTRAP_SECRET
+  // guard. Hard delete — demo workers have no shifts/payments referencing them.
+  app.post('/delete-demo-workers', async (req, reply) => {
+    const secret = process.env.BOOTSTRAP_SECRET;
+    if (!secret) return reply.status(404).send({ error: 'Not found' });
+    if (req.headers['x-seed-secret'] !== secret) {
+      return reply.status(403).send({ error: 'Forbidden' });
+    }
+
+    const deletedWorkers = await prisma.worker.deleteMany({
+      where: { email: { endsWith: '@sao.local' } },
+    });
+    const deletedUsers = await prisma.user.deleteMany({
+      where: { id: { startsWith: 'seed-worker-' } },
+    });
+
+    const remaining = await prisma.worker.count();
+    return { deletedWorkers: deletedWorkers.count, deletedUsers: deletedUsers.count, remainingWorkers: remaining };
+  });
 }
 
