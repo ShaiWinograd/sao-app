@@ -22,8 +22,21 @@ export function mailtoUrl(email: string, subject: string, body: string): string 
   return `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
-/** Open a messaging URL in a new context. Must be called synchronously from a user gesture. */
+/** Open a messaging URL. Must be called synchronously from a user gesture. */
 export function openMessagingChannel(url: string): void {
   if (typeof window === 'undefined') return;
-  window.open(url, '_blank', 'noopener,noreferrer');
+  // A synthetic anchor-click is far more reliable than window.open: browsers
+  // treat it as a genuine navigation from the user gesture and don't popup-block
+  // it. mailto: and tel: are handled by the OS without opening a blank tab.
+  const isWeb = /^https?:/i.test(url);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  if (isWeb) {
+    anchor.target = '_blank';
+    anchor.rel = 'noopener noreferrer';
+  }
+  anchor.style.display = 'none';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
 }
