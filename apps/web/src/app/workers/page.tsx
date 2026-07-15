@@ -111,6 +111,7 @@ export default function WorkersPage() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | WorkerRole>('all');
   const [newName, setNewName] = useState('');
+  const [newLastName, setNewLastName] = useState('');
   const [newRole, setNewRole] = useState<WorkerRole>('עובדת');
   const [newHourlyWage, setNewHourlyWage] = useState(70);
   const [newVatIncluded, setNewVatIncluded] = useState(false);
@@ -172,9 +173,49 @@ export default function WorkersPage() {
     return { teamLeads, averageWage };
   }, [workers]);
 
-  const addWorkerAndSendInvite = () => {
-    setMessage('להזמנת עובד חדש יש ליצור קשר עם התמיכה. יצירת עובד חדש דורשת הרשמה דרך מערכת Clerk ולא ניתן לבצע ישירות מממשק זה.');
-    setIsCreateModalOpen(false);
+  const addWorkerAndSendInvite = async () => {
+    const firstName = newName.trim();
+    if (!firstName) {
+      setMessage('יש להזין שם פרטי.');
+      return;
+    }
+    if (!isValidIsraeliPhone(newPhone)) {
+      setMessage('מספר הטלפון לא תקין.');
+      return;
+    }
+    const email = newEmail.trim() || `${newPhone.replace(/\D/g, '')}@worker.local`;
+    if (!isValidEmail(email)) {
+      setMessage('כתובת האימייל לא תקינה.');
+      return;
+    }
+    if (canSeeFinancials && !HOURLY_WAGE_OPTIONS.includes(newHourlyWage as (typeof HOURLY_WAGE_OPTIONS)[number])) {
+      setMessage('יש לבחור שכר שעתי מהרשימה בלבד.');
+      return;
+    }
+    const wage = canSeeFinancials ? newHourlyWage : 0;
+    try {
+      await api.post('/workers', {
+        firstName,
+        lastName: newLastName.trim(),
+        phone: newPhone.trim(),
+        email,
+        hourlyWage: wage,
+        dailyPaymentAmount: wage * 8,
+        paymentMethod: 'BANK_TRANSFER',
+        skills: mapRoleToSkills(newRole, []),
+      });
+      setIsCreateModalOpen(false);
+      setNewName('');
+      setNewLastName('');
+      setNewPhone('');
+      setNewEmail('');
+      setNewRole('עובדת');
+      setNewHourlyWage(70);
+      setMessage('העובדת נוספה בהצלחה.');
+      await loadData();
+    } catch {
+      setMessage('הוספת העובדת נכשלה. ייתכן שהאימייל כבר קיים במערכת.');
+    }
   };
 
   const openEditWorker = (worker: Worker) => {
@@ -561,25 +602,104 @@ export default function WorkersPage() {
               </button>
               <h3 className="text-sm font-semibold text-gray-900">הוספת עובדת חדשה</h3>
             </div>
-            <div className="p-5 space-y-4">
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                <p className="font-semibold mb-1">להזמנת עובד חדש צרי קשר עם התמיכה</p>
-                <p className="text-xs">יצירת חשבון עובד חדש דורשת הרשמה ראשונית דרך מערכת Clerk. אנא פנה לתמיכה הטכנית לביצוע הפעולה.</p>
+            <div className="p-5 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-sm">
+                  <span className="text-gray-600">שם פרטי</span>
+                  <input
+                    type="text"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    placeholder="שם פרטי"
+                  />
+                </label>
+                <label className="text-sm">
+                  <span className="text-gray-600">שם משפחה</span>
+                  <input
+                    type="text"
+                    value={newLastName}
+                    onChange={(e) => setNewLastName(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    placeholder="שם משפחה (רשות)"
+                  />
+                </label>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsCreateModalOpen(false)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                סגירה
-              </button>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-sm">
+                  <span className="text-gray-600">טלפון</span>
+                  <input
+                    type="tel"
+                    value={newPhone}
+                    onChange={(e) => setNewPhone(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    placeholder="050-0000000"
+                  />
+                </label>
+                <label className="text-sm">
+                  <span className="text-gray-600">אימייל (רשות)</span>
+                  <input
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    placeholder="worker@example.com"
+                  />
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-sm">
+                  <span className="text-gray-600">תפקיד</span>
+                  <select
+                    value={newRole}
+                    onChange={(e) => setNewRole(e.target.value as WorkerRole)}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                  >
+                    <option value="עובדת">עובדת</option>
+                    <option value="ראש צוות">ראש צוות</option>
+                  </select>
+                </label>
+                {canSeeFinancials && (
+                  <label className="text-sm">
+                    <span className="text-gray-600">שכר שעתי (₪)</span>
+                    <select
+                      value={newHourlyWage}
+                      onChange={(e) => setNewHourlyWage(Number(e.target.value))}
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                    >
+                      {HOURLY_WAGE_OPTIONS.map((wage) => (
+                        <option key={wage} value={wage}>{wage}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
+              <p className="text-xs text-gray-400">
+                העובדת נוספת לניהול הצוות. חשבון התחברות לאפליקציה יופק בהמשך.
+              </p>
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => void addWorkerAndSendInvite()}
+                  className="flex-1 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700"
+                >
+                  הוספת עובדת
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsCreateModalOpen(false)}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  ביטול
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {message && (
-        <p className={`text-sm mt-2 ${message.includes('נוספה ונשלח') || message.includes('תוזמן') || message.includes('הוחל') || message.includes('חזרה') || message.includes('הועברה') ? 'text-emerald-700' : 'text-rose-700'}`}>
+        <p className={`text-sm mt-2 ${message.includes('נוספה ונשלח') || message.includes('נוספה בהצלחה') || message.includes('תוזמן') || message.includes('הוחל') || message.includes('חזרה') || message.includes('הועברה') ? 'text-emerald-700' : 'text-rose-700'}`}>
           {message}
         </p>
       )}
