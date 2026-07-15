@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
@@ -180,6 +180,10 @@ const SERVICE_LABELS: Record<ServiceType, string> = {
   UNPACKING: 'פריקה',
   HOME_ORGANIZATION: 'סידור',
 };
+
+// Default rate used to seed a first-quotation estimate from the planned scope
+// (the creation wizard's default). The owner can edit before sending.
+const DEFAULT_QUOTE_HOURLY_RATE = 175;
 
 const TIMING_LABELS: Record<TimingPrecision, string> = {
   EXACT_DATE: 'תאריך מדויק',
@@ -547,6 +551,21 @@ export default function ProjectDetailPage() {
     }, 0);
     return { estimatedHours, approvedQuoteTotal };
   }, [planned, quotations]);
+
+  // Seed the "new quotation" form once from the planned scope so the owner
+  // isn't retyping the wizard's estimate. Only when no quotation exists yet and
+  // the fields are still untouched.
+  const quotePrefilled = useRef(false);
+  useEffect(() => {
+    if (quotePrefilled.current) return;
+    if (quotations.length > 0 || planned.length === 0) return;
+    if (newTotal !== '' || newServices !== '') return;
+    quotePrefilled.current = true;
+    const total = Math.round(comparison.estimatedHours * DEFAULT_QUOTE_HOURLY_RATE);
+    if (total > 0) setNewTotal(String(total));
+    const services = planned.map((ps) => SERVICE_LABELS[ps.serviceType]).filter(Boolean);
+    if (services.length > 0) setNewServices(services.join('\n'));
+  }, [planned, quotations, comparison.estimatedHours, newTotal, newServices]);
 
   const hoursComparison = useMemo(() => {
     const entries: HoursComparisonEntry[] = planned.map((ps) => ({
