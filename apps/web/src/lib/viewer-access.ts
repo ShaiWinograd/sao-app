@@ -23,3 +23,15 @@ export function canViewReports(role: AppViewerRole) {
 export function canViewSensitiveFinancials(role: AppViewerRole) {
   return role === 'OWNER';
 }
+
+// Anyone who can manage workers (owner or office admin) can see and set the
+// worker's hourly wage — it's core to creating a worker, not a P&L secret.
+export function canManageWorkerWages(role: AppViewerRole) {
+  return role === 'OWNER' || role === 'ADMIN';
+}
+
+export function viewerRoleLabel(role: AppViewerRole): string {
+  if (role === 'OWNER') return 'בעל/ת עסק';
+  if (role === 'WORKER') return 'עובד/ת';
+  return 'מנהל/ת';
+}

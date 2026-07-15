@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useUser } from '@clerk/nextjs';
 import { Briefcase, Check, Mail, MessageCircle, Plus, Search, Users, Wallet } from 'lucide-react';
-import { canViewSensitiveFinancials, resolveAppViewerRole } from '../../lib/viewer-access';
+import { canManageWorkerWages, resolveAppViewerRole } from '../../lib/viewer-access';
 import { api } from '../../lib/api';
 
 type WorkerRole = 'ראש צוות' | 'עובדת';
@@ -102,7 +102,7 @@ function formatActivityTimestamp(timestamp: string) {
 export default function WorkersPage() {
   const { user } = useUser();
   const viewerRole = resolveAppViewerRole(user);
-  const canSeeFinancials = canViewSensitiveFinancials(viewerRole);
+  const canEditWages = canManageWorkerWages(viewerRole);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [archivedWorkers, setArchivedWorkers] = useState<Worker[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -183,16 +183,16 @@ export default function WorkersPage() {
       setMessage('מספר הטלפון לא תקין.');
       return;
     }
-    const email = newEmail.trim() || `${newPhone.replace(/\D/g, '')}@worker.local`;
+    const email = newEmail.trim();
     if (!isValidEmail(email)) {
-      setMessage('כתובת האימייל לא תקינה.');
+      setMessage('יש להזין כתובת אימייל תקינה.');
       return;
     }
-    if (canSeeFinancials && !HOURLY_WAGE_OPTIONS.includes(newHourlyWage as (typeof HOURLY_WAGE_OPTIONS)[number])) {
+    if (!HOURLY_WAGE_OPTIONS.includes(newHourlyWage as (typeof HOURLY_WAGE_OPTIONS)[number])) {
       setMessage('יש לבחור שכר שעתי מהרשימה בלבד.');
       return;
     }
-    const wage = canSeeFinancials ? newHourlyWage : 0;
+    const wage = newHourlyWage;
     try {
       await api.post('/workers', {
         firstName,
@@ -232,7 +232,7 @@ export default function WorkersPage() {
 
   const saveWorkerUpdate = async () => {
     if (!editingWorkerId) return;
-    if (canSeeFinancials && !HOURLY_WAGE_OPTIONS.includes(editHourlyWage as (typeof HOURLY_WAGE_OPTIONS)[number])) {
+    if (canEditWages && !HOURLY_WAGE_OPTIONS.includes(editHourlyWage as (typeof HOURLY_WAGE_OPTIONS)[number])) {
       setMessage('יש לבחור שכר שעתי מהרשימה בלבד לפני שמירה.');
       return;
     }
@@ -253,7 +253,7 @@ export default function WorkersPage() {
       email: editEmail.trim(),
       skills: updatedSkills,
     };
-    if (canSeeFinancials) {
+    if (canEditWages) {
       patchBody.hourlyWage = editHourlyWage;
     }
 
@@ -266,7 +266,7 @@ export default function WorkersPage() {
             return {
               ...worker,
               role: editRole,
-              hourlyWage: canSeeFinancials ? editHourlyWage : worker.hourlyWage,
+              hourlyWage: canEditWages ? editHourlyWage : worker.hourlyWage,
               vatIncluded: editVatIncluded,
               phone: editPhone.trim(),
               email: editEmail.trim(),
@@ -279,7 +279,7 @@ export default function WorkersPage() {
             ...worker,
             pendingUpdate: {
               role: editRole,
-              hourlyWage: canSeeFinancials ? editHourlyWage : worker.hourlyWage,
+              hourlyWage: canEditWages ? editHourlyWage : worker.hourlyWage,
               vatIncluded: editVatIncluded,
               phone: editPhone.trim(),
               email: editEmail.trim(),
@@ -365,7 +365,7 @@ export default function WorkersPage() {
             <p className="text-xs text-gray-500">שכר שעתי ממוצע</p>
             <Wallet className="w-4 h-4 text-gray-500" />
           </div>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{canSeeFinancials ? `₪${stats.averageWage}` : 'מוסתר'}</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1">{canEditWages ? `₪${stats.averageWage}` : 'מוסתר'}</p>
           <p className="text-xs text-gray-500 mt-1">פעילות כרגע: {workers.length}</p>
         </div>
       </div>
@@ -456,7 +456,7 @@ export default function WorkersPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700">{worker.role}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{canSeeFinancials ? `₪${worker.hourlyWage}` : 'מוסתר'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{canEditWages ? `₪${worker.hourlyWage}` : 'מוסתר'}</td>
                   <td className="px-4 py-3 text-sm text-gray-700 text-center">
                     {worker.vatIncluded ? <Check className="mx-auto h-4 w-4 text-emerald-600" /> : <span className="text-gray-300">—</span>}
                   </td>
@@ -536,7 +536,7 @@ export default function WorkersPage() {
                   <option value="ראש צוות">ראש צוות</option>
                   <option value="עובדת">עובדת</option>
                 </select>
-                {canSeeFinancials ? (
+                {canEditWages ? (
                   <select
                     value={editHourlyWage}
                     onChange={(e) => setEditHourlyWage(Number(e.target.value))}
@@ -637,9 +637,10 @@ export default function WorkersPage() {
                   />
                 </label>
                 <label className="text-sm">
-                  <span className="text-gray-600">אימייל (רשות)</span>
+                  <span className="text-gray-600">אימייל *</span>
                   <input
                     type="email"
+                    required
                     value={newEmail}
                     onChange={(e) => setNewEmail(e.target.value)}
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
@@ -659,7 +660,7 @@ export default function WorkersPage() {
                     <option value="ראש צוות">ראש צוות</option>
                   </select>
                 </label>
-                {canSeeFinancials && (
+                {canEditWages && (
                   <label className="text-sm">
                     <span className="text-gray-600">שכר שעתי (₪)</span>
                     <select

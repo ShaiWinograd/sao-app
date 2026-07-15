@@ -7,7 +7,7 @@ import { UserButton, useUser } from '@clerk/nextjs';
 import {
   LayoutDashboard, Users, Calendar, BarChart3, Settings, LayoutGrid, Contact, Bug,
 } from 'lucide-react';
-import { canViewReports, resolveAppViewerRole } from '../../lib/viewer-access';
+import { canViewReports, resolveAppViewerRole, viewerRoleLabel } from '../../lib/viewer-access';
 
 // Spec 02 (navigation): only these seven top-level items. Quotations, Forms,
 // Attendance, Messages, and Payments must NOT be top-level — they live inside
@@ -97,7 +97,7 @@ export default function Sidebar() {
           />
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold text-gray-900 truncate">החשבון שלי</p>
-            <p className="text-xs text-gray-500">בעלי עסק</p>
+            <p className="text-xs text-gray-500">{viewerRoleLabel(viewerRole)}</p>
           </div>
         </div>
       </div>
