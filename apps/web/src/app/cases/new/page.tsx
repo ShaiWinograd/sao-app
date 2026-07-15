@@ -249,18 +249,30 @@ export default function NewProjectWizard() {
       setError(null);
       try {
         const auth = await authHeaders(getToken);
-        const customerRes = await api.post<{ id: string }>(
-          '/customers',
-          {
-            firstName: firstName.trim(),
-            lastName: lastName.trim(),
-            phone: phone.trim(),
-            email: email.trim() || `${phone.trim()}@placeholder.local`,
-            ...(customerNotes.trim() ? { notes: customerNotes.trim() } : {}),
-          },
+        // Reuse an existing customer with the same phone instead of creating a duplicate.
+        const normalizedPhone = phone.replace(/\D/g, '');
+        let customerId: string;
+        const existing = await api.get<Array<{ id: string; phone: string }>>(
+          `/customers?search=${encodeURIComponent(phone.trim())}`,
           auth,
         );
-        const customerId = customerRes.data.id;
+        const match = existing.data.find((c) => c.phone.replace(/\D/g, '') === normalizedPhone);
+        if (match) {
+          customerId = match.id;
+        } else {
+          const customerRes = await api.post<{ id: string }>(
+            '/customers',
+            {
+              firstName: firstName.trim(),
+              lastName: lastName.trim(),
+              phone: phone.trim(),
+              email: email.trim() || `${phone.trim()}@placeholder.local`,
+              ...(customerNotes.trim() ? { notes: customerNotes.trim() } : {}),
+            },
+            auth,
+          );
+          customerId = customerRes.data.id;
+        }
 
         // Create validated addresses (Azure Maps selection required to persist).
         const createdAddressIds: string[] = [];

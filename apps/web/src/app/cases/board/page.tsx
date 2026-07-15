@@ -127,6 +127,31 @@ export default function ProjectBoardPage() {
     [getToken, loadBoard],
   );
 
+  const deleteCase = useCallback(
+    async (caseId: string, name: string) => {
+      if (
+        typeof window !== 'undefined' &&
+        !window.confirm(
+          `מחיקת הפרויקט "${name}" תמחק אותו לצמיתות, כולל כל העבודות, הצעות המחיר והחשבוניות. הפעולה אינה הפיכה. להמשיך?`,
+        )
+      ) {
+        return;
+      }
+      setBusyId(caseId);
+      setError(null);
+      try {
+        const auth = await authHeaders(getToken);
+        await api.delete(`/cases/${caseId}`, auth);
+        await loadBoard();
+      } catch {
+        setError('מחיקת הפרויקט נכשלה');
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [getToken, loadBoard],
+  );
+
   const [draggedId, setDraggedId] = useState<string | null>(null);
 
   const tab = useMemo(() => board?.tabs[activeTab], [board, activeTab]);
@@ -376,6 +401,14 @@ export default function ProjectBoardPage() {
                             ))}
                           </select>
                         </div>
+                        <button
+                          type="button"
+                          disabled={busyId === kase.id}
+                          onClick={() => void deleteCase(kase.id, kase.name)}
+                          className="mt-2 text-[11px] text-rose-600 hover:text-rose-700 disabled:opacity-50"
+                        >
+                          מחיקת פרויקט
+                        </button>
                       </article>
                     );
                   })
@@ -400,12 +433,13 @@ export default function ProjectBoardPage() {
                   <th className="text-right font-medium px-4 py-2">עבודה קרובה</th>
                   <th className="text-right font-medium px-4 py-2">עבודות</th>
                   <th className="text-right font-medium px-4 py-2">הפעולה הבאה</th>
+                  <th className="text-right font-medium px-4 py-2"></th>
                 </tr>
               </thead>
               <tbody>
                 {filteredCases.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-6 text-center text-gray-400">לא נמצאו פרויקטים</td>
+                    <td colSpan={7} className="px-4 py-6 text-center text-gray-400">לא נמצאו פרויקטים</td>
                   </tr>
                 ) : (
                   filteredCases.map((kase) => (
@@ -420,6 +454,16 @@ export default function ProjectBoardPage() {
                       <td className="px-4 py-2.5 text-gray-600">{nextJobDate(kase.jobs)}</td>
                       <td className="px-4 py-2.5 text-gray-600">{kase.jobs.length}</td>
                       <td className="px-4 py-2.5 text-gray-600">{getCaseNextAction(kase.status)?.title ?? '—'}</td>
+                      <td className="px-4 py-2.5 text-left">
+                        <button
+                          type="button"
+                          disabled={busyId === kase.id}
+                          onClick={() => void deleteCase(kase.id, kase.name)}
+                          className="text-xs text-rose-600 hover:text-rose-700 disabled:opacity-50"
+                        >
+                          מחיקה
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
