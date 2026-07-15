@@ -999,7 +999,7 @@ export default function DashboardPage() {
         items: jobsWithWorkerShortage.map((work) => ({
           id: String(work.id),
           projectName: work.caseName,
-          issue: `חסרים ${Math.max(work.requiredWorkers - work.assignedWorkers.length, 0)} עובדים`,
+          issue: `חסרים ${Math.max(work.requiredWorkers - work.requiredTeamLeads - work.assignedWorkers.length, 0)} עובדים`,
           href: `/jobs/${work.id}`,
           dateLabel: toDisplayDateFromDateKey(work.dateKey),
           severity: 'high' as const,
@@ -1163,7 +1163,7 @@ export default function DashboardPage() {
   const unassignedWorksByDate = useMemo(() => {
     const map = new Map<string, Array<{ work: ActiveWork; open: number }>>();
     displayedWorks.forEach((work) => {
-      const open = Math.max(work.requiredWorkers - work.assignedWorkers.length, 0);
+      const open = Math.max(work.requiredWorkers - work.requiredTeamLeads - work.assignedWorkers.length, 0);
       if (open > 0) {
         map.set(work.dateKey, [...(map.get(work.dateKey) ?? []), { work, open }]);
       }
