@@ -27,6 +27,7 @@ import {
   type StatusTone,
 } from '@workforce/shared';
 import { api, authHeaders } from '../../../lib/api';
+import { whatsAppUrl, mailtoUrl, openMessagingChannel } from '../../../lib/messaging';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import { AvailabilityFinder } from '../../../components/scheduling/AvailabilityFinder';
 import { DateFinder } from '../../../components/scheduling/DateFinder';
@@ -497,6 +498,14 @@ export default function ProjectDetailPage() {
     (templateKey: ProjectCommunicationTemplateKey, channel: ProjectCommunicationChannel) => {
       if (!kase) return;
       const recipient = channel === 'whatsapp' ? kase.customer.phone : kase.customer.email;
+      const preview = buildCommPreview(templateKey);
+      // Actually open the customer's WhatsApp / email with the message pre-filled,
+      // then record the send. Opened synchronously to survive popup blockers.
+      openMessagingChannel(
+        channel === 'whatsapp'
+          ? whatsAppUrl(kase.customer.phone, preview)
+          : mailtoUrl(kase.customer.email, kase.name, preview),
+      );
       setBusy(true);
       setError(null);
       void (async () => {
@@ -504,7 +513,7 @@ export default function ProjectDetailPage() {
           const auth = await authHeaders(getToken);
           await api.post(
             `/cases/${caseId}/communications`,
-            { templateKey, channel, recipient, preview: buildCommPreview(templateKey) },
+            { templateKey, channel, recipient, preview },
             auth,
           );
           const res = await api.get<ProjectCommunicationLogEntry[]>(`/cases/${caseId}/communications`, auth);
@@ -1211,12 +1220,16 @@ export default function ProjectDetailPage() {
                         תצוגה מקדימה
                       </button>
                       <button
-                        onClick={() =>
+                        onClick={() => {
+                          const link = `${window.location.origin}/quotations/${quotation.id}`;
+                          const amount = current ? formatCurrency(current.estimatedTotal) : '';
+                          const message = `שלום ${kase.customer.firstName}, הצעת מחיר עבור "${kase.name}"${amount ? ` על סך ${amount}` : ''}. לצפייה ואישור: ${link}`;
+                          openMessagingChannel(whatsAppUrl(kase.customer.phone, message));
                           void runQuotationAction(async () => {
                             const auth = await authHeaders(getToken);
                             await api.post(`/quotations/${quotation.id}/send`, { channel: 'WHATSAPP', recipient: kase.customer.phone }, auth);
-                          }, 'רישום שליחת הצעת המחיר נכשל')
-                        }
+                          }, 'שליחת הצעת המחיר נכשלה');
+                        }}
                         disabled={busy || isApproved}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                       >
@@ -1224,12 +1237,17 @@ export default function ProjectDetailPage() {
                         שלח בוואטסאפ
                       </button>
                       <button
-                        onClick={() =>
+                        onClick={() => {
+                          const link = `${window.location.origin}/quotations/${quotation.id}`;
+                          const amount = current ? formatCurrency(current.estimatedTotal) : '';
+                          const subject = `הצעת מחיר — ${kase.name}`;
+                          const body = `שלום ${kase.customer.firstName},\n\nהצעת מחיר עבור "${kase.name}"${amount ? ` על סך ${amount}` : ''}.\nלצפייה ואישור: ${link}`;
+                          openMessagingChannel(mailtoUrl(kase.customer.email, subject, body));
                           void runQuotationAction(async () => {
                             const auth = await authHeaders(getToken);
                             await api.post(`/quotations/${quotation.id}/send`, { channel: 'EMAIL', recipient: kase.customer.email }, auth);
-                          }, 'רישום שליחת הצעת המחיר נכשל')
-                        }
+                          }, 'שליחת הצעת המחיר נכשלה');
+                        }}
                         disabled={busy || isApproved}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                       >
