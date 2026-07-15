@@ -35,7 +35,7 @@ const TIMING_TO_PRECISION: Record<TimingChoice, 'EXACT_DATE' | 'DATE_RANGE' | 'U
   none: 'UNKNOWN',
 };
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 6;
 
 type ComponentEstimate = {
   estimatedWorkdays: string;
@@ -205,13 +205,9 @@ export default function NewProjectWizard() {
     [],
   );
 
-  // Step 5 — forms & requirements
-  const [reserveManager, setReserveManager] = useState(true);
-  const [packingSuppliesForm, setPackingSuppliesForm] = useState(true);
-  const [workerEndForm, setWorkerEndForm] = useState(true);
   const [internalNotes, setInternalNotes] = useState('');
 
-  // Step 6 — pricing
+  // Step 5 — pricing
   const [pricingModel, setPricingModel] = useState<'HOURLY' | 'FIXED' | 'DAILY'>('HOURLY');
   const [pricingAmount, setPricingAmount] = useState('');
   const [hourlyRate, setHourlyRate] = useState('175');
@@ -324,7 +320,7 @@ export default function NewProjectWizard() {
               workersPerDay: Number(estimate.workersPerDay) || undefined,
               hoursPerDay: Number(estimate.hoursPerDay) || undefined,
               requiresManager: estimate.requiresManager,
-              reservedManagerPositions: reserveManager ? 1 : 0,
+              reservedManagerPositions: estimate.requiresManager ? 1 : 0,
             },
             auth,
           );
@@ -391,7 +387,6 @@ export default function NewProjectWizard() {
       getEstimate,
       timing,
       datesByType,
-      reserveManager,
       router,
     ],
   );
@@ -401,7 +396,6 @@ export default function NewProjectWizard() {
     'איזה שירות הלקוח צריך?',
     'מה כבר ידוע לגבי התאריכים?',
     'הערכת עבודה',
-    'טפסים ודרישות',
     'תמחור',
     'סקירה וסיום',
   ];
@@ -645,31 +639,14 @@ export default function NewProjectWizard() {
                 </div>
               );
             })}
-          </div>
-        )}
-
-        {step === 5 && (
-          <div className="space-y-4">
-            <label className="flex items-center gap-2.5 text-sm text-gray-800">
-              <input type="checkbox" checked={reserveManager} onChange={(e) => setReserveManager(e.target.checked)} />
-              שמירת עמדת ראש צוות (עד 1)
-            </label>
-            <label className="flex items-center gap-2.5 text-sm text-gray-800">
-              <input type="checkbox" checked={packingSuppliesForm} onChange={(e) => setPackingSuppliesForm(e.target.checked)} />
-              טופס ציוד לאריזה
-            </label>
-            <label className="flex items-center gap-2.5 text-sm text-gray-800">
-              <input type="checkbox" checked={workerEndForm} onChange={(e) => setWorkerEndForm(e.target.checked)} />
-              טופס סיום עבודה לעובד (ברירת מחדל)
-            </label>
             <label className="text-sm block">
-              <span className="text-gray-600">הערות פנימיות</span>
+              <span className="text-gray-600">הערות פנימיות (לא נשלח ללקוח)</span>
               <textarea value={internalNotes} onChange={(e) => setInternalNotes(e.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2" />
             </label>
           </div>
         )}
 
-        {step === 6 && (
+        {step === 5 && (
           <div className="space-y-3">
             <label className="text-sm block">
               <span className="text-gray-600">מודל תמחור</span>
@@ -706,7 +683,7 @@ export default function NewProjectWizard() {
           </div>
         )}
 
-        {step === 7 && (
+        {step === 6 && (
           <div className="space-y-3 text-sm">
             <dl className="grid grid-cols-2 gap-y-2">
               <dt className="text-gray-500">לקוח</dt>
