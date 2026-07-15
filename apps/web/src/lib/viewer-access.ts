@@ -16,18 +16,23 @@ export function resolveAppViewerRole(user: { publicMetadata?: unknown } | null |
   return 'ADMIN';
 }
 
+// Whether the account has an explicit role set in Clerk metadata (vs. the default).
+// Used to decide who may use the dev/preview role switcher: only an owner or an
+// unconfigured account, never a real admin/worker (so they can't self-escalate).
+export function hasExplicitViewerRole(user: { publicMetadata?: unknown } | null | undefined): boolean {
+  if (!user || typeof user !== 'object') return false;
+  const metadata = user.publicMetadata;
+  if (!metadata || typeof metadata !== 'object') return false;
+  const roleValue = normalizeRoleValue((metadata as Record<string, unknown>).role);
+  return roleValue === 'OWNER' || roleValue === 'ADMIN' || roleValue === 'WORKER';
+}
+
 export function canViewReports(role: AppViewerRole) {
   return role === 'OWNER';
 }
 
 export function canViewSensitiveFinancials(role: AppViewerRole) {
   return role === 'OWNER';
-}
-
-// Anyone who can manage workers (owner or office admin) can see and set the
-// worker's hourly wage — it's core to creating a worker, not a P&L secret.
-export function canManageWorkerWages(role: AppViewerRole) {
-  return role === 'OWNER' || role === 'ADMIN';
 }
 
 export function viewerRoleLabel(role: AppViewerRole): string {

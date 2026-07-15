@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useUser } from '@clerk/nextjs';
 import { Briefcase, Check, Mail, MessageCircle, Plus, Search, Users, Wallet } from 'lucide-react';
-import { canManageWorkerWages, resolveAppViewerRole } from '../../lib/viewer-access';
+import { canViewSensitiveFinancials } from '../../lib/viewer-access';
+import { useViewerRole } from '../../lib/use-viewer-role';
 import { api } from '../../lib/api';
 
 type WorkerRole = 'ראש צוות' | 'עובדת';
@@ -100,9 +100,8 @@ function formatActivityTimestamp(timestamp: string) {
 }
 
 export default function WorkersPage() {
-  const { user } = useUser();
-  const viewerRole = resolveAppViewerRole(user);
-  const canEditWages = canManageWorkerWages(viewerRole);
+  const viewerRole = useViewerRole();
+  const canEditWages = canViewSensitiveFinancials(viewerRole);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [archivedWorkers, setArchivedWorkers] = useState<Worker[]>([]);
   const [isLoading, setIsLoading] = useState(true);

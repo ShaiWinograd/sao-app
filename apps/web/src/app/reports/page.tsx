@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useUser } from '@clerk/nextjs';
 import { CalendarRange, Download, FileSpreadsheet, TrendingUp } from 'lucide-react';
 import { api } from '../../lib/api';
-import { canViewReports, resolveAppViewerRole } from '../../lib/viewer-access';
+import { canViewReports } from '../../lib/viewer-access';
+import { useViewerRole } from '../../lib/use-viewer-role';
 
 type ReportingBasis = 'accrual' | 'cash';
 type ManagementPeriod = 'monthly' | 'yearly';
@@ -59,8 +59,7 @@ function toNumber(value: string | number | null | undefined) {
 }
 
 export default function ReportsPage() {
-  const { user } = useUser();
-  const viewerRole = resolveAppViewerRole(user);
+  const viewerRole = useViewerRole();
   const hasReportsAccess = canViewReports(viewerRole);
   const now = useMemo(() => new Date(), []);
   const [period, setPeriod] = useState<ManagementPeriod>('monthly');

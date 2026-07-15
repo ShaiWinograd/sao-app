@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Coins, CreditCard, FileText, Plus, RefreshCw, TrendingUp } from 'lucide-react';
-import { useUser } from '@clerk/nextjs';
 import { api } from '../../lib/api';
-import { canViewSensitiveFinancials, resolveAppViewerRole } from '../../lib/viewer-access';
+import { canViewSensitiveFinancials } from '../../lib/viewer-access';
+import { useViewerRole } from '../../lib/use-viewer-role';
 
 type AdjustmentCategory = 'בונוס ראש צוות' | 'החזר נסיעות' | 'תיקון' | 'קנס' | 'הבאת לקוח';
 type PaymentStatus = 'NOT_PREPARED' | 'READY_FOR_PAYMENT' | 'PARTIALLY_PAID' | 'PAID';
@@ -101,8 +101,7 @@ function formatStatus(status: PaymentStatus) {
 }
 
 export default function PayrollPage() {
-  const { user } = useUser();
-  const canSeeFinancials = canViewSensitiveFinancials(resolveAppViewerRole(user));
+  const canSeeFinancials = canViewSensitiveFinancials(useViewerRole());
   const now = useMemo(() => new Date(), []);
   const [monthYear, setMonthYear] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
   const [workers, setWorkers] = useState<PayrollWorker[]>([]);

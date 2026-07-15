@@ -7,7 +7,8 @@ import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLa
 import { AlertTriangle, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Info, Plus, XCircle } from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
-import { canViewSensitiveFinancials, resolveAppViewerRole } from '../../lib/viewer-access';
+import { canViewSensitiveFinancials } from '../../lib/viewer-access';
+import { useViewerRole } from '../../lib/use-viewer-role';
 import { api, authHeaders } from '../../lib/api';
 
 type JobType = 'אריזה' | 'פריקה' | 'סידור';
@@ -180,7 +181,7 @@ function caseBadge(status: CaseStatusValue): { label: string; className: string 
 export default function DashboardPage() {
   const { user } = useUser();
   const { getToken } = useAuth();
-  const viewerRole = resolveAppViewerRole(user);
+  const viewerRole = useViewerRole();
   const canSeeFinancials = canViewSensitiveFinancials(viewerRole);
   // Gate time/user-dependent text so SSR and first client render match (React #418).
   const [mounted, setMounted] = useState(false);

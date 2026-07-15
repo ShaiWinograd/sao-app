@@ -17,13 +17,14 @@ import {
   Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { useAuth, useUser } from '@clerk/nextjs';
+import { useAuth } from '@clerk/nextjs';
 import type { EndShiftFormLink } from '../../lib/case-hub';
 import { ensureCustomerFullName, importedWorkSeeds, shortDateToDateKey, shortDateToDisplayDate } from '../../lib/work-data';
 import { showDevFeatureNotice } from '../../lib/dev-feature';
 import { api } from '../../lib/api';
 import { authHeaders } from '../../lib/api';
-import { canViewSensitiveFinancials, resolveAppViewerRole } from '../../lib/viewer-access';
+import { canViewSensitiveFinancials } from '../../lib/viewer-access';
+import { useViewerRole } from '../../lib/use-viewer-role';
 import {
   buildProjectCommunicationTemplates,
   communicationChannelLabel,
@@ -458,9 +459,8 @@ function buildSeedCases(): CustomerCase[] {
 }
 
 export default function CasesPage() {
-  const { user } = useUser();
   const { isLoaded: isAuthLoaded, isSignedIn, getToken } = useAuth();
-  const canSeeFinancials = canViewSensitiveFinancials(resolveAppViewerRole(user));
+  const canSeeFinancials = canViewSensitiveFinancials(useViewerRole());
   const [requestedCaseId, setRequestedCaseId] = useState<string | null>(null);
   const [requestedCaseFocus, setRequestedCaseFocus] = useState<CaseActionFocus | null>(null);
   const [highlightedCaseId, setHighlightedCaseId] = useState<string | null>(null);

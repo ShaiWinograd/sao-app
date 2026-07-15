@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CreditCard, FileText, RefreshCw, Wallet } from 'lucide-react';
-import { useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { api } from '../../lib/api';
-import { canViewSensitiveFinancials, resolveAppViewerRole } from '../../lib/viewer-access';
+import { canViewSensitiveFinancials } from '../../lib/viewer-access';
+import { useViewerRole } from '../../lib/use-viewer-role';
 import { invoiceStatusTone } from '@workforce/shared';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 
@@ -107,8 +107,7 @@ export default function InvoicesPage() {
 }
 
 function InvoicesPageLegacy() {
-  const { user } = useUser();
-  const canSeeFinancials = canViewSensitiveFinancials(resolveAppViewerRole(user));
+  const canSeeFinancials = canViewSensitiveFinancials(useViewerRole());
   const now = useMemo(() => new Date(), []);
   const [statusFilter, setStatusFilter] = useState<'ALL' | InvoiceStatus>('ALL');
   const [invoices, setInvoices] = useState<InvoiceSummary[]>([]);
