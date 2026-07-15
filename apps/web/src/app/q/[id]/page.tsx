@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { CheckCircle2, Copy, Loader2, XCircle } from 'lucide-react';
+import { CheckCircle2, Copy, Download, Loader2, XCircle } from 'lucide-react';
 import { BUSINESS_PROFILE, type QuotationDetails } from '@workforce/shared';
 import { api } from '../../../lib/api';
 
@@ -102,6 +102,18 @@ export default function PublicQuotationPage() {
           <img src="/so-logo.jpg" alt={BUSINESS_PROFILE.name} className="mx-auto h-16 w-auto rounded-lg object-contain" />
           <p className="mt-2 text-xs text-gray-500">{BUSINESS_PROFILE.tagline}</p>
         </div>
+
+        {!isLoading && quote && (
+          <div className="mb-4 flex justify-center print:hidden">
+            <button
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              <Download className="w-3.5 h-3.5" />
+              הורדה כ-PDF
+            </button>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="flex justify-center py-20 text-gray-400">
@@ -232,7 +244,7 @@ export default function PublicQuotationPage() {
               </Section>
             )}
 
-            <div className="mt-8 border-t border-gray-100 pt-5">
+            <div className="mt-8 border-t border-gray-100 pt-5 print:hidden">
               {quote.status === 'APPROVED' ? (
                 <div className="flex items-center justify-center gap-2 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm font-medium text-green-800">
                   <CheckCircle2 className="w-5 h-5" />
