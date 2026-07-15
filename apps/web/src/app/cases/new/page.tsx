@@ -155,6 +155,11 @@ export default function NewProjectWizard() {
   const addDateFor = useCallback(
     (type: ServiceType, date: string) => {
       if (!date) return;
+      const todayKey = new Date().toLocaleDateString('en-CA');
+      if (date < todayKey) {
+        setDateError('לא ניתן לבחור תאריך בעבר.');
+        return;
+      }
       // Moving-project rule: unpacking must be at least a day after the last
       // packing day (and a packing day cannot fall on/after an unpacking day).
       if (type === 'UNPACKING') {
@@ -622,6 +627,7 @@ export default function NewProjectWizard() {
                         ))}
                         <input
                           type="date"
+                          min={new Date().toLocaleDateString('en-CA')}
                           onChange={(e) => {
                             addDateFor(type, e.target.value);
                             e.target.value = '';

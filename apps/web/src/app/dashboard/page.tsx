@@ -1171,12 +1171,6 @@ export default function DashboardPage() {
             <Plus className="w-3.5 h-3.5" />
             יצירת פרויקט חדש
           </Link>
-          <Link
-            href="/jobs"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50"
-          >
-            יצירת עבודה מהירה
-          </Link>
           <a
             href={feedbackMailtoHref}
             className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50"

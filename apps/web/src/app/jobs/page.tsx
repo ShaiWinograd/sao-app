@@ -380,8 +380,32 @@ function JobsPageContent() {
   );
 
   const [works, setWorks] = useState<WorkItem[]>(initialWorks);
-  const [workers] = useState<Worker[]>(initialWorkers);
+  const [workers, setWorkers] = useState<Worker[]>(initialWorkers);
   const [availability] = useState<WorkerAvailability[]>(initialAvailability);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const auth = await authHeaders(getToken);
+        const res = await api.get<Array<{ id: string; firstName: string; lastName: string; skills?: string[] }>>('/workers', auth);
+        if (cancelled) return;
+        setWorkers(
+          res.data.map((w) => ({
+            id: w.id,
+            name: `${w.firstName} ${w.lastName}`.trim(),
+            role: (w.skills ?? []).includes('SHIFT_LEADER') ? ('ראש צוות' as const) : ('עובדת' as const),
+            hourlyWage: 0,
+          })),
+        );
+      } catch {
+        // Leave workers empty on failure.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [getToken]);
   const [assignments, setAssignments] = useState<ShiftAssignment[]>(initialAssignments);
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
   const [cases, setCases] = useState<CustomerCase[]>(initialCases);

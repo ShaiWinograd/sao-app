@@ -172,7 +172,7 @@ export default function MultiDayScheduler({ caseId, customerId, addresses, getTo
             {rows.map((row) => (
               <tr key={row.key} className="border-b border-gray-50">
                 <td className="py-2 pe-2">
-                  <input type="date" value={row.date} onChange={(e) => updateRow(row.key, { date: e.target.value })} aria-label="תאריך" className="rounded-md border border-gray-300 px-2 py-1 text-xs" />
+                  <input type="date" min={new Date().toLocaleDateString('en-CA')} value={row.date} onChange={(e) => updateRow(row.key, { date: e.target.value })} aria-label="תאריך" className="rounded-md border border-gray-300 px-2 py-1 text-xs" />
                 </td>
                 <td className="py-2 pe-2">
                   <input type="time" value={row.start} onChange={(e) => updateRow(row.key, { start: e.target.value })} aria-label="שעת התחלה" className="rounded-md border border-gray-300 px-2 py-1 text-xs" />

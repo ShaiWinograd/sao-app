@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { CheckCircle2, FileText, Loader2, XCircle } from 'lucide-react';
+import { CheckCircle2, Copy, Loader2, XCircle } from 'lucide-react';
 import { BUSINESS_PROFILE, type QuotationDetails } from '@workforce/shared';
 import { api } from '../../../lib/api';
 
@@ -54,6 +54,8 @@ export default function PublicQuotationPage() {
   const [notFound, setNotFound] = useState(false);
   const [approving, setApproving] = useState(false);
   const [approveError, setApproveError] = useState<string | null>(null);
+  const [showBankModal, setShowBankModal] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -80,6 +82,7 @@ export default function PublicQuotationPage() {
     try {
       await api.post(`/quotations/${quote.id}/public-approve`, {});
       setQuote({ ...quote, status: 'APPROVED' });
+      setShowBankModal(true);
     } catch {
       setApproveError('אישור ההצעה נכשל. נסו שוב או צרו קשר עם העסק.');
     } finally {
@@ -95,11 +98,9 @@ export default function PublicQuotationPage() {
     <main dir="rtl" className="min-h-screen bg-[var(--color-background)] flex flex-col items-center px-4 py-10">
       <div className="w-full max-w-2xl">
         <div className="mb-6 text-center">
-          <div className="inline-flex items-center gap-2 text-primary-700 font-bold text-lg">
-            <FileText className="w-5 h-5" />
-            {BUSINESS_PROFILE.name}
-          </div>
-          <p className="mt-1 text-xs text-gray-500">{BUSINESS_PROFILE.tagline}</p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/so-logo.jpg" alt={BUSINESS_PROFILE.name} className="mx-auto h-16 w-auto rounded-lg object-contain" />
+          <p className="mt-2 text-xs text-gray-500">{BUSINESS_PROFILE.tagline}</p>
         </div>
 
         {isLoading ? (
@@ -261,6 +262,53 @@ export default function PublicQuotationPage() {
           </div>
         )}
       </div>
+
+      {showBankModal && quote && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => setShowBankModal(false)}
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 text-green-700">
+              <CheckCircle2 className="w-6 h-6" />
+              <h2 className="text-lg font-bold">ההצעה אושרה — תודה!</h2>
+            </div>
+            <p className="mt-2 text-sm text-gray-600">
+              {details?.depositAmount !== undefined
+                ? `להבטחת התאריכים יש להעביר מקדמה בסך ${formatCurrency(details.depositAmount)}${details.depositDueDate ? ` עד ${formatDate(details.depositDueDate)}` : ''}.`
+                : 'להבטחת התאריכים יש להעביר את המקדמה בהתאם להצעה.'}
+            </p>
+            <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm">
+              <p className="font-semibold text-gray-800 mb-2">פרטי חשבון להעברה</p>
+              <dl className="space-y-1 text-gray-700" dir="auto">
+                <div className="flex justify-between"><dt className="text-gray-500">על שם</dt><dd>{BUSINESS_PROFILE.bank.accountName}</dd></div>
+                <div className="flex justify-between"><dt className="text-gray-500">בנק</dt><dd>{BUSINESS_PROFILE.bank.bankName}</dd></div>
+                <div className="flex justify-between"><dt className="text-gray-500">סניף</dt><dd>{BUSINESS_PROFILE.bank.branch}</dd></div>
+                <div className="flex justify-between"><dt className="text-gray-500">מספר חשבון</dt><dd className="font-mono">{BUSINESS_PROFILE.bank.accountNumber}</dd></div>
+              </dl>
+            </div>
+            <button
+              onClick={() => {
+                const text = `${BUSINESS_PROFILE.bank.accountName}\n${BUSINESS_PROFILE.bank.bankName} סניף ${BUSINESS_PROFILE.bank.branch}\nחשבון ${BUSINESS_PROFILE.bank.accountNumber}`;
+                void navigator.clipboard?.writeText(text).then(() => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                });
+              }}
+              className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-700"
+            >
+              <Copy className="w-4 h-4" />
+              {copied ? 'הפרטים הועתקו' : 'העתקת פרטי החשבון'}
+            </button>
+            <button
+              onClick={() => setShowBankModal(false)}
+              className="mt-2 w-full rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+            >
+              סגירה
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
