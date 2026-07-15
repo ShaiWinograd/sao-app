@@ -956,7 +956,7 @@ export default function DashboardPage() {
           id: String(work.id),
           projectName: work.caseName,
           issue: `חסרים ${Math.max(work.requiredWorkers - work.assignedWorkers.length, 0)} עובדים`,
-          href: `/jobs?open=edit&jobId=${work.id}`,
+          href: `/jobs/${work.id}`,
           dateLabel: toDisplayDateFromDateKey(work.dateKey),
           severity: 'high' as const,
         })),
@@ -968,7 +968,7 @@ export default function DashboardPage() {
           id: `manager-${work.id}`,
           projectName: work.caseName,
           issue: 'לעבודה אין ראש צוות משויך',
-          href: `/jobs?open=edit&jobId=${work.id}`,
+          href: `/jobs/${work.id}`,
           dateLabel: toDisplayDateFromDateKey(work.dateKey),
           severity: 'high' as const,
         })),
@@ -1379,7 +1379,7 @@ export default function DashboardPage() {
                 תצוגת משמרות {selectedRangeContextLabel} ({displayedWorks.length})
               </h2>
               <Link
-                href={{ pathname: '/jobs', query: { range: selectedRange, view: 'shifts' } }}
+                href="/jobs"
                 className="text-emerald-600 text-xs font-medium hover:text-emerald-700"
               >
                 הצג הכל →
