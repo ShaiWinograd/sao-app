@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Mail, MessageCircle, Plus, Search } from 'lucide-react';
+import { Mail, MessageCircle, Plus, Search } from 'lucide-react';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
 import { api } from '../../lib/api';
 import { StatusBadge } from '../../components/ui/StatusBadge';
@@ -24,7 +24,7 @@ type Customer = {
   email: string;
   addresses: CustomerAddress[];
   caseName: string;
-  caseStatus: 'planned' | 'in_progress' | 'completed_unpaid' | 'completed_paid';
+  caseStatus: 'planned' | 'in_progress' | 'completed_unpaid' | 'completed_paid' | 'cancelled';
   notes?: string;
 };
 
@@ -78,10 +78,16 @@ type ApiJob = {
 };
 
 function mapApiCaseStatus(status: ApiCase['status']): Customer['caseStatus'] {
-  if (status === 'DRAFT') return 'planned';
   if (status === 'ACTIVE' || status === 'READY_FOR_REVIEW') return 'in_progress';
   if (status === 'COMPLETED') return 'completed_paid';
-  return 'completed_unpaid';
+  if (status === 'CANCELLED') return 'cancelled';
+  return 'planned';
+}
+
+// Emails auto-generated for records without a real address are placeholders and
+// should not be shown to the user.
+function cleanEmail(email: string): string {
+  return /@(placeholder|worker)\.local$/i.test(email) ? '' : email;
 }
 
 function mapAddressLabel(label: string): CustomerAddress['label'] {
@@ -107,15 +113,17 @@ function mapApiJobStatus(status: ApiJob['status']): RelatedWork['status'] {
 }
 
 function mapApiCustomer(apiCustomer: ApiCustomer): Customer {
-  const firstActiveCase = apiCustomer.cases?.find(
-    (c) => c.status === 'ACTIVE' || c.status === 'READY_FOR_REVIEW',
-  ) ?? apiCustomer.cases?.[0];
+  const cases = apiCustomer.cases ?? [];
+  const representativeCase =
+    cases.find((c) => c.status === 'ACTIVE' || c.status === 'READY_FOR_REVIEW') ??
+    cases.find((c) => c.status !== 'CANCELLED') ??
+    cases[0];
   return {
     id: apiCustomer.id,
     firstName: apiCustomer.firstName,
     lastName: apiCustomer.lastName,
     phone: apiCustomer.phone,
-    email: apiCustomer.email,
+    email: cleanEmail(apiCustomer.email),
     addresses: (apiCustomer.addresses ?? []).map((addr) => ({
       id: addr.id,
       label: mapAddressLabel(addr.label),
@@ -123,8 +131,8 @@ function mapApiCustomer(apiCustomer: ApiCustomer): Customer {
       floor: addr.floor ?? undefined,
       apartment: addr.apartment ?? undefined,
     })),
-    caseName: firstActiveCase?.name ?? `${apiCustomer.firstName} ${apiCustomer.lastName} - פרוייקט`,
-    caseStatus: firstActiveCase ? mapApiCaseStatus(firstActiveCase.status) : 'planned',
+    caseName: representativeCase?.name ?? `${apiCustomer.firstName} ${apiCustomer.lastName} - פרוייקט`,
+    caseStatus: representativeCase ? mapApiCaseStatus(representativeCase.status) : 'planned',
   };
 }
 
@@ -148,6 +156,11 @@ const caseStatusMeta: Record<Customer['caseStatus'], { label: string; helper: st
     label: 'עבודה שולמה',
     helper: 'הפרוייקט נסגר לאחר ביצוע ותשלום מלא',
     tone: 'success',
+  },
+  cancelled: {
+    label: 'בוטל',
+    helper: 'הפרוייקט בוטל',
+    tone: 'neutral',
   },
 };
 
@@ -503,10 +516,6 @@ export default function CustomersPage() {
           <p className="text-gray-600 mt-1">רשימת לקוחות + פתיחת כרטיס לקוח בלחיצה ישירה על השורה</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
-            <CheckCircle2 className="w-4 h-4" />
-            מוכן לשימוש בדמו
-          </div>
           <button
             type="button"
             onClick={openCreateCustomerCard}
@@ -561,7 +570,7 @@ export default function CustomersPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-base font-semibold text-gray-900">{customer.firstName} {customer.lastName}</p>
-                    <p className="text-sm text-gray-600 mt-1">{customer.phone} • {customer.email}</p>
+                    <p className="text-sm text-gray-600 mt-1">{customer.phone}{customer.email ? ` • ${customer.email}` : ''}</p>
                     <p className="text-xs text-gray-500 mt-1">{customer.addresses.length} כתובות שמורות</p>
                     <p className="text-xs text-gray-600 mt-1">פרוייקט: {customer.caseName}</p>
                     <p className="text-xs text-gray-500 mt-1">{statusMeta.helper}</p>

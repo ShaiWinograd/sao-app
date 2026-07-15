@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { resolveActor } from '../lib/actor.js';
+import { deleteCaseCascade } from '../lib/deleteCase.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import {
   CaseStatusSchema,
@@ -417,5 +418,19 @@ export async function casesRoutes(app: FastifyInstance) {
     });
 
     return archived;
+  });
+
+  // Permanently delete a case and all of its dependent records.
+  app.delete('/:id', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const kase = await prisma.customerCase.findUnique({ where: { id }, select: { id: true } });
+    if (!kase) return reply.status(404).send({ error: 'Case not found' });
+
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await deleteCaseCascade(tx, id);
+    });
+
+    reply.status(204);
+    return null;
   });
 }

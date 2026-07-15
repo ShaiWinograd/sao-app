@@ -1,5 +1,7 @@
 import { FastifyInstance } from 'fastify';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
+import { deleteCaseCascade } from '../lib/deleteCase.js';
 import { UserRole } from '@workforce/shared';
 
 /**
@@ -166,6 +168,26 @@ export async function adminRoutes(app: FastifyInstance) {
 
     const remaining = await prisma.worker.count();
     return { deletedWorkers: deletedWorkers.count, deletedUsers: deletedUsers.count, remainingWorkers: remaining };
+  });
+
+  // One-shot wipe of ALL customer cases (projects) and their dependent records,
+  // for a clean start. Same BOOTSTRAP_SECRET guard. Does not touch workers.
+  app.post('/wipe-cases', async (req, reply) => {
+    const secret = process.env.BOOTSTRAP_SECRET;
+    if (!secret) return reply.status(404).send({ error: 'Not found' });
+    if (req.headers['x-seed-secret'] !== secret) {
+      return reply.status(403).send({ error: 'Forbidden' });
+    }
+
+    const cases = await prisma.customerCase.findMany({ select: { id: true } });
+    for (const c of cases) {
+      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        await deleteCaseCascade(tx, c.id);
+      });
+    }
+
+    const remaining = await prisma.customerCase.count();
+    return { deletedCases: cases.length, remainingCases: remaining };
   });
 }
 
