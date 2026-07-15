@@ -12,6 +12,12 @@ import { api, authHeaders } from '../../lib/api';
 
 type JobType = 'אריזה' | 'פריקה' | 'סידור';
 type StaffingMode = 'auto' | 'approval';
+
+const JOB_TYPE_TO_ENUM: Record<JobType, string> = {
+  'אריזה': 'PACKING',
+  'פריקה': 'UNPACKING',
+  'סידור': 'HOME_ORGANIZATION',
+};
 type CaseStatus = 'DRAFT' | 'ACTIVE' | 'READY_FOR_REVIEW' | 'COMPLETED';
 type DashboardWorkerRole = 'מנהלת' | 'ראש צוות' | 'עובדת';
 
@@ -146,8 +152,7 @@ function getShiftTypeCardClasses(jobType: JobType) {
   return 'border-sky-200 bg-sky-50 hover:border-sky-300 hover:bg-sky-100';
 }
 
-function InfoHint({ text }: { text: string }) {
-  return (
+function InfoHint({ text }: { text: string }) {  return (
     <span className="group relative inline-flex items-center">
       <Info className="w-3.5 h-3.5 text-gray-400" />
       <span
@@ -357,7 +362,7 @@ export default function DashboardPage() {
   const [selectedAssignedWorkerNames, setSelectedAssignedWorkerNames] = useState<string[]>([]);
   const [selectedActualTeamLeadName, setSelectedActualTeamLeadName] = useState('');
   const [selectedFormTemplateId, setSelectedFormTemplateId] = useState<string | null>(null);
-  const [formTemplates, setFormTemplates] = useState<Array<{ id: string; title: string }>>([]);
+  const [formTemplates, setFormTemplates] = useState<Array<{ id: string; name: string; jobType?: string; isDefault?: boolean }>>([]);
   const [staffingMode, setStaffingMode] = useState<StaffingMode>('approval');
   const [workerVisibleNotes, setWorkerVisibleNotes] = useState('');
   const [customerMode, setCustomerMode] = useState<'existing' | 'new'>('new');
@@ -370,7 +375,7 @@ export default function DashboardPage() {
       (async () => {
         try {
           const auth = await authHeaders(getToken);
-          const res = await api.get<Array<{ id: string; title: string }>>('/forms/templates', auth);
+          const res = await api.get<Array<{ id: string; name: string; jobType?: string; isDefault?: boolean }>>('/forms/templates', auth);
           setFormTemplates(res.data);
         } catch (error) {
           console.error('Failed to load form templates:', error);
@@ -382,6 +387,17 @@ export default function DashboardPage() {
       setSelectedFormTemplateId(null);
     }
   }, [getToken, isCreateOpen]);
+
+  // Forms are on by default: auto-select the default template for the chosen job type.
+  useEffect(() => {
+    if (!isCreateOpen || formTemplates.length === 0) return;
+    const enumType = JOB_TYPE_TO_ENUM[jobType];
+    const defaultTemplate =
+      formTemplates.find((t) => t.isDefault && t.jobType === enumType) ??
+      formTemplates.find((t) => t.jobType === enumType) ??
+      null;
+    setSelectedFormTemplateId(defaultTemplate?.id ?? null);
+  }, [isCreateOpen, formTemplates, jobType]);
 
   // Load real data from API on component mount
   useEffect(() => {
@@ -1854,7 +1870,7 @@ export default function DashboardPage() {
                   >
                     <option value="">ללא טופס</option>
                     {formTemplates.map(t => (
-                      <option key={t.id} value={t.id}>{t.title}</option>
+                      <option key={t.id} value={t.id}>{t.name}</option>
                     ))}
                   </select>
                 </div>
