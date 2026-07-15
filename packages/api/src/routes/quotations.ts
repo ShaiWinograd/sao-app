@@ -113,6 +113,7 @@ export async function quotationsRoutes(app: FastifyInstance) {
       datePrecision: current.datePrecision,
       timingNote: current.timingNote,
       validUntil: current.validUntil,
+      details: current.details ?? null,
     };
   });
 
@@ -195,6 +196,7 @@ export async function quotationsRoutes(app: FastifyInstance) {
             timingNote: body.timingNote,
             validUntil: body.validUntil ? new Date(body.validUntil) : undefined,
             notes: body.notes,
+            details: (body.details ?? undefined) as Prisma.InputJsonValue | undefined,
             createdById: performedBy?.id,
           },
         },
@@ -234,6 +236,7 @@ export async function quotationsRoutes(app: FastifyInstance) {
         ...(body.timingNote !== undefined ? { timingNote: body.timingNote } : {}),
         ...(body.validUntil !== undefined ? { validUntil: new Date(body.validUntil) } : {}),
         ...(body.notes !== undefined ? { notes: body.notes } : {}),
+        ...(body.details !== undefined ? { details: body.details as Prisma.InputJsonValue } : {}),
       },
     });
 
@@ -268,6 +271,7 @@ export async function quotationsRoutes(app: FastifyInstance) {
           timingNote: body.timingNote,
           validUntil: body.validUntil ? new Date(body.validUntil) : undefined,
           notes: body.notes,
+          details: (body.details ?? undefined) as Prisma.InputJsonValue | undefined,
           isAddendum: body.isAddendum ?? false,
           replacesVersionId: current?.id,
           createdById: performedBy?.id,

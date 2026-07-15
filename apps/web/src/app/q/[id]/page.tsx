@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { CheckCircle2, FileText, Loader2, XCircle } from 'lucide-react';
+import { BUSINESS_PROFILE, type QuotationDetails } from '@workforce/shared';
 import { api } from '../../../lib/api';
 
 type PublicQuotation = {
@@ -16,21 +17,32 @@ type PublicQuotation = {
   datePrecision: string;
   timingNote: string | null;
   validUntil: string | null;
+  details: QuotationDetails | null;
 };
 
-function formatCurrency(value: number | string): string {
+function formatCurrency(value: number | string | undefined | null): string {
+  if (value === undefined || value === null || value === '') return '—';
   const num = typeof value === 'string' ? Number(value) : value;
   if (!Number.isFinite(num)) return '—';
   return `₪${num.toLocaleString('he-IL')}`;
 }
 
-function formatDate(value: string | null): string {
+function formatDate(value: string | null | undefined): string {
   if (!value) return '';
   try {
     return new Date(value).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
   } catch {
     return '';
   }
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="mt-6">
+      <h2 className="text-sm font-bold text-primary-800 mb-2">{title}</h2>
+      {children}
+    </section>
+  );
 }
 
 export default function PublicQuotationPage() {
@@ -75,15 +87,19 @@ export default function PublicQuotationPage() {
     }
   }, [quote]);
 
+  const details = quote?.details ?? null;
+  const lineItems = details?.lineItems ?? [];
+  const hasDateRange = Boolean(details?.projectStartDate || details?.projectEndDate);
+
   return (
     <main dir="rtl" className="min-h-screen bg-[var(--color-background)] flex flex-col items-center px-4 py-10">
-      <div className="w-full max-w-lg">
+      <div className="w-full max-w-2xl">
         <div className="mb-6 text-center">
           <div className="inline-flex items-center gap-2 text-primary-700 font-bold text-lg">
             <FileText className="w-5 h-5" />
-            Space &amp; Order
+            {BUSINESS_PROFILE.name}
           </div>
-          <p className="mt-1 text-xs text-gray-500">ארגון ומעבר דירה</p>
+          <p className="mt-1 text-xs text-gray-500">{BUSINESS_PROFILE.tagline}</p>
         </div>
 
         {isLoading ? (
@@ -97,40 +113,125 @@ export default function PublicQuotationPage() {
             <p className="mt-1 text-xs text-gray-500">ייתכן שהקישור שגוי או שפג תוקפו. אנא צרו קשר עם העסק.</p>
           </div>
         ) : (
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 md:p-8 shadow-sm">
             <p className="text-sm text-gray-600">שלום {quote.customerFirstName},</p>
-            <h1 className="mt-1 text-xl font-bold text-gray-900">הצעת מחיר עבור {quote.caseName}</h1>
+            <h1 className="mt-1 text-xl font-bold text-gray-900">הצעת מחיר — {quote.caseName}</h1>
 
-            <div className="mt-5 rounded-xl bg-primary-50 border border-primary-100 px-4 py-4 text-center">
-              <p className="text-xs text-primary-700">סכום משוער</p>
-              <p className="mt-1 text-3xl font-bold text-primary-800">{formatCurrency(quote.estimatedTotal)}</p>
-            </div>
+            <Section title="עלינו">
+              <p className="text-sm leading-relaxed text-gray-600" dir="auto">{BUSINESS_PROFILE.about}</p>
+            </Section>
 
-            {quote.includedServices.length > 0 && (
-              <div className="mt-5">
-                <p className="text-xs font-semibold text-gray-500 mb-2">שירותים כלולים</p>
+            {details?.scopeOfWork && (
+              <Section title="היקף העבודה">
+                <p className="text-sm text-gray-800" dir="auto">{details.scopeOfWork}</p>
+              </Section>
+            )}
+
+            {(hasDateRange || quote.timingNote) && (
+              <Section title="מועדים">
+                {hasDateRange ? (
+                  <p className="text-sm text-gray-800">
+                    {details?.projectStartDate ? `תחילת הפרויקט: ${formatDate(details.projectStartDate)}` : ''}
+                    {details?.projectStartDate && details?.projectEndDate ? ' · ' : ''}
+                    {details?.projectEndDate ? `סיום עד: ${formatDate(details.projectEndDate)}` : ''}
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-800" dir="auto">{quote.timingNote}</p>
+                )}
+              </Section>
+            )}
+
+            <Section title="פירוט הצעת המחיר">
+              {lineItems.length > 0 ? (
+                <div className="overflow-hidden rounded-lg border border-gray-200">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-500">
+                      <tr>
+                        <th className="text-right font-medium px-3 py-2">תיאור</th>
+                        <th className="text-right font-medium px-3 py-2 whitespace-nowrap">שעות</th>
+                        <th className="text-right font-medium px-3 py-2 whitespace-nowrap">מחיר (₪, כולל מע״מ)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {lineItems.map((item, index) => (
+                        <tr key={index} className="align-top">
+                          <td className="px-3 py-2.5 text-gray-800" dir="auto">
+                            <div className="font-medium">{item.description}</div>
+                            {item.detail && <div className="mt-0.5 text-xs text-gray-500">{item.detail}</div>}
+                          </td>
+                          <td className="px-3 py-2.5 text-gray-700 whitespace-nowrap">{item.hours || '—'}</td>
+                          <td className="px-3 py-2.5 text-gray-900 font-medium whitespace-nowrap">
+                            {item.price !== undefined ? formatCurrency(item.price) : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
                 <ul className="space-y-1.5">
                   {quote.includedServices.map((service, index) => (
-                    <li key={index} className="flex items-start gap-2 text-sm text-gray-800">
+                    <li key={index} className="flex items-start gap-2 text-sm text-gray-800" dir="auto">
                       <CheckCircle2 className="w-4 h-4 text-primary-600 mt-0.5 shrink-0" />
                       <span>{service}</span>
                     </li>
                   ))}
                 </ul>
+              )}
+
+              <div className="mt-4 flex items-center justify-between rounded-xl bg-primary-50 border border-primary-100 px-4 py-3">
+                <span className="text-sm font-semibold text-primary-800">סכום כולל משוער</span>
+                <span className="text-2xl font-bold text-primary-800">{formatCurrency(quote.estimatedTotal)}</span>
               </div>
+              {quote.validUntil && (
+                <p className="mt-1.5 text-xs text-gray-500">בתוקף עד {formatDate(quote.validUntil)}</p>
+              )}
+            </Section>
+
+            {details?.depositAmount !== undefined && (
+              <Section title="מקדמה">
+                <p className="text-sm text-gray-800">
+                  יש להעביר מקדמה בסך {formatCurrency(details.depositAmount)}
+                  {details.depositDueDate ? ` עד ${formatDate(details.depositDueDate)}` : ''}.
+                </p>
+              </Section>
             )}
 
-            {quote.timingNote && (
-              <p className="mt-4 text-sm text-gray-600">
-                <span className="font-semibold text-gray-700">מועד: </span>
-                {quote.timingNote}
-              </p>
-            )}
-            {quote.validUntil && (
-              <p className="mt-1 text-xs text-gray-500">בתוקף עד {formatDate(quote.validUntil)}</p>
+            <Section title="פרטי חשבון להעברה">
+              <dl className="text-sm text-gray-800 space-y-0.5" dir="auto">
+                <div className="flex gap-2"><dt className="text-gray-500 w-28">על שם</dt><dd>{BUSINESS_PROFILE.bank.accountName}</dd></div>
+                <div className="flex gap-2"><dt className="text-gray-500 w-28">בנק</dt><dd>{BUSINESS_PROFILE.bank.bankName}</dd></div>
+                <div className="flex gap-2"><dt className="text-gray-500 w-28">סניף</dt><dd>{BUSINESS_PROFILE.bank.branch}</dd></div>
+                <div className="flex gap-2"><dt className="text-gray-500 w-28">מספר חשבון</dt><dd>{BUSINESS_PROFILE.bank.accountNumber}</dd></div>
+              </dl>
+            </Section>
+
+            <Section title="תהליך העבודה">
+              <ol className="list-decimal pr-5 space-y-1 text-sm text-gray-700">
+                {BUSINESS_PROFILE.workProcess.map((step, index) => (
+                  <li key={index}>{step}</li>
+                ))}
+              </ol>
+            </Section>
+
+            <Section title="מידע חשוב">
+              <ul className="space-y-1.5 text-xs leading-relaxed text-gray-600">
+                {BUSINESS_PROFILE.terms.map((term, index) => (
+                  <li key={index} className="flex gap-2">
+                    <span className="text-primary-400">•</span>
+                    <span>{term}</span>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+
+            {details?.notes && (
+              <Section title="הערות">
+                <p className="text-sm text-gray-700 whitespace-pre-line" dir="auto">{details.notes}</p>
+              </Section>
             )}
 
-            <div className="mt-6 border-t border-gray-100 pt-5">
+            <div className="mt-8 border-t border-gray-100 pt-5">
               {quote.status === 'APPROVED' ? (
                 <div className="flex items-center justify-center gap-2 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm font-medium text-green-800">
                   <CheckCircle2 className="w-5 h-5" />
