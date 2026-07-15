@@ -23,7 +23,7 @@ describe('deriveJobStatusBadge', () => {
 
   it('flags a missing manager when workers are full', () => {
     expect(deriveJobStatusBadge({ ...base, hasManager: false })).toEqual({
-      label: 'חסר מנהל',
+      label: 'חסר ראש צוות',
       tone: 'warning',
     });
   });

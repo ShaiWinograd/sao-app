@@ -71,7 +71,7 @@ export function DateFinder({ defaultStart = '' }: { defaultStart?: string }) {
         </label>
         <label className="inline-flex items-center gap-2 text-xs text-gray-700 pb-2">
           <input type="checkbox" checked={requiresManager} onChange={(e) => setRequiresManager(e.target.checked)} />
-          דרוש מנהל עבודה
+          דרוש ראש צוות
         </label>
         <button
           onClick={() => void search()}

@@ -917,7 +917,7 @@ export default function ProjectDetailPage() {
                           service.hoursPerDay === null ? null : Number(service.hoursPerDay),
                       })}{' '}
                       שעות עבודה משוערות
-                      {service.requiresManager ? ' · דורש מנהל עבודה' : ''}
+                      {service.requiresManager ? ' · דורש ראש צוות' : ''}
                     </p>
                   </li>
                 ))}
@@ -1007,7 +1007,7 @@ export default function ProjectDetailPage() {
                     checked={plannedForm.requiresManager}
                     onChange={(event) => setPlannedForm((prev) => ({ ...prev, requiresManager: event.target.checked }))}
                   />
-                  דורש מנהל עבודה
+                  דורש ראש צוות
                 </label>
               </div>
               <button

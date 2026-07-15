@@ -963,11 +963,11 @@ export default function DashboardPage() {
       },
       {
         key: 'jobs-missing-manager',
-        title: 'חסר מנהל עבודה',
+        title: 'חסר ראש צוות',
         items: jobsMissingManager.map((work) => ({
           id: `manager-${work.id}`,
           projectName: work.caseName,
-          issue: 'לעבודה אין מנהל עבודה משויך',
+          issue: 'לעבודה אין ראש צוות משויך',
           href: `/jobs?open=edit&jobId=${work.id}`,
           dateLabel: toDisplayDateFromDateKey(work.dateKey),
           severity: 'high' as const,

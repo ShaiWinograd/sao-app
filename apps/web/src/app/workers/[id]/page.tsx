@@ -47,15 +47,6 @@ type WorkerDetail = {
 
 type WorkerTab = 'details' | 'availability' | 'jobs' | 'attendance' | 'payments';
 
-const SKILL_LABELS: Record<string, string> = {
-  SHIFT_LEADER: 'מנהל עבודה',
-  PACKING_SPECIALIST: 'מומחה אריזה',
-  UNPACKING_SPECIALIST: 'מומחה פריקה',
-  ORGANIZATION_SPECIALIST: 'מומחה סידור',
-  DRIVER: 'נהג',
-  GENERAL_WORKER: 'עובד כללי',
-};
-
 const JOB_TYPE_LABELS: Record<string, string> = {
   PACKING: 'אריזה',
   UNPACKING: 'פריקה',
@@ -190,17 +181,11 @@ export default function WorkerDetailPage() {
             <div><dt className="text-gray-500">אזור מגורים</dt><dd className="text-gray-900">{worker.homeArea || '—'}</dd></div>
             <div><dt className="text-gray-500">אופן תשלום</dt><dd className="text-gray-900">{worker.paymentMethod}</dd></div>
             <div className="col-span-2">
-              <dt className="text-gray-500 mb-1">כישורים</dt>
-              <dd className="flex flex-wrap gap-1.5">
-                {worker.skills.length === 0 ? (
-                  <span className="text-gray-400">—</span>
-                ) : (
-                  worker.skills.map((skill) => (
-                    <span key={skill} className="inline-flex items-center rounded-full bg-primary-50 text-primary-700 px-2.5 py-0.5 text-xs">
-                      {SKILL_LABELS[skill] ?? skill}
-                    </span>
-                  ))
-                )}
+              <dt className="text-gray-500 mb-1">תפקיד</dt>
+              <dd>
+                <span className="inline-flex items-center rounded-full bg-primary-50 text-primary-700 px-2.5 py-0.5 text-xs">
+                  {worker.skills.includes('SHIFT_LEADER') ? 'ראש צוות' : 'עובדת'}
+                </span>
               </dd>
             </div>
             {worker.notes ? (

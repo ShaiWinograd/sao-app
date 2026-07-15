@@ -7,7 +7,7 @@ import { Briefcase, Check, Mail, MessageCircle, Plus, Search, Users, Wallet } fr
 import { canViewSensitiveFinancials, resolveAppViewerRole } from '../../lib/viewer-access';
 import { api } from '../../lib/api';
 
-type WorkerRole = 'מנהלת' | 'ראש צוות' | 'עובדת';
+type WorkerRole = 'ראש צוות' | 'עובדת';
 
 type Worker = {
   id: string;
@@ -48,7 +48,7 @@ function mapSkillsToRole(skills: string[]): WorkerRole {
 
 function mapRoleToSkills(role: WorkerRole, existingSkills: string[]): string[] {
   const nonLeaderSkills = existingSkills.filter((s) => s !== 'SHIFT_LEADER');
-  if (role === 'ראש צוות' || role === 'מנהלת') return ['SHIFT_LEADER', ...nonLeaderSkills];
+  if (role === 'ראש צוות') return ['SHIFT_LEADER', ...nonLeaderSkills];
   return nonLeaderSkills.length > 0 ? nonLeaderSkills : ['GENERAL_WORKER'];
 }
 
@@ -346,7 +346,6 @@ export default function WorkersPage() {
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
           >
             <option value="all">כל התפקידים</option>
-            <option value="מנהלת">מנהלת</option>
             <option value="ראש צוות">ראש צוות</option>
             <option value="עובדת">עובדת</option>
           </select>
@@ -493,7 +492,6 @@ export default function WorkersPage() {
                   placeholder="אימייל"
                 />
                 <select value={editRole} onChange={(e) => setEditRole(e.target.value as WorkerRole)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white">
-                  <option value="מנהלת">מנהלת</option>
                   <option value="ראש צוות">ראש צוות</option>
                   <option value="עובדת">עובדת</option>
                 </select>
