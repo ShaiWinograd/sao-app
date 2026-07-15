@@ -3,9 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
-import { ChevronLeft, ChevronRight, Loader2, Plus, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Plus } from 'lucide-react';
 import { api, authHeaders } from '../../lib/api';
-import { AvailabilityFinder } from '../../components/scheduling/AvailabilityFinder';
 
 type ApiJob = {
   id: string;
@@ -49,7 +48,6 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<ApiJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showAvailability, setShowAvailability] = useState(false);
   const [monthAnchor, setMonthAnchor] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -114,14 +112,6 @@ export default function JobsPage() {
           <p className="text-sm text-gray-600 mt-1">כל העבודות המתוזמנות, לפי תאריך וסוג. עבודות נוצרות מתוך פרויקט.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowAvailability((v) => !v)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50"
-          >
-            <Users className="w-3.5 h-3.5" />
-            בדיקת זמינות עובדים
-          </button>
           <Link
             href="/cases/new"
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700"
@@ -131,15 +121,6 @@ export default function JobsPage() {
           </Link>
         </div>
       </div>
-
-      {showAvailability && (
-        <div>
-          <p className="mb-2 text-xs text-gray-500">
-            בחרי תאריך כדי לראות אילו עובדים פנויים — שימושי לפני מסירת הצעת מחיר, כשלקוח מוסר תאריכים אפשריים.
-          </p>
-          <AvailabilityFinder />
-        </div>
-      )}
 
       <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
