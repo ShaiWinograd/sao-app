@@ -43,8 +43,6 @@ const MOM_OWNER_NAME = 'אורית';
 const initialCustomers: Customer[] = [];
 const initialCases: CustomerCase[] = [];
 
-const dashboardWorkers: DashboardWorker[] = [];
-
 const dashboardAvailability: Array<{ workerName: string; dateKey: string; reason: string }> = [];
 
 function normalizePhone(value: string) {
@@ -288,6 +286,7 @@ export default function DashboardPage() {
   const allActiveWorks: ActiveWork[] = [];
 
   const [dashboardWorks, setDashboardWorks] = useState<ActiveWork[]>(allActiveWorks);
+  const [dashboardWorkers, setDashboardWorkers] = useState<DashboardWorker[]>([]);
 
   const displayedWorks = useMemo(() => {
     if (selectedRange === 'today') {
@@ -374,10 +373,11 @@ export default function DashboardPage() {
     (async () => {
       try {
         const auth = await authHeaders(getToken);
-        const [customersRes, casesRes, jobsRes] = await Promise.all([
+        const [customersRes, casesRes, jobsRes, workersRes] = await Promise.all([
           api.get('/customers', auth),
           api.get('/cases', auth),
           api.get('/jobs', auth),
+          api.get('/workers', auth),
         ]);
         
         const apiCustomers = customersRes.data.map((c: any) => ({
@@ -446,6 +446,14 @@ export default function DashboardPage() {
         setCustomers(apiCustomers);
         setCases(apiCases);
         setDashboardWorks(apiWorks);
+        setDashboardWorkers(
+          (workersRes.data as any[]).map((w) => ({
+            id: w.id,
+            name: `${w.firstName ?? ''} ${w.lastName ?? ''}`.trim(),
+            role: (w.skills ?? []).includes('SHIFT_LEADER') ? ('ראש צוות' as const) : ('עובדת' as const),
+            hourlyWage: 0,
+          })),
+        );
         
         // Set first customer as selected if available
         if (apiCustomers.length > 0) {
@@ -458,6 +466,7 @@ export default function DashboardPage() {
         setCustomers([]);
         setCases([]);
         setDashboardWorks([]);
+        setDashboardWorkers([]);
       }
     })();
   }, [getToken]);
@@ -1406,65 +1415,6 @@ export default function DashboardPage() {
             </div>
 
             <div className="overflow-auto flex-1 min-h-0">
-              <div className="border-b border-gray-100 bg-gray-50 py-2">
-                <div className="flex flex-wrap items-center justify-between gap-2 px-3">
-                  <p className="text-xs font-semibold text-gray-900">משמרות לא מאוישות במלואן</p>
-                  <p className={`text-xs font-semibold ${worksSummary.openSlots > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-                    {worksSummary.openSlots > 0 ? `${worksSummary.openSlots} תקנים חסרים בטווח` : 'אין חוסרים בטווח הנבחר'}
-                  </p>
-                </div>
-                <div className="grid mt-1.5 border-y border-gray-200 bg-white" style={shiftGridStyle}>
-                  <div aria-hidden className="border-l border-gray-200 bg-gray-50/80" />
-                  {dailyUnfilledSummary.map((day) =>
-                    day.isNonWorkingDay ? (
-                      <div
-                        key={`daily-${day.dateKey}`}
-                        className={`min-w-0 border-l border-gray-200 px-2 py-2 text-center ${day.dateKey === todayDateKey ? 'bg-emerald-100' : 'bg-gray-100'}`}
-                      >
-                        <div className="text-right">
-                          <div className="flex items-center justify-between gap-1">
-                            {day.dateKey === todayDateKey && (
-                              <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>
-                            )}
-                            <div className="text-right">
-                              <p className="text-[11px] text-gray-500 leading-4">{day.dayLabel}</p>
-                              <p className="text-[11px] text-gray-500 leading-4">{day.dateLabel}</p>
-                            </div>
-                          </div>
-                        </div>
-                        <p className="mt-3 text-[11px] font-medium text-gray-500">{day.nonWorkingLabel}</p>
-                      </div>
-                    ) : (
-                      <button
-                        key={`daily-${day.dateKey}`}
-                        type="button"
-                        onClick={() => openDayJobsFromSummary(day.dateKey)}
-                        className={`min-w-0 border-l border-gray-200 px-2 py-2 text-center hover:bg-emerald-50 ${day.dateKey === todayDateKey ? 'bg-emerald-50' : ''}`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-[11px] font-semibold text-gray-700">{day.assigned}/{day.required || 0}</p>
-                          <div className="text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              {day.dateKey === todayDateKey && (
-                                <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>
-                              )}
-                              <p className="text-[11px] text-gray-700 leading-4">{day.dayLabel}</p>
-                            </div>
-                            <p className="text-[11px] text-gray-700 leading-4">{day.dateLabel}</p>
-                          </div>
-                        </div>
-                        <div className="mt-1 h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
-                          <div className={`h-full ${day.coverageClass}`} style={{ width: `${Math.max(6, Math.min(100, Math.round(day.coverage * 100)))}%` }} />
-                        </div>
-                        <p className={`mt-1 text-[11px] font-medium ${day.unfilledShifts > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-                          {day.required === 0 ? 'אין משמרות' : day.unfilledShifts > 0 ? `${day.unfilledShifts} משמרות בחוסר` : 'איוש מלא'}
-                        </p>
-                      </button>
-                    ),
-                  )}
-                </div>
-              </div>
-
               <div className="grid border-b border-gray-200 bg-gray-50" style={shiftGridStyle}>
                 <div className="p-2.5 text-xs font-semibold text-gray-700 border-l border-gray-200">עובדת</div>
                 {visibleShiftDates.map((date) => {
@@ -1474,11 +1424,9 @@ export default function DashboardPage() {
                   const isToday = dateKey === todayDateKey;
                   return isNonWorkingDay ? (
                     <div key={`head-${dateKey}`} className={`min-w-0 border-l border-gray-200 p-2.5 text-center text-gray-500 ${isToday ? 'bg-emerald-100' : 'bg-gray-200'}`}>
-                      <div className="flex items-center justify-center gap-1">
-                        {isToday && <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>}
-                        <div className="text-xs">{date.toLocaleDateString('he-IL', { weekday: 'short' })}</div>
-                      </div>
+                      <div className="text-xs">{date.toLocaleDateString('he-IL', { weekday: 'short' })}</div>
                       <div className="text-xs font-semibold">{date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}</div>
+                      {isToday && <div className="text-[10px] font-semibold text-emerald-700 leading-3">היום</div>}
                       <div className="mt-0.5 text-[10px]">{nonWorkingLabel}</div>
                     </div>
                   ) : (
@@ -1486,11 +1434,9 @@ export default function DashboardPage() {
                       key={`head-${dateKey}`}
                       className={`min-w-0 p-2.5 text-center border-l border-gray-200 text-gray-700 ${isToday ? 'bg-emerald-50 text-emerald-700' : ''}`}
                     >
-                      <div className="flex items-center justify-center gap-1">
-                        {isToday && <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">היום</span>}
-                        <div className="text-xs">{date.toLocaleDateString('he-IL', { weekday: 'short' })}</div>
-                      </div>
+                      <div className="text-xs">{date.toLocaleDateString('he-IL', { weekday: 'short' })}</div>
                       <div className="text-xs font-semibold">{date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}</div>
+                      {isToday && <div className="text-[10px] font-semibold text-emerald-700 leading-3">היום</div>}
                       {nonWorkingLabel && <div className="text-[10px] text-amber-700">{nonWorkingLabel}</div>}
                     </div>
                   );
