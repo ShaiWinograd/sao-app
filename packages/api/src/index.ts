@@ -47,6 +47,19 @@ function isAllowedOrigin(origin: string, allowedOrigins: Set<string>) {
 async function build() {
   const app = Fastify({ logger: { level: 'info' } });
 
+  // Tolerate requests whose Content-Type has no dedicated parser (e.g. a DELETE
+  // that a browser/axios sends with a stray Content-Type but no body). Without
+  // this, Fastify rejects them with "Unsupported Media Type", which our error
+  // handler turns into a 500. JSON bodies still use the built-in JSON parser.
+  app.addContentTypeParser('*', (_req, payload, done) => {
+    let data = '';
+    payload.on('data', (chunk) => {
+      data += chunk;
+    });
+    payload.on('end', () => done(null, data.length ? data : undefined));
+    payload.on('error', done);
+  });
+
   app.setErrorHandler((error, req, reply) => {
     if (error instanceof ZodError) {
       return reply.status(400).send({

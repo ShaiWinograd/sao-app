@@ -5,15 +5,18 @@ function normalizeRoleValue(value: unknown): string {
   return value.trim().toUpperCase();
 }
 
+// An account with no explicit Clerk role is treated as OWNER, matching the API
+// auth default (`publicMetadata.role ?? OWNER`). Real staff are provisioned with
+// an explicit ADMIN/WORKER role, which is always respected.
 export function resolveAppViewerRole(user: { publicMetadata?: unknown } | null | undefined): AppViewerRole {
-  if (!user || typeof user !== 'object') return 'ADMIN';
+  if (!user || typeof user !== 'object') return 'OWNER';
   const metadata = user.publicMetadata;
-  if (!metadata || typeof metadata !== 'object') return 'ADMIN';
+  if (!metadata || typeof metadata !== 'object') return 'OWNER';
   const roleValue = normalizeRoleValue((metadata as Record<string, unknown>).role);
   if (roleValue === 'OWNER') return 'OWNER';
   if (roleValue === 'ADMIN') return 'ADMIN';
   if (roleValue === 'WORKER') return 'WORKER';
-  return 'ADMIN';
+  return 'OWNER';
 }
 
 // Whether the account has an explicit role set in Clerk metadata (vs. the default).
