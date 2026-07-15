@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import { randomUUID } from 'node:crypto';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
 import { CreateWorkerSchema, UpdateWorkerSchema, UserRole, rankWorkerAvailability, findCandidateDates } from '@workforce/shared';
@@ -152,9 +153,24 @@ export async function workersRoutes(app: FastifyInstance) {
 
   app.post('/', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const body = CreateWorkerSchema.parse(req.body);
-    // Worker profile is created after Clerk user is created
-    // userId must be passed in body (admin creates worker account first in Clerk)
-    const worker = await prisma.worker.create({ data: { ...body, userId: (req.body as any).userId } });
+    let userId = (req.body as any).userId as string | undefined;
+    // If no Clerk account was provided, create a placeholder user so the worker
+    // record can exist and be managed in the app. (Future: provision a real
+    // Clerk login here with a starter password the worker changes on first sign-in.)
+    if (!userId) {
+      userId = `local-worker-${randomUUID()}`;
+      await prisma.user.create({
+        data: {
+          id: userId,
+          email: body.email,
+          firstName: body.firstName,
+          lastName: body.lastName ?? '',
+          role: UserRole.WORKER,
+          isActive: true,
+        },
+      });
+    }
+    const worker = await prisma.worker.create({ data: { ...body, userId } });
     reply.status(201);
     return worker;
   });

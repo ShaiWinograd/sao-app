@@ -335,7 +335,7 @@ export const CustomerPaymentSchema = z.object({
 
 export const WorkerProfileSchema = z.object({
   firstName: z.string().min(1),
-  lastName: z.string().min(1),
+  lastName: z.string().optional().default(''),
   phone: z.string().min(9),
   email: z.string().email(),
   hourlyWage: z.number().min(0),
