@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { resolveActor } from '../lib/actor.js';
+import { applyQuoteApprovalStatus } from '../services/caseSchedule.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import {
   CreateQuotationSchema,
@@ -148,6 +149,7 @@ export async function quotationsRoutes(app: FastifyInstance) {
         },
       });
       await tx.quotation.update({ where: { id }, data: { status: 'APPROVED' } });
+      await applyQuoteApprovalStatus(tx, quotation.caseId);
       if (performedBy) {
         await tx.auditLog.create({
           data: {
@@ -357,6 +359,7 @@ export async function quotationsRoutes(app: FastifyInstance) {
         },
       });
       await tx.quotation.update({ where: { id }, data: { status: 'APPROVED' } });
+      await applyQuoteApprovalStatus(tx, quotation.caseId);
       if (performedBy) {
         await tx.auditLog.create({
           data: {

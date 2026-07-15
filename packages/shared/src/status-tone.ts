@@ -29,6 +29,30 @@ export function caseStatusTone(status: CaseStatusValue): StatusTone {
   return CASE_STATUS_TONE[status] ?? 'neutral';
 }
 
+const CASE_STATUS_LABEL: Record<CaseStatusValue, string> = {
+  DRAFT: 'טיוטה',
+  ACTIVE: 'פעיל',
+  READY_FOR_REVIEW: 'לבדיקה',
+  COMPLETED: 'הושלם',
+  CANCELLED: 'בוטל',
+  LEAD: 'ליד חדש',
+  QUOTATION_DRAFT: 'בהכנת הצעת מחיר',
+  AWAITING_APPROVAL: 'מחכה לאישור',
+  RESERVED: 'משוריין',
+  APPROVED_NO_DATES: 'מאושר – ללא תאריכים',
+  PARTIALLY_SCHEDULED: 'תזמון חלקי',
+  READY_FOR_EXECUTION: 'מאושר לביצוע',
+  IN_PROGRESS: 'בביצוע',
+  AWAITING_COMPLETION: 'מחכה להשלמות',
+  AWAITING_BILLING: 'מחכה לחיוב',
+  AWAITING_PAYMENT: 'מחכה לתשלום',
+  PAID: 'שולם',
+};
+
+export function caseStatusLabel(status: CaseStatusValue): string {
+  return CASE_STATUS_LABEL[status] ?? status;
+}
+
 const QUOTATION_STATUS_TONE: Record<QuotationStatus, StatusTone> = {
   DRAFT: 'neutral',
   SENT: 'info',

@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useUser, useAuth } from '@clerk/nextjs';
-import { dashboardIssueActionLabel, extractUrgentDashboardIssues, orderDashboardWorkflowSections } from '@workforce/shared';
+import { dashboardIssueActionLabel, extractUrgentDashboardIssues, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone } from '@workforce/shared';
 import { AlertTriangle, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Info, Plus, XCircle } from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
@@ -160,12 +160,17 @@ function InfoHint({ text }: { text: string }) {
   );
 }
 
-const caseStatusMeta: Record<CaseStatus, { label: string; className: string }> = {
-  DRAFT: { label: 'משוריין', className: 'border-amber-200 bg-amber-50 text-amber-700' },
-  ACTIVE: { label: 'עבודה אושרה', className: 'border-blue-200 bg-blue-50 text-blue-700' },
-  READY_FOR_REVIEW: { label: 'עבודה הסתיימה', className: 'border-amber-200 bg-amber-50 text-amber-700' },
-  COMPLETED: { label: 'עבודה שולמה', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+const CASE_BADGE_CLASS_BY_TONE: Record<StatusTone, string> = {
+  success: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  warning: 'border-amber-200 bg-amber-50 text-amber-700',
+  info: 'border-blue-200 bg-blue-50 text-blue-700',
+  error: 'border-rose-200 bg-rose-50 text-rose-700',
+  neutral: 'border-gray-200 bg-gray-50 text-gray-600',
 };
+
+function caseBadge(status: CaseStatusValue): { label: string; className: string } {
+  return { label: caseStatusLabel(status), className: CASE_BADGE_CLASS_BY_TONE[caseStatusTone(status)] };
+}
 
 export default function DashboardPage() {
   const { user } = useUser();
@@ -1532,7 +1537,7 @@ export default function DashboardPage() {
                                 linkedCaseStatus === 'DRAFT' &&
                                 upcomingDiffDays >= 0 &&
                                 upcomingDiffDays <= 7;
-                              const caseMeta = caseStatusMeta[linkedCaseStatus];
+                              const caseMeta = caseBadge(linkedCaseStatus);
                               return (
                                 <button
                                   key={`${worker.id}-${shift.id}`}
@@ -2036,10 +2041,10 @@ export default function DashboardPage() {
                   <p className="text-xs text-gray-600 mt-0.5">{work.assignedWorkers.length}/{work.requiredWorkers} משובצות</p>
                   <p
                     className={`mt-0.5 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
-                      caseStatusMeta[caseById.get(work.caseId)?.status ?? 'ACTIVE'].className
+                      caseBadge(caseById.get(work.caseId)?.status ?? 'ACTIVE').className
                     }`}
                   >
-                    {caseStatusMeta[caseById.get(work.caseId)?.status ?? 'ACTIVE'].label}
+                    {caseBadge(caseById.get(work.caseId)?.status ?? 'ACTIVE').label}
                   </p>
                   <p className="text-xs text-gray-600 mt-0.5">
                     {work.responsibleRole === 'admin' ? 'ראש צוות' : 'בעלות'}: {work.responsibleName}
