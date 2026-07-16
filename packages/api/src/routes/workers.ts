@@ -236,6 +236,48 @@ export async function workersRoutes(app: FastifyInstance) {
     return prisma.worker.update({ where: { id }, data: body as any });
   });
 
+  // Admin: link a worker profile to a login account by email.
+  // If the login already exists it is set to role WORKER and the profile is
+  // relinked to it (fixes a worker who already signed in as OWNER). If no login
+  // exists yet, we just align the profile email so first-login auto-links.
+  app.post('/:id/link-login', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const email = String((req.body as any)?.email ?? '').trim().toLowerCase();
+    if (!email || !email.includes('@')) return reply.status(400).send({ error: 'A valid email is required' });
+
+    const worker = await prisma.worker.findUnique({ where: { id } });
+    if (!worker) return reply.status(404).send({ error: 'Worker not found' });
+
+    const loginUser = await prisma.user.findUnique({ where: { email } });
+
+    if (!loginUser) {
+      // No login yet: align the profile email so the first sign-in links itself.
+      if (worker.email !== email) {
+        const emailTaken = await prisma.worker.findUnique({ where: { email } });
+        if (emailTaken && emailTaken.id !== worker.id) {
+          return reply.status(409).send({ error: 'Another worker already uses this email' });
+        }
+        await prisma.worker.update({ where: { id }, data: { email } });
+      }
+      return { linked: false, pendingFirstLogin: true };
+    }
+
+    // Make sure this login isn't already tied to a different worker.
+    const otherWorker = await prisma.worker.findUnique({ where: { userId: loginUser.id } });
+    if (otherWorker && otherWorker.id !== worker.id) {
+      return reply.status(409).send({ error: 'This login is already linked to another worker' });
+    }
+
+    const previousUserId = worker.userId;
+    await prisma.worker.update({ where: { id }, data: { userId: loginUser.id, email } });
+    await prisma.user.update({ where: { id: loginUser.id }, data: { role: UserRole.WORKER } });
+    // Remove the now-orphaned placeholder login (best-effort).
+    if (previousUserId && previousUserId !== loginUser.id) {
+      await prisma.user.delete({ where: { id: previousUserId } }).catch(() => undefined);
+    }
+    return { linked: true };
+  });
+
   // Update push token (worker self-service)
   app.post('/push-token', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
     const user = (req as any).user;

@@ -127,6 +127,9 @@ export default function WorkersPage() {
   const [editEmail, setEditEmail] = useState('');
   const [editApplyImmediately, setEditApplyImmediately] = useState(false);
   const [editEffectiveFrom, setEditEffectiveFrom] = useState(firstDayOfNextMonthDateKey());
+  const [linkEmail, setLinkEmail] = useState('');
+  const [linkMsg, setLinkMsg] = useState<string | null>(null);
+  const [linkBusy, setLinkBusy] = useState(false);
 
   useEffect(() => {
     void loadData();
@@ -226,6 +229,8 @@ export default function WorkersPage() {
     setEditEmail(worker.email);
     setEditApplyImmediately(false);
     setEditEffectiveFrom(firstDayOfNextMonthDateKey());
+    setLinkEmail(worker.email);
+    setLinkMsg(null);
     setMessage('');
   };
 
@@ -296,6 +301,33 @@ export default function WorkersPage() {
       setMessage('שמירת השינוי נכשלה. ודאי שה-API זמין.');
     }
     setEditingWorkerId(null);
+  };
+
+  const linkLogin = async () => {
+    if (!editingWorkerId) return;
+    const email = linkEmail.trim();
+    if (!isValidEmail(email)) {
+      setLinkMsg('כתובת האימייל לא תקינה.');
+      return;
+    }
+    setLinkBusy(true);
+    setLinkMsg(null);
+    try {
+      const res = await api.post<{ linked: boolean; pendingFirstLogin?: boolean }>(
+        `/workers/${editingWorkerId}/link-login`,
+        { email },
+      );
+      setLinkMsg(
+        res.data.linked
+          ? 'החשבון קושר בהצלחה. המשתמשת תתחבר כעובדת.'
+          : 'אין עדיין חשבון עם אימייל זה — הקישור יתבצע אוטומטית בהתחברות הראשונה.',
+      );
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      setLinkMsg(status === 409 ? 'האימייל כבר משויך לעובדת אחרת.' : 'הקישור נכשל. נסי שוב.');
+    } finally {
+      setLinkBusy(false);
+    }
   };
 
   const moveWorkerToArchive = async (workerId: string) => {
@@ -575,6 +607,27 @@ export default function WorkersPage() {
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white disabled:bg-gray-100"
                   />
                 </label>
+              </div>
+              <div className="rounded-lg border border-gray-200 p-3 space-y-2">
+                <p className="text-xs font-semibold text-gray-700">קישור לחשבון התחברות</p>
+                <p className="text-[11px] text-gray-500">משייך את פרופיל העובדת לחשבון ההתחברות עם האימייל הזה ומגדיר אותו כעובדת.</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={linkEmail}
+                    onChange={(e) => setLinkEmail(e.target.value)}
+                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-right"
+                    placeholder="אימייל ההתחברות"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void linkLogin()}
+                    disabled={linkBusy}
+                    className="rounded-lg border border-primary-200 text-primary-700 px-3 py-2 text-xs font-medium hover:bg-primary-50 disabled:opacity-50 whitespace-nowrap"
+                  >
+                    קישור
+                  </button>
+                </div>
+                {linkMsg && <p className="text-[11px] text-gray-600">{linkMsg}</p>}
               </div>
               <button
                 type="button"
