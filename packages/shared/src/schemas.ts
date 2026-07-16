@@ -321,6 +321,13 @@ export const SwapDecisionSchema = z.object({
   override: z.boolean().optional(),
 });
 
+// Owner directly swaps two workers assigned to shifts on the same date.
+export const OwnerSwapSchema = z.object({
+  fromShiftId: z.string().min(1),
+  toShiftId: z.string().min(1),
+  override: z.boolean().optional(),
+});
+
 // Owner/admin invites a team member (non-worker) with an explicit role.
 export const TeamInviteSchema = z.object({
   email: z.string().email(),

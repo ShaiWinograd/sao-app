@@ -29,6 +29,15 @@ type PendingSwap = {
   toShift: SwapShift;
 };
 
+type DateShift = {
+  shiftId: string;
+  workerName: string;
+  plannedStart: string;
+  plannedEnd: string;
+  jobType: string;
+  customerName: string;
+};
+
 function jobTypeLabel(t: string): string {
   return JOB_TYPE_LABEL[t] ?? t;
 }
@@ -94,6 +103,60 @@ export default function OwnerSwapApprovalsPage() {
     [getToken, load],
   );
 
+  const [swapDate, setSwapDate] = useState('');
+  const [dayShifts, setDayShifts] = useState<DateShift[]>([]);
+  const [fromShiftId, setFromShiftId] = useState('');
+  const [toShiftId, setToShiftId] = useState('');
+  const [ownerBusy, setOwnerBusy] = useState(false);
+
+  useEffect(() => {
+    setFromShiftId('');
+    setToShiftId('');
+    if (!swapDate) {
+      setDayShifts([]);
+      return;
+    }
+    void (async () => {
+      try {
+        const auth = await authHeaders(getToken);
+        const res = await api.get<DateShift[]>(`/shifts/on-date/${swapDate}`, auth);
+        setDayShifts(res.data ?? []);
+      } catch {
+        setDayShifts([]);
+      }
+    })();
+  }, [swapDate, getToken]);
+
+  const ownerSwap = useCallback(
+    async (override = false) => {
+      if (!fromShiftId || !toShiftId) return;
+      setOwnerBusy(true);
+      setMsg(null);
+      try {
+        const auth = await authHeaders(getToken);
+        await api.post('/shifts/swaps/owner', { fromShiftId, toShiftId, override }, auth);
+        setMsg('המשמרות הוחלפו בהצלחה.');
+        setFromShiftId('');
+        setToShiftId('');
+        const res = await api.get<DateShift[]>(`/shifts/on-date/${swapDate}`, auth);
+        setDayShifts(res.data ?? []);
+      } catch (err) {
+        const data = (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
+        if (data?.error === 'team_leader_coverage' && data.message) {
+          if (window.confirm(data.message)) {
+            await ownerSwap(true);
+            return;
+          }
+        } else {
+          setMsg(data?.error ? `ההחלפה נכשלה: ${data.error}` : 'ההחלפה נכשלה.');
+        }
+      } finally {
+        setOwnerBusy(false);
+      }
+    },
+    [fromShiftId, toShiftId, swapDate, getToken],
+  );
+
   return (
     <div dir="rtl" className="p-6 max-w-3xl space-y-4">
       <Link href="/jobs" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
@@ -150,6 +213,67 @@ export default function OwnerSwapApprovalsPage() {
           ))}
         </div>
       )}
+
+      <section className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+        <h2 className="text-sm font-semibold text-gray-900">החלפה יזומה (על ידי בעל/ת העסק)</h2>
+        <p className="text-xs text-gray-500">בחר/י תאריך ושתי משמרות מאושרות של עובדים שונים כדי להחליף ביניהן ישירות.</p>
+        <label className="block text-xs text-gray-600">
+          תאריך
+          <input
+            type="date"
+            value={swapDate}
+            onChange={(e) => setSwapDate(e.target.value)}
+            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+        </label>
+        {swapDate && dayShifts.length < 2 && (
+          <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">אין מספיק משמרות מאושרות בתאריך זה להחלפה.</p>
+        )}
+        {dayShifts.length >= 2 && (
+          <>
+            <label className="block text-xs text-gray-600">
+              משמרת ראשונה
+              <select
+                value={fromShiftId}
+                onChange={(e) => setFromShiftId(e.target.value)}
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+              >
+                <option value="">בחר/י משמרת</option>
+                {dayShifts.map((s) => (
+                  <option key={s.shiftId} value={s.shiftId}>
+                    {s.workerName} · {jobTypeLabel(s.jobType)} · {formatTime(s.plannedStart)}–{formatTime(s.plannedEnd)} · {s.customerName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs text-gray-600">
+              משמרת שנייה
+              <select
+                value={toShiftId}
+                onChange={(e) => setToShiftId(e.target.value)}
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+              >
+                <option value="">בחר/י משמרת</option>
+                {dayShifts
+                  .filter((s) => s.shiftId !== fromShiftId)
+                  .map((s) => (
+                    <option key={s.shiftId} value={s.shiftId}>
+                      {s.workerName} · {jobTypeLabel(s.jobType)} · {formatTime(s.plannedStart)}–{formatTime(s.plannedEnd)} · {s.customerName}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => void ownerSwap()}
+              disabled={ownerBusy || !fromShiftId || !toShiftId}
+              className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+            >
+              החלפת המשמרות
+            </button>
+          </>
+        )}
+      </section>
     </div>
   );
 }

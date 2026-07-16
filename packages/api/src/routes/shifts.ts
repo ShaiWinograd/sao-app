@@ -1,7 +1,23 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
-import { JoinRequestSchema, ApproveReplacementSchema, WorkerReplacementRequestSchema, ProposeSwapSchema, SwapDecisionSchema, UserRole, StaffingMode, isUnavailableOn, MANAGER_SKILL } from '@workforce/shared';
+import { JoinRequestSchema, ApproveReplacementSchema, WorkerReplacementRequestSchema, ProposeSwapSchema, SwapDecisionSchema, OwnerSwapSchema, UserRole, StaffingMode, isUnavailableOn, MANAGER_SKILL } from '@workforce/shared';
+
+// After removing `outgoingShiftId`'s worker from `job`, does a team leader remain?
+// True when the job needs no leader, the incoming worker is leader-eligible, or
+// another assigned worker on the job can lead.
+function leaderStillCovered(
+  job: { slots?: { requiredSkill: string }[] | null; shifts?: { id: string; worker: { skills: string[] } | null }[] | null },
+  outgoingShiftId: string,
+  incomingSkills: string[],
+): boolean {
+  const requiresLeader = (job.slots ?? []).some((s) => s.requiredSkill === MANAGER_SKILL);
+  if (!requiresLeader) return true;
+  if (incomingSkills.includes(MANAGER_SKILL)) return true;
+  return (job.shifts ?? []).some(
+    (s) => s.id !== outgoingShiftId && ((s.worker?.skills as string[]) ?? []).includes(MANAGER_SKILL),
+  );
+}
 
 export async function shiftsRoutes(app: FastifyInstance) {
   // Worker: get my confirmed/pending shifts
@@ -855,20 +871,8 @@ export async function shiftsRoutes(app: FastifyInstance) {
 
     // Team-leader coverage on each job after the swap (unless overridden).
     if (!body.override) {
-      const stillCovered = (
-        job: { slots: { requiredSkill: string }[]; shifts: { id: string; worker: { skills: string[] } | null }[] },
-        outgoingShiftId: string,
-        incomingSkills: string[],
-      ) => {
-        const requiresLeader = (job.slots ?? []).some((s) => s.requiredSkill === MANAGER_SKILL);
-        if (!requiresLeader) return true;
-        if (incomingSkills.includes(MANAGER_SKILL)) return true;
-        return (job.shifts ?? []).some(
-          (s) => s.id !== outgoingShiftId && ((s.worker?.skills as string[]) ?? []).includes(MANAGER_SKILL),
-        );
-      };
-      const fromOk = stillCovered(swap.fromShift.job as any, swap.fromShiftId, swap.toWorker.skills as string[]);
-      const toOk = stillCovered(swap.toShift.job as any, swap.toShiftId, swap.fromWorker.skills as string[]);
+      const fromOk = leaderStillCovered(swap.fromShift.job as any, swap.fromShiftId, swap.toWorker.skills as string[]);
+      const toOk = leaderStillCovered(swap.toShift.job as any, swap.toShiftId, swap.fromWorker.skills as string[]);
       if (!fromOk || !toOk) {
         return reply.status(409).send({
           error: 'team_leader_coverage',
@@ -906,6 +910,104 @@ export async function shiftsRoutes(app: FastifyInstance) {
         title: 'החלפת המשמרות אושרה',
         body: `המשמרות בתאריכים ${fromDate} ו-${toDate} הוחלפו.`,
         data: { type: 'SWAP_DECISION', swapId: id, approved: true } as any,
+      })),
+    });
+    return { success: true };
+  });
+
+  // Owner/admin: confirmed shifts on a given date (for an owner-initiated swap).
+  app.get('/on-date/:date', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { date } = req.params as { date: string };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return reply.status(400).send({ error: 'Invalid date' });
+    const day = new Date(`${date}T00:00:00.000Z`);
+    const shifts = await prisma.shift.findMany({
+      where: { joinRequestStatus: 'APPROVED', attendanceStatus: 'SCHEDULED', job: { date: day } },
+      include: { job: { include: { customer: { select: { firstName: true, lastName: true } } } } },
+      orderBy: { scheduledStart: 'asc' },
+    });
+    return shifts.map((s) => ({
+      shiftId: s.id,
+      workerName: s.workerNameSnapshot,
+      plannedStart: s.scheduledStart.toISOString(),
+      plannedEnd: s.scheduledEnd.toISOString(),
+      jobType: s.job.jobType,
+      customerName: `${s.job.customer.firstName} ${s.job.customer.lastName}`.trim(),
+    }));
+  });
+
+  // Owner/admin: directly swap two workers assigned on the same date (spec §Owner-created swap).
+  app.post('/swaps/owner', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const body = OwnerSwapSchema.parse(req.body);
+    if (body.fromShiftId === body.toShiftId) return reply.status(400).send({ error: 'Choose two different shifts' });
+
+    const include = {
+      job: { include: { slots: true, shifts: { where: { joinRequestStatus: 'APPROVED' }, include: { worker: { select: { skills: true } } } } } },
+      worker: { select: { id: true, userId: true, firstName: true, lastName: true, skills: true, hourlyWage: true, dailyPaymentAmount: true } },
+    } as const;
+    const fromShift = await prisma.shift.findUnique({ where: { id: body.fromShiftId }, include });
+    const toShift = await prisma.shift.findUnique({ where: { id: body.toShiftId }, include });
+    if (!fromShift || !toShift) return reply.status(404).send({ error: 'Shift not found' });
+    if (fromShift.joinRequestStatus !== 'APPROVED' || toShift.joinRequestStatus !== 'APPROVED') {
+      return reply.status(409).send({ error: 'Both shifts must be confirmed' });
+    }
+    if (fromShift.attendanceStatus !== 'SCHEDULED' || toShift.attendanceStatus !== 'SCHEDULED') {
+      return reply.status(409).send({ error: 'One of the shifts already started' });
+    }
+    if (fromShift.workerId === toShift.workerId) return reply.status(400).send({ error: 'Both shifts belong to the same worker' });
+    if (fromShift.job.date.toISOString().slice(0, 10) !== toShift.job.date.toISOString().slice(0, 10)) {
+      return reply.status(400).send({ error: 'Owner swaps are limited to the same date' });
+    }
+
+    if (!body.override) {
+      const fromOk = leaderStillCovered(fromShift.job as any, fromShift.id, toShift.worker.skills as string[]);
+      const toOk = leaderStillCovered(toShift.job as any, toShift.id, fromShift.worker.skills as string[]);
+      if (!fromOk || !toOk) {
+        return reply.status(409).send({
+          error: 'team_leader_coverage',
+          message: 'ההחלפה תותיר משמרת ללא ראש צוות. לאישור בכל זאת יש לאשר חריגה.',
+        });
+      }
+    }
+
+    await prisma.$transaction([
+      prisma.shift.update({
+        where: { id: fromShift.id },
+        data: {
+          workerId: toShift.worker.id,
+          workerNameSnapshot: `${toShift.worker.firstName} ${toShift.worker.lastName}`.trim(),
+          hourlyWageSnapshot: toShift.worker.hourlyWage,
+          dailyPaymentSnapshot: toShift.worker.dailyPaymentAmount,
+        },
+      }),
+      prisma.shift.update({
+        where: { id: toShift.id },
+        data: {
+          workerId: fromShift.worker.id,
+          workerNameSnapshot: `${fromShift.worker.firstName} ${fromShift.worker.lastName}`.trim(),
+          hourlyWageSnapshot: fromShift.worker.hourlyWage,
+          dailyPaymentSnapshot: fromShift.worker.dailyPaymentAmount,
+        },
+      }),
+      prisma.shiftSwap.create({
+        data: {
+          fromShiftId: fromShift.id,
+          toShiftId: toShift.id,
+          fromWorkerId: fromShift.worker.id,
+          toWorkerId: toShift.worker.id,
+          status: 'APPROVED',
+          adminNote: 'owner-initiated',
+          resolvedAt: new Date(),
+        },
+      }),
+    ]);
+
+    const dateKey = fromShift.job.date.toISOString().slice(0, 10);
+    await prisma.notification.createMany({
+      data: [fromShift.worker.userId, toShift.worker.userId].map((userId) => ({
+        userId,
+        title: 'המשמרת שלך הוחלפה',
+        body: `בעל/ת העסק החליף/ה את שיבוץ המשמרות בתאריך ${dateKey}.`,
+        data: { type: 'SWAP_OWNER', dateKey } as any,
       })),
     });
     return { success: true };
