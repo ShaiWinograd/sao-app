@@ -175,8 +175,22 @@ export default function JobDetailPage() {
         const auth = await authHeaders(getToken);
         await api.post(`/shifts/replacement/${requestId}/resolve`, { approved }, auth);
         await load();
-      } catch {
-        setError('עדכון בקשת ההחלפה נכשל');
+      } catch (err) {
+        const res = (err as { response?: { status?: number; data?: { error?: string; message?: string } } })?.response;
+        if (approved && res?.status === 409 && res.data?.error === 'team_leader_coverage') {
+          const msg = res.data.message ?? 'שחרור העובד/ת יותיר את המשמרת ללא ראש צוות. לאשר בכל זאת?';
+          if (typeof window !== 'undefined' && window.confirm(msg)) {
+            try {
+              const auth = await authHeaders(getToken);
+              await api.post(`/shifts/replacement/${requestId}/resolve`, { approved, override: true }, auth);
+              await load();
+            } catch {
+              setError('עדכון בקשת ההחלפה נכשל');
+            }
+          }
+        } else {
+          setError('עדכון בקשת ההחלפה נכשל');
+        }
       } finally {
         setBusy(false);
       }
