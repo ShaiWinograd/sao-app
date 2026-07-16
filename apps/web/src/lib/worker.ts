@@ -19,7 +19,31 @@ export type WorkerJob = {
   customer?: { firstName?: string; lastName?: string } | null;
   slots?: Array<{ id: string; requiredSkill?: string | null; filledByShiftId?: string | null }>;
   shifts?: Array<{ workerId?: string; joinRequestStatus?: string; worker?: { firstName?: string; lastName?: string } }>;
+  formTemplate?: { id: string; name: string; questions: WorkerFormQuestion[] } | null;
 };
+
+export type WorkerFormQuestionType =
+  | 'YES_NO'
+  | 'MULTIPLE_CHOICE'
+  | 'CHECKBOX'
+  | 'NUMBER'
+  | 'SHORT_TEXT'
+  | 'LONG_TEXT'
+  | 'PHOTO_UPLOAD'
+  | 'DATE'
+  | 'SIGNATURE';
+
+export type WorkerFormQuestion = {
+  id: string;
+  questionText: string;
+  type: WorkerFormQuestionType;
+  visibility: 'WORKER' | 'ADMIN' | 'OWNER';
+  isRequired: boolean;
+  order: number;
+  options: string[];
+};
+
+export type WorkerAnswerValue = string | number | boolean | string[];
 
 export type WorkerShift = {
   id: string;
