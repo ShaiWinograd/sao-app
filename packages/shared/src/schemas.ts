@@ -308,6 +308,19 @@ export const WorkerReplacementRequestSchema = z.object({
   suggestedWorkerId: z.string().optional(),
 });
 
+// Worker proposes a two-way swap: my fromShift <-> a colleague's toShift.
+export const ProposeSwapSchema = z.object({
+  toShiftId: z.string().min(1),
+  note: z.string().max(300).optional(),
+});
+
+// A worker responds to (or an owner resolves) a proposed swap.
+export const SwapDecisionSchema = z.object({
+  approved: z.boolean(),
+  note: z.string().max(300).optional(),
+  override: z.boolean().optional(),
+});
+
 // Owner/admin invites a team member (non-worker) with an explicit role.
 export const TeamInviteSchema = z.object({
   email: z.string().email(),

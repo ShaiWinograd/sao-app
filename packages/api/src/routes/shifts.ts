@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
-import { JoinRequestSchema, ApproveReplacementSchema, WorkerReplacementRequestSchema, UserRole, StaffingMode, isUnavailableOn, MANAGER_SKILL } from '@workforce/shared';
+import { JoinRequestSchema, ApproveReplacementSchema, WorkerReplacementRequestSchema, ProposeSwapSchema, SwapDecisionSchema, UserRole, StaffingMode, isUnavailableOn, MANAGER_SKILL } from '@workforce/shared';
 
 export async function shiftsRoutes(app: FastifyInstance) {
   // Worker: get my confirmed/pending shifts
@@ -566,6 +566,348 @@ export async function shiftsRoutes(app: FastifyInstance) {
       },
     });
 
+    return { success: true };
+  });
+
+  // ── Two-way shift swap (worker_web_spec §3 Two-way swap) ─────────────────────
+
+  // Worker: a colleague's upcoming confirmed shifts they could swap into.
+  app.get('/swaps/candidates/:workerId', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const { workerId } = req.params as { workerId: string };
+    const me = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!me) return reply.status(403).send({ error: 'Worker profile not found' });
+    if (workerId === me.id) return reply.status(400).send({ error: 'Choose a different colleague' });
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const shifts = await prisma.shift.findMany({
+      where: { workerId, joinRequestStatus: 'APPROVED', attendanceStatus: 'SCHEDULED', job: { date: { gte: today } } },
+      include: { job: { include: { customer: { select: { firstName: true, lastName: true } } } } },
+      orderBy: { scheduledStart: 'asc' },
+    });
+    // A swap collides if the proposer is already booked on the colleague's date.
+    const myDates = new Set(
+      (await prisma.shift.findMany({ where: { workerId: me.id, joinRequestStatus: 'APPROVED' }, include: { job: { select: { date: true } } } }))
+        .map((s) => s.job.date.toISOString().slice(0, 10)),
+    );
+    return shifts
+      .filter((s) => !myDates.has(s.job.date.toISOString().slice(0, 10)))
+      .map((s) => ({
+        shiftId: s.id,
+        date: s.job.date.toISOString(),
+        plannedStart: s.scheduledStart.toISOString(),
+        plannedEnd: s.scheduledEnd.toISOString(),
+        jobType: s.job.jobType,
+        customerName: `${s.job.customer.firstName} ${s.job.customer.lastName}`.trim(),
+      }));
+  });
+
+  // Worker: propose a two-way swap (my fromShift <-> colleague's toShift).
+  app.post('/:fromShiftId/swap', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const { fromShiftId } = req.params as { fromShiftId: string };
+    const body = ProposeSwapSchema.parse(req.body);
+    const me = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!me) return reply.status(403).send({ error: 'Worker profile not found' });
+    if (body.toShiftId === fromShiftId) return reply.status(400).send({ error: 'Choose two different shifts' });
+
+    const fromShift = await prisma.shift.findUnique({ where: { id: fromShiftId }, include: { job: true } });
+    if (!fromShift || fromShift.workerId !== me.id) return reply.status(404).send({ error: 'Shift not found' });
+    if (fromShift.joinRequestStatus !== 'APPROVED' || fromShift.attendanceStatus !== 'SCHEDULED') {
+      return reply.status(409).send({ error: 'Only upcoming confirmed shifts can be swapped' });
+    }
+    const toShift = await prisma.shift.findUnique({ where: { id: body.toShiftId }, include: { job: true } });
+    if (!toShift) return reply.status(404).send({ error: 'Target shift not found' });
+    if (toShift.workerId === me.id) return reply.status(400).send({ error: 'Choose a colleague\'s shift' });
+    if (toShift.joinRequestStatus !== 'APPROVED' || toShift.attendanceStatus !== 'SCHEDULED') {
+      return reply.status(409).send({ error: 'The target shift is not available for swapping' });
+    }
+    if (fromShift.job.date.toISOString().slice(0, 10) === toShift.job.date.toISOString().slice(0, 10)) {
+      return reply.status(400).send({ error: 'Choose shifts on different dates' });
+    }
+
+    const openForEither = await prisma.shiftSwap.findFirst({
+      where: {
+        status: { in: ['PENDING_WORKER', 'PENDING_OWNER'] },
+        OR: [{ fromShiftId }, { toShiftId: fromShiftId }, { fromShiftId: toShift.id }, { toShiftId: toShift.id }],
+      },
+    });
+    if (openForEither) return reply.status(409).send({ error: 'A swap is already pending for one of these shifts' });
+
+    const swap = await prisma.shiftSwap.create({
+      data: {
+        fromShiftId,
+        toShiftId: toShift.id,
+        fromWorkerId: me.id,
+        toWorkerId: toShift.workerId,
+        note: body.note ?? null,
+        status: 'PENDING_WORKER',
+      },
+    });
+    const target = await prisma.worker.findUnique({ where: { id: toShift.workerId }, select: { userId: true } });
+    const dateKey = fromShift.job.date.toISOString().slice(0, 10);
+    if (target) {
+      await prisma.notification.create({
+        data: {
+          userId: target.userId,
+          title: 'הוצעה לך החלפת משמרות',
+          body: `${me.firstName} ${me.lastName} מציע/ה להחליף משמרות. יש לאשר או לדחות מ"היומן שלי".`,
+          data: { type: 'SWAP_PROPOSED', swapId: swap.id, dateKey } as any,
+        },
+      });
+    }
+    return { success: true, swapId: swap.id };
+  });
+
+  // Worker: swaps I proposed or was asked to approve.
+  app.get('/swaps/mine', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const me = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!me) return reply.status(403).send({ error: 'Worker profile not found' });
+
+    const swaps = await prisma.shiftSwap.findMany({
+      where: {
+        status: { in: ['PENDING_WORKER', 'PENDING_OWNER'] },
+        OR: [{ fromWorkerId: me.id }, { toWorkerId: me.id }],
+      },
+      include: {
+        fromShift: { include: { job: { include: { customer: { select: { firstName: true, lastName: true } } } } } },
+        toShift: { include: { job: { include: { customer: { select: { firstName: true, lastName: true } } } } } },
+        fromWorker: { select: { firstName: true, lastName: true } },
+        toWorker: { select: { firstName: true, lastName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    const view = (s: (typeof swaps)[number]['fromShift']) => ({
+      date: s.job.date.toISOString(),
+      plannedStart: s.scheduledStart.toISOString(),
+      plannedEnd: s.scheduledEnd.toISOString(),
+      jobType: s.job.jobType,
+      customerName: `${s.job.customer.firstName} ${s.job.customer.lastName}`.trim(),
+    });
+    return swaps.map((s) => ({
+      id: s.id,
+      status: s.status,
+      note: s.note,
+      direction: s.fromWorkerId === me.id ? 'OUTGOING' : 'INCOMING',
+      counterpartName:
+        s.fromWorkerId === me.id
+          ? `${s.toWorker.firstName} ${s.toWorker.lastName}`.trim()
+          : `${s.fromWorker.firstName} ${s.fromWorker.lastName}`.trim(),
+      myShift: s.fromWorkerId === me.id ? view(s.fromShift) : view(s.toShift),
+      theirShift: s.fromWorkerId === me.id ? view(s.toShift) : view(s.fromShift),
+      awaitingMe: s.status === 'PENDING_WORKER' && s.toWorkerId === me.id,
+    }));
+  });
+
+  // Target worker: approve or reject a proposed swap.
+  app.post('/swaps/:id/respond', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const { id } = req.params as { id: string };
+    const body = SwapDecisionSchema.parse(req.body);
+    const me = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!me) return reply.status(403).send({ error: 'Worker profile not found' });
+
+    const swap = await prisma.shiftSwap.findUnique({ where: { id }, include: { fromShift: { include: { job: true } } } });
+    if (!swap || swap.toWorkerId !== me.id) return reply.status(404).send({ error: 'Swap not found' });
+    if (swap.status !== 'PENDING_WORKER') return reply.status(409).send({ error: 'This swap is no longer awaiting your response' });
+
+    const proposer = await prisma.worker.findUnique({ where: { id: swap.fromWorkerId }, select: { userId: true } });
+    const dateKey = swap.fromShift.job.date.toISOString().slice(0, 10);
+
+    if (!body.approved) {
+      await prisma.shiftSwap.update({ where: { id }, data: { status: 'REJECTED', workerRespondedAt: new Date(), resolvedAt: new Date() } });
+      if (proposer) {
+        await prisma.notification.create({
+          data: {
+            userId: proposer.userId,
+            title: 'בקשת ההחלפה נדחתה',
+            body: `${me.firstName} ${me.lastName} דחה/תה את הצעת החלפת המשמרות.`,
+            data: { type: 'SWAP_DECISION', swapId: id, approved: false } as any,
+          },
+        });
+      }
+      return { success: true };
+    }
+
+    await prisma.shiftSwap.update({ where: { id }, data: { status: 'PENDING_OWNER', workerRespondedAt: new Date() } });
+    const owners = await prisma.user.findMany({
+      where: { role: { in: [UserRole.OWNER, UserRole.ADMIN] }, isActive: true },
+      select: { id: true },
+    });
+    if (owners.length) {
+      await prisma.notification.createMany({
+        data: owners.map((o) => ({
+          userId: o.id,
+          title: 'בקשת החלפת משמרות לאישור',
+          body: `${me.firstName} ${me.lastName} אישר/ה החלפת משמרות. נדרש אישור סופי.`,
+          data: { type: 'SWAP_PENDING_OWNER', swapId: id, dateKey } as any,
+        })),
+      });
+    }
+    return { success: true };
+  });
+
+  // Proposer: cancel a swap that has not been finalized.
+  app.delete('/swaps/:id', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const { id } = req.params as { id: string };
+    const me = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!me) return reply.status(403).send({ error: 'Worker profile not found' });
+    const swap = await prisma.shiftSwap.findUnique({ where: { id } });
+    if (!swap || swap.fromWorkerId !== me.id) return reply.status(404).send({ error: 'Swap not found' });
+    if (!['PENDING_WORKER', 'PENDING_OWNER'].includes(swap.status)) {
+      return reply.status(409).send({ error: 'This swap can no longer be cancelled' });
+    }
+    await prisma.shiftSwap.update({ where: { id }, data: { status: 'CANCELLED', resolvedAt: new Date() } });
+    reply.status(204);
+    return null;
+  });
+
+  // Owner/admin: list swaps awaiting final approval.
+  app.get('/swaps/pending-owner', { preHandler: [authenticate, requireAdmin] }, async () => {
+    const swaps = await prisma.shiftSwap.findMany({
+      where: { status: 'PENDING_OWNER' },
+      include: {
+        fromShift: { include: { job: { include: { customer: { select: { firstName: true, lastName: true } } } } } },
+        toShift: { include: { job: { include: { customer: { select: { firstName: true, lastName: true } } } } } },
+        fromWorker: { select: { firstName: true, lastName: true, skills: true } },
+        toWorker: { select: { firstName: true, lastName: true, skills: true } },
+      },
+      orderBy: { workerRespondedAt: 'asc' },
+    });
+    const view = (s: (typeof swaps)[number]['fromShift']) => ({
+      date: s.job.date.toISOString(),
+      plannedStart: s.scheduledStart.toISOString(),
+      plannedEnd: s.scheduledEnd.toISOString(),
+      jobType: s.job.jobType,
+      customerName: `${s.job.customer.firstName} ${s.job.customer.lastName}`.trim(),
+    });
+    return swaps.map((s) => ({
+      id: s.id,
+      note: s.note,
+      fromWorkerName: `${s.fromWorker.firstName} ${s.fromWorker.lastName}`.trim(),
+      toWorkerName: `${s.toWorker.firstName} ${s.toWorker.lastName}`.trim(),
+      fromShift: view(s.fromShift),
+      toShift: view(s.toShift),
+    }));
+  });
+
+  // Owner/admin: approve (execute) or reject a swap awaiting final approval.
+  app.post('/swaps/:id/resolve', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = SwapDecisionSchema.parse(req.body);
+
+    const swap = await prisma.shiftSwap.findUnique({
+      where: { id },
+      include: {
+        fromShift: { include: { job: { include: { slots: true, shifts: { where: { joinRequestStatus: 'APPROVED' }, include: { worker: { select: { skills: true } } } } } } } },
+        toShift: { include: { job: { include: { slots: true, shifts: { where: { joinRequestStatus: 'APPROVED' }, include: { worker: { select: { skills: true } } } } } } } },
+        fromWorker: { select: { id: true, userId: true, firstName: true, lastName: true, skills: true, hourlyWage: true, dailyPaymentAmount: true } },
+        toWorker: { select: { id: true, userId: true, firstName: true, lastName: true, skills: true, hourlyWage: true, dailyPaymentAmount: true } },
+      },
+    });
+    if (!swap) return reply.status(404).send({ error: 'Swap not found' });
+    if (swap.status !== 'PENDING_OWNER') return reply.status(409).send({ error: 'This swap is not awaiting approval' });
+
+    const fromDate = swap.fromShift.job.date.toISOString().slice(0, 10);
+    const toDate = swap.toShift.job.date.toISOString().slice(0, 10);
+
+    if (!body.approved) {
+      await prisma.shiftSwap.update({ where: { id }, data: { status: 'REJECTED', adminNote: body.note ?? null, resolvedAt: new Date() } });
+      await prisma.notification.createMany({
+        data: [swap.fromWorker.userId, swap.toWorker.userId].map((userId) => ({
+          userId,
+          title: 'בקשת ההחלפה נדחתה',
+          body: 'בעל/ת העסק דחה/תה את החלפת המשמרות.',
+          data: { type: 'SWAP_DECISION', swapId: id, approved: false } as any,
+        })),
+      });
+      return { success: true };
+    }
+
+    if (swap.fromShift.attendanceStatus !== 'SCHEDULED' || swap.toShift.attendanceStatus !== 'SCHEDULED') {
+      return reply.status(409).send({ error: 'One of the shifts already started' });
+    }
+
+    // Availability: each worker must be free (aside from their own swapped shift) on the new date.
+    const blocksFor = async (workerId: string) =>
+      (await prisma.workerAvailability.findMany({ where: { workerId } })).map((b) => ({
+        type: b.type,
+        startDate: b.startDate ? b.startDate.toISOString() : null,
+        endDate: b.endDate ? b.endDate.toISOString() : null,
+        weekday: b.weekday,
+      }));
+    const fromBlocks = await blocksFor(swap.fromWorker.id);
+    const toBlocks = await blocksFor(swap.toWorker.id);
+    if (isUnavailableOn(fromBlocks, toDate)) return reply.status(409).send({ error: `${swap.fromWorker.firstName} סימן/ה חוסר זמינות בתאריך היעד` });
+    if (isUnavailableOn(toBlocks, fromDate)) return reply.status(409).send({ error: `${swap.toWorker.firstName} סימן/ה חוסר זמינות בתאריך היעד` });
+
+    const fromConflict = await prisma.shift.findFirst({
+      where: { workerId: swap.fromWorker.id, joinRequestStatus: 'APPROVED', job: { date: swap.toShift.job.date }, id: { not: swap.toShiftId } },
+    });
+    if (fromConflict) return reply.status(409).send({ error: `${swap.fromWorker.firstName} כבר משובץ/ת למשמרת בתאריך היעד` });
+    const toConflict = await prisma.shift.findFirst({
+      where: { workerId: swap.toWorker.id, joinRequestStatus: 'APPROVED', job: { date: swap.fromShift.job.date }, id: { not: swap.fromShiftId } },
+    });
+    if (toConflict) return reply.status(409).send({ error: `${swap.toWorker.firstName} כבר משובץ/ת למשמרת בתאריך היעד` });
+
+    // Team-leader coverage on each job after the swap (unless overridden).
+    if (!body.override) {
+      const stillCovered = (
+        job: { slots: { requiredSkill: string }[]; shifts: { id: string; worker: { skills: string[] } | null }[] },
+        outgoingShiftId: string,
+        incomingSkills: string[],
+      ) => {
+        const requiresLeader = (job.slots ?? []).some((s) => s.requiredSkill === MANAGER_SKILL);
+        if (!requiresLeader) return true;
+        if (incomingSkills.includes(MANAGER_SKILL)) return true;
+        return (job.shifts ?? []).some(
+          (s) => s.id !== outgoingShiftId && ((s.worker?.skills as string[]) ?? []).includes(MANAGER_SKILL),
+        );
+      };
+      const fromOk = stillCovered(swap.fromShift.job as any, swap.fromShiftId, swap.toWorker.skills as string[]);
+      const toOk = stillCovered(swap.toShift.job as any, swap.toShiftId, swap.fromWorker.skills as string[]);
+      if (!fromOk || !toOk) {
+        return reply.status(409).send({
+          error: 'team_leader_coverage',
+          message: 'ההחלפה תותיר משמרת ללא ראש צוות. לאישור בכל זאת יש לאשר חריגה.',
+        });
+      }
+    }
+
+    // Execute the swap: exchange the assigned worker (and wage snapshots) on both shifts.
+    await prisma.$transaction([
+      prisma.shift.update({
+        where: { id: swap.fromShiftId },
+        data: {
+          workerId: swap.toWorker.id,
+          workerNameSnapshot: `${swap.toWorker.firstName} ${swap.toWorker.lastName}`.trim(),
+          hourlyWageSnapshot: swap.toWorker.hourlyWage,
+          dailyPaymentSnapshot: swap.toWorker.dailyPaymentAmount,
+        },
+      }),
+      prisma.shift.update({
+        where: { id: swap.toShiftId },
+        data: {
+          workerId: swap.fromWorker.id,
+          workerNameSnapshot: `${swap.fromWorker.firstName} ${swap.fromWorker.lastName}`.trim(),
+          hourlyWageSnapshot: swap.fromWorker.hourlyWage,
+          dailyPaymentSnapshot: swap.fromWorker.dailyPaymentAmount,
+        },
+      }),
+      prisma.shiftSwap.update({ where: { id }, data: { status: 'APPROVED', resolvedAt: new Date() } }),
+    ]);
+
+    await prisma.notification.createMany({
+      data: [swap.fromWorker.userId, swap.toWorker.userId].map((userId) => ({
+        userId,
+        title: 'החלפת המשמרות אושרה',
+        body: `המשמרות בתאריכים ${fromDate} ו-${toDate} הוחלפו.`,
+        data: { type: 'SWAP_DECISION', swapId: id, approved: true } as any,
+      })),
+    });
     return { success: true };
   });
 }

@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
-import { ChevronRight, ChevronLeft, MapPin, Clock } from 'lucide-react';
+import { ChevronRight, ChevronLeft, MapPin, Clock, Repeat } from 'lucide-react';
 import { api, authHeaders } from '../../../lib/api';
 import {
   type WorkerShift,
@@ -36,6 +36,18 @@ export default function WorkerCalendarPage() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>('list');
   const [anchor, setAnchor] = useState(() => new Date());
+  const [swaps, setSwaps] = useState<SwapMine[]>([]);
+  const [swapBusy, setSwapBusy] = useState<string | null>(null);
+
+  const loadSwaps = useCallback(async () => {
+    try {
+      const auth = await authHeaders(getToken);
+      const res = await api.get<SwapMine[]>('/shifts/swaps/mine', auth);
+      setSwaps(res.data ?? []);
+    } catch {
+      setSwaps([]);
+    }
+  }, [getToken]);
 
   useEffect(() => {
     (async () => {
@@ -49,7 +61,40 @@ export default function WorkerCalendarPage() {
         setLoading(false);
       }
     })();
-  }, [getToken]);
+    void loadSwaps();
+  }, [getToken, loadSwaps]);
+
+  const respondSwap = useCallback(
+    async (id: string, approved: boolean) => {
+      setSwapBusy(id);
+      try {
+        const auth = await authHeaders(getToken);
+        await api.post(`/shifts/swaps/${id}/respond`, { approved }, auth);
+        await loadSwaps();
+      } catch {
+        /* keep list; user can retry */
+      } finally {
+        setSwapBusy(null);
+      }
+    },
+    [getToken, loadSwaps],
+  );
+
+  const cancelSwap = useCallback(
+    async (id: string) => {
+      setSwapBusy(id);
+      try {
+        const auth = await authHeaders(getToken);
+        await api.delete(`/shifts/swaps/${id}`, auth);
+        await loadSwaps();
+      } catch {
+        /* keep list; user can retry */
+      } finally {
+        setSwapBusy(null);
+      }
+    },
+    [getToken, loadSwaps],
+  );
 
   const shiftsByDate = useMemo(() => {
     const map = new Map<string, WorkerShift[]>();
@@ -84,6 +129,8 @@ export default function WorkerCalendarPage() {
       {view === 'list' && <ListView shifts={shifts} />}
       {view === 'week' && <WeekView anchor={anchor} setAnchor={setAnchor} shiftsByDate={shiftsByDate} />}
       {view === 'month' && <MonthView anchor={anchor} setAnchor={setAnchor} shiftsByDate={shiftsByDate} />}
+
+      <SwapRequestsSection swaps={swaps} busyId={swapBusy} onRespond={respondSwap} onCancel={cancelSwap} />
     </div>
   );
 }
@@ -96,6 +143,112 @@ function ShiftChip({ shift }: { shift: WorkerShift }) {
     >
       <span className="font-semibold">{formatTime(shift.scheduledStart)}</span> {customerName(shift.job.customer)}
     </Link>
+  );
+}
+
+type SwapShiftView = {
+  date: string;
+  plannedStart: string;
+  plannedEnd: string;
+  jobType: string;
+  customerName: string;
+};
+
+type SwapMine = {
+  id: string;
+  status: 'PENDING_WORKER' | 'PENDING_OWNER';
+  note: string | null;
+  direction: 'OUTGOING' | 'INCOMING';
+  counterpartName: string;
+  myShift: SwapShiftView;
+  theirShift: SwapShiftView;
+  awaitingMe: boolean;
+};
+
+function swapShiftLabel(s: SwapShiftView): string {
+  const d = new Date(s.date).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
+  return `${d} · ${jobTypeLabel(s.jobType)} · ${formatTime(s.plannedStart)}–${formatTime(s.plannedEnd)}`;
+}
+
+function SwapRequestsSection({
+  swaps,
+  busyId,
+  onRespond,
+  onCancel,
+}: {
+  swaps: SwapMine[];
+  busyId: string | null;
+  onRespond: (id: string, approved: boolean) => void;
+  onCancel: (id: string) => void;
+}) {
+  if (swaps.length === 0) return null;
+  return (
+    <section className="space-y-2">
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+        <Repeat className="w-4 h-4 text-gray-400" />
+        בקשות החלפת משמרות
+      </h2>
+      <div className="space-y-2">
+        {swaps.map((s) => (
+          <div key={s.id} className="rounded-xl border border-gray-200 bg-white p-4 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-gray-900">
+                {s.direction === 'INCOMING' ? `${s.counterpartName} מציע/ה החלפה` : `הצעת החלפה ל${s.counterpartName}`}
+              </span>
+              <span
+                className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                  s.status === 'PENDING_WORKER'
+                    ? 'border-amber-200 bg-amber-50 text-amber-700'
+                    : 'border-blue-200 bg-blue-50 text-blue-700'
+                }`}
+              >
+                {s.status === 'PENDING_WORKER' ? 'ממתין לאישור העובד/ת' : 'ממתין לאישור בעל/ת העסק'}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-1.5 text-xs text-gray-700 sm:grid-cols-2">
+              <p>
+                <span className="text-gray-400">המשמרת שלך: </span>
+                {swapShiftLabel(s.myShift)}
+              </p>
+              <p>
+                <span className="text-gray-400">המשמרת שלה/ו: </span>
+                {swapShiftLabel(s.theirShift)}
+              </p>
+            </div>
+            {s.note && <p className="text-xs text-gray-500">הערה: {s.note}</p>}
+            {s.awaitingMe ? (
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => onRespond(s.id, true)}
+                  disabled={busyId === s.id}
+                  className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+                >
+                  אישור
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRespond(s.id, false)}
+                  disabled={busyId === s.id}
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  דחייה
+                </button>
+              </div>
+            ) : s.direction === 'OUTGOING' ? (
+              <button
+                type="button"
+                onClick={() => onCancel(s.id)}
+                disabled={busyId === s.id}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                ביטול ההצעה
+              </button>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
