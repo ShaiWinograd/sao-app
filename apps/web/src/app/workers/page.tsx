@@ -316,21 +316,23 @@ export default function WorkersPage() {
     setLinkMsg(null);
     setLinkOk(null);
     try {
-      const res = await api.post<{ linked: boolean; pendingFirstLogin?: boolean }>(
+      const res = await api.post<{ linked?: boolean; invited?: boolean; pendingFirstLogin?: boolean }>(
         `/workers/${editingWorkerId}/link-login`,
         { email },
       );
       setLinkOk(true);
       setLinkMsg(
         res.data.linked
-          ? 'החשבון קושר בהצלחה. המשתמשת תתחבר כעובדת.'
-          : 'אין עדיין חשבון עם אימייל זה — הקישור יתבצע אוטומטית בהתחברות הראשונה.',
+          ? 'קיים כבר חשבון עם אימייל זה — קושר כעובדת.'
+          : res.data.invited
+            ? 'נשלחה הזמנה לאימייל. לאחר ההרשמה העובדת תתחבר לאזור העובדות.'
+            : 'האימייל עודכן. אם כבר יש לעובדת חשבון, הקישור יתבצע אוטומטית בהתחברות.',
       );
       void loadData();
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       setLinkOk(false);
-      setLinkMsg(status === 409 ? 'האימייל כבר משויך לעובדת אחרת.' : 'הקישור נכשל. נסי שוב.');
+      setLinkMsg(status === 409 ? 'האימייל כבר משויך לעובדת אחרת.' : 'השליחה נכשלה. נסי שוב.');
     } finally {
       setLinkBusy(false);
     }
@@ -615,8 +617,8 @@ export default function WorkersPage() {
                 </label>
               </div>
               <div className="rounded-lg border border-gray-200 p-3 space-y-2">
-                <p className="text-xs font-semibold text-gray-700">קישור לחשבון התחברות</p>
-                <p className="text-[11px] text-gray-500">משייך את פרופיל העובדת לחשבון ההתחברות עם האימייל הזה ומגדיר אותו כעובדת.</p>
+                <p className="text-xs font-semibold text-gray-700">הזמנת העובדת להתחברות</p>
+                <p className="text-[11px] text-gray-500">שולח לעובדת אימייל עם קישור הרשמה. לאחר ההרשמה היא תתחבר לאזור העובדות. אם כבר יש לה חשבון — הוא יקושר כעובדת.</p>
                 <div className="flex items-center gap-2">
                   <input
                     value={linkEmail}
@@ -630,7 +632,7 @@ export default function WorkersPage() {
                     disabled={linkBusy}
                     className="rounded-lg border border-primary-200 text-primary-700 px-3 py-2 text-xs font-medium hover:bg-primary-50 disabled:opacity-50 whitespace-nowrap"
                   >
-                    {linkBusy ? 'מקשר…' : 'קישור'}
+                    {linkBusy ? 'שולח…' : 'שליחת הזמנה'}
                   </button>
                 </div>
                 {linkMsg && (
