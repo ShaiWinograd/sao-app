@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { refreshScheduleStatus } from '../services/caseSchedule.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { CreateJobSchema, UpdateJobSchema } from '@workforce/shared';
-import { UserRole } from '@workforce/shared';
+import { UserRole, MANAGER_SKILL } from '@workforce/shared';
 import { validateServiceAddition } from '@workforce/shared';
 import { evaluateJobPublishReadiness } from '@workforce/shared';
 import { z } from 'zod';
@@ -170,9 +170,21 @@ export async function jobsRoutes(app: FastifyInstance) {
     // Strip sensitive data for workers
     if (user.role === UserRole.WORKER) {
       const { customer, shifts, formTemplate, ...rest } = job as any;
+      // The assigned team leader may see the customer phone (acceptance §Discovery).
+      const myWorker = await prisma.worker.findUnique({ where: { userId: user.id }, select: { id: true } });
+      const leaderShiftIds = new Set(
+        ((job as any).slots ?? [])
+          .filter((s: any) => s.requiredSkill === MANAGER_SKILL && s.filledByShiftId)
+          .map((s: any) => s.filledByShiftId),
+      );
+      const isTeamLeader = !!myWorker && (shifts ?? []).some((s: any) => s.workerId === myWorker.id && leaderShiftIds.has(s.id));
       return {
         ...rest,
-        customer: { firstName: customer.firstName, lastName: customer.lastName },
+        customer: {
+          firstName: customer.firstName,
+          lastName: customer.lastName,
+          ...(isTeamLeader ? { phone: customer.phone } : {}),
+        },
         shifts: (shifts ?? []).map(({ replacementRequests, ...shift }: any) => shift),
         // Workers only see/fill questions marked for them.
         formTemplate: formTemplate

@@ -200,7 +200,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
       where: { id },
       include: {
         worker: true,
-        job: { include: { address: true, customer: true } },
+        job: { include: { address: true, customer: true, slots: true } },
         attendanceCorrections: true,
         locationChecks: true,
         replacementRequests: true,
@@ -210,9 +210,22 @@ export async function shiftsRoutes(app: FastifyInstance) {
     if (!shift) return reply.status(404).send({ error: 'Shift not found' });
 
     const user = (req as any).user;
-    // Strip financials for worker
+    // Strip financials + customer PII for workers. Only the assigned team leader
+    // may see the customer phone (acceptance §Discovery).
     if (user.role === UserRole.WORKER) {
       const { hourlyWageSnapshot, dailyPaymentSnapshot, ...safe } = shift as any;
+      const viewer = await prisma.worker.findUnique({ where: { userId: user.id }, select: { id: true } });
+      const leaderSlot = ((safe.job?.slots ?? []) as any[]).find(
+        (s) => s.requiredSkill === MANAGER_SKILL && s.filledByShiftId,
+      );
+      const isTeamLeader = !!viewer && !!leaderSlot && leaderSlot.filledByShiftId === safe.id && safe.workerId === viewer.id;
+      const { customer, slots, ...jobRest } = (safe.job ?? {}) as any;
+      safe.job = {
+        ...jobRest,
+        customer: customer
+          ? { firstName: customer.firstName, lastName: customer.lastName, ...(isTeamLeader ? { phone: customer.phone } : {}) }
+          : customer,
+      };
       return safe;
     }
     return shift;
