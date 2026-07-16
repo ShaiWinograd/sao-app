@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
 import {
-  LayoutDashboard, Search, Calendar, CalendarCheck, BarChart3, User, Bell,
+  LayoutDashboard, Search, Calendar, CalendarCheck, BarChart3, User, Bell, History,
 } from 'lucide-react';
 import RoleSwitcher from './RoleSwitcher';
 
@@ -14,6 +14,7 @@ const navItems = [
   { href: '/worker', label: 'בית', icon: LayoutDashboard, exact: true },
   { href: '/worker/open-jobs', label: 'עבודות פתוחות', icon: Search },
   { href: '/worker/calendar', label: 'היומן שלי', icon: Calendar },
+  { href: '/worker/history', label: 'היסטוריית עבודות', icon: History },
   { href: '/worker/availability', label: 'הזמינות שלי', icon: CalendarCheck },
   { href: '/worker/reports', label: 'הדוחות שלי', icon: BarChart3 },
   { href: '/worker/notifications', label: 'התראות', icon: Bell },
