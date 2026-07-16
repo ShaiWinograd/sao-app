@@ -6,7 +6,75 @@ import { CreateJobSchema, UpdateJobSchema } from '@workforce/shared';
 import { UserRole, MANAGER_SKILL } from '@workforce/shared';
 import { validateServiceAddition } from '@workforce/shared';
 import { evaluateJobPublishReadiness } from '@workforce/shared';
+import { resolveActor } from '../lib/actor.js';
 import { z } from 'zod';
+
+const JOB_TYPE_HE: Record<string, string> = {
+  PACKING: 'אריזה',
+  UNPACKING: 'פריקה',
+  HOME_ORGANIZATION: 'סידור',
+};
+
+function heDate(d: Date): string {
+  const iso = d.toISOString().slice(0, 10);
+  const [y, m, day] = iso.split('-');
+  return `${day}.${m}.${y}`;
+}
+
+function heTime(d: Date): string {
+  return d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' });
+}
+
+// Notify every active worker that a new job is available (integration spec §4).
+async function notifyJobPublished(jobId: string): Promise<void> {
+  const job = await prisma.job.findUnique({
+    where: { id: jobId },
+    include: { customer: { select: { firstName: true, lastName: true } } },
+  });
+  if (!job) return;
+  const workers = await prisma.worker.findMany({ where: { isActive: true }, select: { userId: true } });
+  if (!workers.length) return;
+  const title = 'פורסמה עבודה חדשה';
+  const body = `${JOB_TYPE_HE[job.jobType] ?? job.jobType} – ${job.customer.firstName} ${job.customer.lastName}\n${heDate(job.date)} | ${heTime(job.plannedStart)}–${heTime(job.plannedEnd)}`;
+  await prisma.notification.createMany({
+    data: workers.map((w) => ({ userId: w.userId, title, body, data: { type: 'JOB_PUBLISHED', jobId } as any })),
+  });
+}
+
+// Notify workers with a confirmed shift on a job (job changed / cancelled, spec §12).
+async function notifyAssignedWorkers(jobId: string, title: string, body: string, dataType: string): Promise<void> {
+  const shifts = await prisma.shift.findMany({
+    where: { jobId, joinRequestStatus: 'APPROVED' },
+    include: { worker: { select: { userId: true } } },
+  });
+  const userIds = Array.from(new Set(shifts.map((s) => s.worker.userId)));
+  if (!userIds.length) return;
+  await prisma.notification.createMany({
+    data: userIds.map((userId) => ({ userId, title, body, data: { type: dataType, jobId } as any })),
+  });
+}
+
+async function logJobAudit(
+  user: { id?: string } | null,
+  action: 'CREATE' | 'UPDATE' | 'DELETE',
+  jobId: string,
+  previousValue: unknown,
+  newValue: unknown,
+  reason?: string,
+): Promise<void> {
+  const actor = await resolveActor(user);
+  await prisma.auditLog.create({
+    data: {
+      performedById: actor.id,
+      action,
+      entityType: 'Job',
+      entityId: jobId,
+      previousValue: (previousValue ?? undefined) as any,
+      newValue: (newValue ?? undefined) as any,
+      reason: reason ?? null,
+    },
+  });
+}
 
 const JobsListQuerySchema = z.object({
   status: z.enum(['DRAFT', 'PUBLISHED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']).optional(),
@@ -244,6 +312,9 @@ export async function jobsRoutes(app: FastifyInstance) {
 
     await refreshScheduleStatus(prisma, job.caseId);
 
+    await logJobAudit((req as any).user, 'CREATE', job.id, null, { status: job.status }, publishNow ? 'created+published' : 'created');
+    if (publishNow) await notifyJobPublished(job.id);
+
     reply.status(201);
     return job;
   });
@@ -254,7 +325,7 @@ export async function jobsRoutes(app: FastifyInstance) {
 
     const existingJob = await prisma.job.findUnique({
       where: { id },
-      select: { id: true, caseId: true, jobType: true, date: true },
+      select: { id: true, caseId: true, jobType: true, date: true, plannedStart: true, addressId: true, status: true },
     });
     if (!existingJob) {
       return reply.status(404).send({ error: 'Job not found' });
@@ -273,7 +344,24 @@ export async function jobsRoutes(app: FastifyInstance) {
       return reply.status(validationResult.statusCode).send({ error: validationResult.error });
     }
 
-    return prisma.job.update({ where: { id }, data: body as any });
+    const updated = await prisma.job.update({ where: { id }, data: body as any });
+
+    // Notify assigned workers of the change; flag material changes (spec §12).
+    const dateChanged = body.date != null && new Date(body.date).toISOString().slice(0, 10) !== existingJob.date.toISOString().slice(0, 10);
+    const startShiftMinutes = body.plannedStart != null
+      ? Math.abs(new Date(body.plannedStart).getTime() - existingJob.plannedStart.getTime()) / 60000
+      : 0;
+    const addressChanged = body.addressId != null && body.addressId !== existingJob.addressId;
+    const isMaterial = dateChanged || startShiftMinutes > 60 || addressChanged;
+    if (existingJob.status === 'PUBLISHED' || existingJob.status === 'IN_PROGRESS') {
+      const body_ = isMaterial
+        ? `פרטי העבודה עודכנו (${heDate(nextDate)}). מומלץ לבדוק את המשמרת שלך.`
+        : `בוצע עדכון קטן בפרטי העבודה בתאריך ${heDate(nextDate)}.`;
+      await notifyAssignedWorkers(id, 'עדכון בפרטי העבודה', body_, 'JOB_CHANGED');
+    }
+    await logJobAudit((req as any).user, 'UPDATE', id, { date: existingJob.date, plannedStart: existingJob.plannedStart, addressId: existingJob.addressId }, body, isMaterial ? 'material-change' : 'update');
+
+    return updated;
   });
 
   // Publish a job (make it visible to workers)
@@ -314,14 +402,20 @@ export async function jobsRoutes(app: FastifyInstance) {
       });
     }
 
-    return prisma.job.update({ where: { id }, data: { status: 'PUBLISHED' } });
+    const published = await prisma.job.update({ where: { id }, data: { status: 'PUBLISHED' } });
+    await logJobAudit((req as any).user, 'UPDATE', id, { status: job.status }, { status: 'PUBLISHED' }, 'publish');
+    await notifyJobPublished(id);
+    return published;
   });
 
   // Cancel a job
   app.post('/:id/cancel', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
+    const before = await prisma.job.findUnique({ where: { id }, select: { status: true, date: true } });
     const cancelled = await prisma.job.update({ where: { id }, data: { status: 'CANCELLED' } });
     await refreshScheduleStatus(prisma, cancelled.caseId);
+    await notifyAssignedWorkers(id, 'עבודה בוטלה', `העבודה בתאריך ${heDate(cancelled.date)} בוטלה. אינך משובץ/ת אליה יותר.`, 'JOB_CANCELLED');
+    await logJobAudit((req as any).user, 'UPDATE', id, { status: before?.status ?? null }, { status: 'CANCELLED' }, 'cancel');
     return cancelled;
   });
 }
