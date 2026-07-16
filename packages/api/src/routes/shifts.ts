@@ -409,7 +409,12 @@ export async function shiftsRoutes(app: FastifyInstance) {
   // Approve → release the worker and reopen the position; reject → keep them.
   app.post('/replacement/:requestId/resolve', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { requestId } = req.params as { requestId: string };
-    const { approved, note, override } = req.body as { approved: boolean; note?: string; override?: boolean };
+    const { approved, note, override, approvedWorkerId } = req.body as {
+      approved: boolean;
+      note?: string;
+      override?: boolean;
+      approvedWorkerId?: string;
+    };
 
     const request = await prisma.replacementRequest.findUnique({
       where: { id: requestId },
@@ -433,7 +438,29 @@ export async function shiftsRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: 'Cannot release a shift that already started' });
     }
 
-    // Team-leader coverage: releasing the only leader needs an explicit override.
+    // When the owner picks a volunteer, load + validate them.
+    let chosenWorker:
+      | { id: string; userId: string; firstName: string; lastName: string; skills: string[]; hourlyWage: any; dailyPaymentAmount: any }
+      | null = null;
+    if (approved && approvedWorkerId) {
+      const vol = await prisma.replacementVolunteer.findUnique({
+        where: { replacementRequestId_workerId: { replacementRequestId: requestId, workerId: approvedWorkerId } },
+      });
+      if (!vol) return reply.status(400).send({ error: 'The selected worker did not volunteer for this request' });
+      const w = await prisma.worker.findUnique({
+        where: { id: approvedWorkerId },
+        select: { id: true, userId: true, firstName: true, lastName: true, skills: true, hourlyWage: true, dailyPaymentAmount: true },
+      });
+      if (!w) return reply.status(404).send({ error: 'Selected worker not found' });
+      const conflict = await prisma.shift.findFirst({
+        where: { workerId: w.id, joinRequestStatus: 'APPROVED', job: { date: request.shift.job.date }, id: { not: request.shiftId } },
+      });
+      if (conflict) return reply.status(409).send({ error: 'The selected worker already has a confirmed shift on this date' });
+      chosenWorker = w as any;
+    }
+
+    // Team-leader coverage: releasing the only leader needs an explicit override
+    // (unless the chosen replacement is leader-eligible).
     if (approved && !override) {
       const job = request.shift.job;
       const jobRequiresLeader = (job.slots ?? []).some((s) => s.requiredSkill === MANAGER_SKILL);
@@ -441,7 +468,8 @@ export async function shiftsRoutes(app: FastifyInstance) {
       const otherLeaderRemains = (job.shifts ?? []).some(
         (s) => s.id !== request.shiftId && ((s.worker?.skills as string[]) ?? []).includes(MANAGER_SKILL),
       );
-      if (jobRequiresLeader && releasedIsLeader && !otherLeaderRemains) {
+      const chosenIsLeader = chosenWorker ? (chosenWorker.skills as string[]).includes(MANAGER_SKILL) : false;
+      if (jobRequiresLeader && releasedIsLeader && !otherLeaderRemains && !chosenIsLeader) {
         return reply.status(409).send({
           error: 'team_leader_coverage',
           message: 'שחרור העובד/ת יותיר את המשמרת ללא ראש צוות. לאישור בכל זאת יש לאשר חריגה.',
@@ -451,8 +479,46 @@ export async function shiftsRoutes(app: FastifyInstance) {
 
     const dateKey = request.shift.job.date.toISOString().slice(0, 10);
 
+    if (approved && chosenWorker) {
+      // Reassign the shift to the chosen volunteer.
+      await prisma.shift.update({
+        where: { id: request.shiftId },
+        data: {
+          workerId: chosenWorker.id,
+          workerNameSnapshot: `${chosenWorker.firstName} ${chosenWorker.lastName}`.trim(),
+          hourlyWageSnapshot: chosenWorker.hourlyWage,
+          dailyPaymentSnapshot: chosenWorker.dailyPaymentAmount,
+          replacementStatus: 'NONE',
+          joinRequestStatus: 'APPROVED',
+          attendanceStatus: 'SCHEDULED',
+        },
+      });
+      await prisma.replacementRequest.update({
+        where: { id: requestId },
+        data: { status: 'APPROVED', approvedWorkerId: chosenWorker.id, resolvedAt: new Date() },
+      });
+      await prisma.replacementVolunteer.deleteMany({ where: { replacementRequestId: requestId } });
+      await prisma.notification.createMany({
+        data: [
+          {
+            userId: request.requestedByWorker.userId,
+            title: 'בקשת ההחלפה אושרה',
+            body: `נמצא/ה מחליף/ה למשמרת בתאריך ${dateKey}. שוחררת מהמשמרת.`,
+            data: { type: 'REPLACEMENT_DECISION', shiftId: request.shiftId, approved: true } as any,
+          },
+          {
+            userId: chosenWorker.userId,
+            title: 'שובצת כמחליף/ה',
+            body: `שובצת למשמרת בתאריך ${dateKey}.`,
+            data: { type: 'REPLACEMENT_ASSIGNED', shiftId: request.shiftId } as any,
+          },
+        ],
+      });
+      return { success: true, reassigned: true };
+    }
+
     if (approved) {
-      // Release the original worker; the position reopens for restaffing.
+      // No volunteer chosen: release the original worker; the position reopens.
       await prisma.replacementRequest.deleteMany({ where: { shiftId: request.shiftId } });
       await prisma.shift.delete({ where: { id: request.shiftId } });
     } else {

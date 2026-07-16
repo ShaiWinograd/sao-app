@@ -148,7 +148,20 @@ export async function jobsRoutes(app: FastifyInstance) {
         address: true,
         customer: true,
         slots: true,
-        shifts: { include: { worker: true, replacementRequests: { where: { status: 'PENDING' } } } },
+        shifts: {
+          include: {
+            worker: true,
+            replacementRequests: {
+              where: { status: 'PENDING' },
+              include: {
+                volunteers: {
+                  include: { worker: { select: { id: true, firstName: true, lastName: true, skills: true } } },
+                  orderBy: { createdAt: 'asc' },
+                },
+              },
+            },
+          },
+        },
         formTemplate: { include: { questions: { orderBy: { order: 'asc' } } } },
       },
     });

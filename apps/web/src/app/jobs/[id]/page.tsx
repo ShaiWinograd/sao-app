@@ -24,7 +24,12 @@ type ApiJobShift = {
   joinRequestStatus: string;
   formStatus: string;
   worker?: { firstName: string; lastName: string } | null;
-  replacementRequests?: { id: string; reason: string; status: string }[];
+  replacementRequests?: {
+    id: string;
+    reason: string;
+    status: string;
+    volunteers?: { worker: { id: string; firstName: string; lastName: string; skills: string[] } }[];
+  }[];
 };
 
 type ApiJobDetail = {
@@ -168,12 +173,12 @@ export default function JobDetailPage() {
   );
 
   const resolveReplacement = useCallback(
-    async (requestId: string, approved: boolean) => {
+    async (requestId: string, approved: boolean, approvedWorkerId?: string) => {
       setBusy(true);
       setError(null);
       try {
         const auth = await authHeaders(getToken);
-        await api.post(`/shifts/replacement/${requestId}/resolve`, { approved }, auth);
+        await api.post(`/shifts/replacement/${requestId}/resolve`, { approved, approvedWorkerId }, auth);
         await load();
       } catch (err) {
         const res = (err as { response?: { status?: number; data?: { error?: string; message?: string } } })?.response;
@@ -182,7 +187,7 @@ export default function JobDetailPage() {
           if (typeof window !== 'undefined' && window.confirm(msg)) {
             try {
               const auth = await authHeaders(getToken);
-              await api.post(`/shifts/replacement/${requestId}/resolve`, { approved, override: true }, auth);
+              await api.post(`/shifts/replacement/${requestId}/resolve`, { approved, approvedWorkerId, override: true }, auth);
               await load();
             } catch {
               setError('עדכון בקשת ההחלפה נכשל');
@@ -314,31 +319,53 @@ export default function JobDetailPage() {
           />
         )}
         {pendingReplacement && (
-          <div className="flex items-center gap-1.5">
-            <span
-              title={pendingReplacement.reason}
-              className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full border border-amber-200 bg-amber-50 text-amber-700"
-            >
-              <Repeat className="w-3 h-3" />
-              בקשת החלפה
-            </span>
-            <button
-              onClick={() => void resolveReplacement(pendingReplacement.id, true)}
-              disabled={busy}
-              title="שחרור העובד/ת ופתיחת העמדה מחדש"
-              className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              אישור החלפה
-            </button>
-            <button
-              onClick={() => void resolveReplacement(pendingReplacement.id, false)}
-              disabled={busy}
-              className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-            >
-              <XCircle className="w-3.5 h-3.5" />
-              דחייה
-            </button>
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="flex items-center gap-1.5">
+              <span
+                title={pendingReplacement.reason}
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full border border-amber-200 bg-amber-50 text-amber-700"
+              >
+                <Repeat className="w-3 h-3" />
+                בקשת החלפה
+              </span>
+              <button
+                onClick={() => void resolveReplacement(pendingReplacement.id, true)}
+                disabled={busy}
+                title="שחרור העובד/ת ופתיחת העמדה מחדש"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                אישור החלפה
+              </button>
+              <button
+                onClick={() => void resolveReplacement(pendingReplacement.id, false)}
+                disabled={busy}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                דחייה
+              </button>
+            </div>
+            {(pendingReplacement.volunteers ?? []).length > 0 && (
+              <div className="flex flex-col items-end gap-1 rounded-lg border border-gray-100 bg-gray-50 px-2 py-1.5">
+                <span className="text-[10px] text-gray-500">מתנדבים (לפי סדר):</span>
+                {(pendingReplacement.volunteers ?? []).map((v, i) => (
+                  <div key={v.worker.id} className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-gray-800">
+                      {i + 1}. {v.worker.firstName} {v.worker.lastName}
+                      {(v.worker.skills ?? []).includes(MANAGER_SKILL) && <span className="text-emerald-700"> · ראש צוות</span>}
+                    </span>
+                    <button
+                      onClick={() => void resolveReplacement(pendingReplacement.id, true, v.worker.id)}
+                      disabled={busy}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md border border-primary-200 text-primary-700 hover:bg-primary-50 disabled:opacity-50"
+                    >
+                      בחירה
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
