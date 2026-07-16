@@ -232,8 +232,20 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
     const totalDue = hourlyPay + dailyPay + adjustmentTotal;
     const totalPaid = payments.reduce((s: number, p: any) => s + money(p.amount), 0);
 
+    const approval = await prisma.workerReportApproval.findUnique({
+      where: { workerId_month_year: { workerId, month: m, year: y } },
+    });
+    const notes = await prisma.workerReportNote.findMany({
+      where: { workerId, month: m, year: y },
+      orderBy: { createdAt: 'desc' },
+    });
+
     return {
       workerId, month: m, year: y, shifts, adjustments, payments,
+      approval: approval
+        ? { status: approval.status, note: approval.note, resolvedAt: approval.resolvedAt }
+        : { status: 'PENDING', note: null, resolvedAt: null },
+      notes: notes.map((n) => ({ id: n.id, shiftId: n.shiftId, type: n.type, message: n.message, createdAt: n.createdAt })),
       summary: {
         shiftsCount: shifts.length,
         totalApprovedHours: round2(totalHours),
