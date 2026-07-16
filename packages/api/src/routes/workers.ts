@@ -166,6 +166,17 @@ export async function workersRoutes(app: FastifyInstance) {
     return safe;
   });
 
+  // Worker: list colleagues (names only) — used to suggest a specific replacement.
+  app.get('/colleagues', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const workers = await prisma.worker.findMany({
+      where: { isActive: true, NOT: { userId: user.id } },
+      select: { id: true, firstName: true, lastName: true },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+    });
+    return workers.map((w) => ({ id: w.id, name: `${w.firstName} ${w.lastName}`.trim() }));
+  });
+
   // Worker: update own contact details (phone, email, home area).
   app.patch('/me', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
     const user = (req as any).user;

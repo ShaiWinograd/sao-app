@@ -61,6 +61,8 @@ export default function WorkerShiftDetailPage() {
   const [note, setNote] = useState('');
   const [answers, setAnswers] = useState<Record<string, WorkerAnswerValue>>({});
   const [dropReason, setDropReason] = useState('');
+  const [colleagues, setColleagues] = useState<{ id: string; name: string }[]>([]);
+  const [suggestedWorkerId, setSuggestedWorkerId] = useState('');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -86,6 +88,19 @@ export default function WorkerShiftDetailPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Colleagues list for suggesting a specific replacement. Non-fatal if missing.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const auth = await authHeaders(getToken);
+        const res = await api.get<{ id: string; name: string }[]>('/workers/colleagues', auth);
+        setColleagues(res.data ?? []);
+      } catch {
+        setColleagues([]);
+      }
+    })();
+  }, [getToken]);
 
   const isLead = useMemo(() => {
     if (!shift || !job) return false;
@@ -215,8 +230,9 @@ export default function WorkerShiftDetailPage() {
     setActionMsg(null);
     try {
       const auth = await authHeaders(getToken);
-      await api.post(`/shifts/${shift.id}/replacement`, { reason: dropReason.trim() }, auth);
+      await api.post(`/shifts/${shift.id}/replacement`, { reason: dropReason.trim(), suggestedWorkerId: suggestedWorkerId || undefined }, auth);
       setDropReason('');
+      setSuggestedWorkerId('');
       setActionMsg('הבקשה נשלחה. תישארי משובצת עד לאישור בעל/ת העסק.');
       await load();
     } catch {
@@ -224,7 +240,7 @@ export default function WorkerShiftDetailPage() {
     } finally {
       setBusy(false);
     }
-  }, [shift, dropReason, getToken, load]);
+  }, [shift, dropReason, suggestedWorkerId, getToken, load]);
 
   const cancelReplacement = useCallback(async () => {
     if (!shift) return;
@@ -385,6 +401,9 @@ export default function WorkerShiftDetailPage() {
           within48={new Date(shift.scheduledStart).getTime() - Date.now() < 48 * 3600 * 1000}
           reason={dropReason}
           setReason={setDropReason}
+          colleagues={colleagues}
+          suggestedWorkerId={suggestedWorkerId}
+          setSuggestedWorkerId={setSuggestedWorkerId}
           busy={busy}
           onRequest={() => void requestReplacement()}
           onCancel={() => void cancelReplacement()}
@@ -432,6 +451,9 @@ function DropReplacementPanel({
   within48,
   reason,
   setReason,
+  colleagues,
+  suggestedWorkerId,
+  setSuggestedWorkerId,
   busy,
   onRequest,
   onCancel,
@@ -440,6 +462,9 @@ function DropReplacementPanel({
   within48: boolean;
   reason: string;
   setReason: (v: string) => void;
+  colleagues: { id: string; name: string }[];
+  suggestedWorkerId: string;
+  setSuggestedWorkerId: (v: string) => void;
   busy: boolean;
   onRequest: () => void;
   onCancel: () => void;
@@ -486,6 +511,23 @@ function DropReplacementPanel({
         placeholder="סיבת הבקשה"
         className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
       />
+      {colleagues.length > 0 && (
+        <label className="block text-xs text-gray-600">
+          הצעת עובד/ת ספציפי/ת (רשות)
+          <select
+            value={suggestedWorkerId}
+            onChange={(e) => setSuggestedWorkerId(e.target.value)}
+            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+          >
+            <option value="">ללא הצעה — פתוח לכלם</option>
+            {colleagues.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <button
         type="button"
         onClick={onRequest}
