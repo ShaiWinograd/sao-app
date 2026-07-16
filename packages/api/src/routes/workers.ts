@@ -326,6 +326,10 @@ export async function workersRoutes(app: FastifyInstance) {
     const previousUserId = worker.userId;
     await prisma.worker.update({ where: { id }, data: { userId: loginUser.id, email } });
     await prisma.user.update({ where: { id: loginUser.id }, data: { role: UserRole.WORKER } });
+    // Keep Clerk metadata in sync so the web app routes/guards this login as a worker.
+    await clerk.users
+      .updateUserMetadata(loginUser.id, { publicMetadata: { role: UserRole.WORKER } })
+      .catch(() => undefined);
     // Remove the now-orphaned placeholder login (best-effort).
     if (previousUserId && previousUserId !== loginUser.id) {
       await prisma.user.delete({ where: { id: previousUserId } }).catch(() => undefined);
