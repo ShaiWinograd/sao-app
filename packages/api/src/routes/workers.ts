@@ -1,8 +1,11 @@
 import { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
+import { createClerkClient } from '@clerk/clerk-sdk-node';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
 import { CreateWorkerSchema, UpdateWorkerSchema, CreateWorkerAvailabilitySchema, UpdateWorkerProfileSchema, UserRole, rankWorkerAvailability, findCandidateDates } from '@workforce/shared';
+
+const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 
 export async function workersRoutes(app: FastifyInstance) {
   app.get('/', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
@@ -236,10 +239,11 @@ export async function workersRoutes(app: FastifyInstance) {
     return prisma.worker.update({ where: { id }, data: body as any });
   });
 
-  // Admin: link a worker profile to a login account by email.
-  // If the login already exists it is set to role WORKER and the profile is
-  // relinked to it (fixes a worker who already signed in as OWNER). If no login
-  // exists yet, we just align the profile email so first-login auto-links.
+  // Admin: invite / link a worker to a login account by email.
+  // - No account yet  → send a Clerk sign-up invitation (role WORKER) so the
+  //   worker gets an email with a sign-up link, and align the profile email so
+  //   first-login auto-links.
+  // - Account exists  → set it to role WORKER and relink the profile to it.
   app.post('/:id/link-login', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const email = String((req.body as any)?.email ?? '').trim().toLowerCase();
@@ -251,7 +255,7 @@ export async function workersRoutes(app: FastifyInstance) {
     const loginUser = await prisma.user.findUnique({ where: { email } });
 
     if (!loginUser) {
-      // No login yet: align the profile email so the first sign-in links itself.
+      // Align the profile email so the first sign-in links itself.
       if (worker.email !== email) {
         const emailTaken = await prisma.worker.findUnique({ where: { email } });
         if (emailTaken && emailTaken.id !== worker.id) {
@@ -259,7 +263,24 @@ export async function workersRoutes(app: FastifyInstance) {
         }
         await prisma.worker.update({ where: { id }, data: { email } });
       }
-      return { linked: false, pendingFirstLogin: true };
+
+      // Send a Clerk invitation so the worker receives a sign-up link by email.
+      if (!process.env.CLERK_SECRET_KEY) {
+        return { invited: false, pendingFirstLogin: true };
+      }
+      try {
+        await clerk.invitations.createInvitation({
+          emailAddress: email,
+          publicMetadata: { role: UserRole.WORKER },
+          redirectUrl: process.env.NEXT_PUBLIC_APP_URL || undefined,
+          ignoreExisting: true,
+        });
+        return { invited: true };
+      } catch (err) {
+        req.log.error({ err }, 'Failed to send Clerk worker invitation');
+        // A Clerk account may already exist without a DB user yet — she can just sign in.
+        return { invited: false, pendingFirstLogin: true };
+      }
     }
 
     // Make sure this login isn't already tied to a different worker.
