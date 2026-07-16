@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
-import { MapPin, Clock, Users, Star } from 'lucide-react';
+import { MapPin, Clock, Users, Star, Repeat } from 'lucide-react';
 import { api, authHeaders } from '../../../lib/api';
 import { isUnavailableOn, type AvailabilityBlock } from '@workforce/shared';
 import {
@@ -17,13 +17,28 @@ import {
   dateKey,
 } from '../../../lib/worker';
 
+type OpenReplacement = {
+  requestId: string;
+  reason: string;
+  jobType: string;
+  date: string;
+  plannedStart: string;
+  plannedEnd: string;
+  address: string | null;
+  customerName: string;
+  hasVolunteered: boolean;
+  volunteerCount: number;
+};
+
 export default function OpenJobsPage() {
   const { getToken } = useAuth();
   const [jobs, setJobs] = useState<WorkerJob[]>([]);
   const [shifts, setShifts] = useState<WorkerShift[]>([]);
   const [availability, setAvailability] = useState<AvailabilityBlock[]>([]);
+  const [replacements, setReplacements] = useState<OpenReplacement[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyJobId, setBusyJobId] = useState<string | null>(null);
+  const [busyReq, setBusyReq] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -59,6 +74,43 @@ export default function OpenJobsPage() {
       }
     })();
   }, [getToken]);
+
+  const loadReplacements = useCallback(async () => {
+    try {
+      const auth = await authHeaders(getToken);
+      const res = await api.get<OpenReplacement[]>('/shifts/replacement-requests/open', auth);
+      setReplacements(res.data ?? []);
+    } catch {
+      setReplacements([]);
+    }
+  }, [getToken]);
+
+  useEffect(() => {
+    void loadReplacements();
+  }, [loadReplacements]);
+
+  const volunteer = useCallback(
+    async (requestId: string, has: boolean) => {
+      setBusyReq(requestId);
+      setMessage(null);
+      try {
+        const auth = await authHeaders(getToken);
+        if (has) {
+          await api.delete(`/shifts/replacement/${requestId}/volunteer`, auth);
+        } else {
+          await api.post(`/shifts/replacement/${requestId}/volunteer`, {}, auth);
+          setMessage('התנדבת למשמרת. בעל/ת העסק תבחר/י מחליף/ה.');
+        }
+        await loadReplacements();
+      } catch (err) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        setMessage(status === 409 ? 'לא ניתן להתנדב למשמרת זו בתאריך הזה.' : 'הפעולה נכשלה. נסי שוב.');
+      } finally {
+        setBusyReq(null);
+      }
+    },
+    [getToken, loadReplacements],
+  );
 
   // Dates the worker is already approved on (blocks joining another job that day).
   const approvedDates = useMemo(
@@ -116,6 +168,54 @@ export default function OpenJobsPage() {
 
       {message && (
         <div className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-xs text-primary-800">{message}</div>
+      )}
+
+      {/* Open replacement requests to volunteer for */}
+      {replacements.length > 0 && (
+        <section>
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold text-gray-900 mb-2">
+            <Repeat className="w-4 h-4 text-amber-500" />
+            משמרות שדורשות החלפה
+          </h2>
+          <div className="space-y-2">
+            {replacements.map((r) => (
+              <div key={r.requestId} className="rounded-xl border border-amber-200 bg-amber-50/40 p-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${jobTypeClasses(r.jobType)}`}>
+                    {jobTypeLabel(r.jobType)}
+                  </span>
+                  <span className="text-xs font-semibold text-gray-900">{formatDate(r.date)}</span>
+                </div>
+                <p className="mt-2 text-sm font-semibold text-gray-900">{r.customerName}</p>
+                {r.address && (
+                  <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-600">
+                    <MapPin className="w-3.5 h-3.5 shrink-0" />
+                    {r.address}
+                  </p>
+                )}
+                <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
+                  <Clock className="w-3.5 h-3.5" />
+                  {formatTime(r.plannedStart)}–{formatTime(r.plannedEnd)}
+                </p>
+                <div className="mt-3 flex items-center justify-between">
+                  <span className="text-[11px] text-gray-500">{r.volunteerCount} מתנדבים</span>
+                  <button
+                    type="button"
+                    onClick={() => void volunteer(r.requestId, r.hasVolunteered)}
+                    disabled={busyReq === r.requestId}
+                    className={`inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${
+                      r.hasVolunteered
+                        ? 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                        : 'bg-primary-600 text-white hover:bg-primary-700'
+                    }`}
+                  >
+                    {busyReq === r.requestId ? '…' : r.hasVolunteered ? 'ביטול התנדבות' : 'התנדבות למשמרת'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
       {visibleJobs.length === 0 ? (

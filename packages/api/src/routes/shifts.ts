@@ -229,14 +229,30 @@ export async function shiftsRoutes(app: FastifyInstance) {
       where: { role: { in: [UserRole.OWNER, UserRole.ADMIN] }, isActive: true },
       select: { id: true },
     });
+    const dateKey = shift.job.date.toISOString().slice(0, 10);
     if (owners.length) {
-      const dateKey = shift.job.date.toISOString().slice(0, 10);
       await prisma.notification.createMany({
         data: owners.map((o) => ({
           userId: o.id,
           title: 'בקשת החלפה למשמרת',
           body: `${worker.firstName} ${worker.lastName} ביקש/ה החלפה למשמרת בתאריך ${dateKey}.`,
           data: { type: 'REPLACEMENT_REQUEST', shiftId: id, requestId: request.id } as any,
+        })),
+      });
+    }
+
+    // Notify all other active workers so they can volunteer to take the shift.
+    const otherWorkers = await prisma.worker.findMany({
+      where: { isActive: true, id: { not: worker.id } },
+      select: { userId: true },
+    });
+    if (otherWorkers.length) {
+      await prisma.notification.createMany({
+        data: otherWorkers.map((w) => ({
+          userId: w.userId,
+          title: 'נפתחה משמרת להחלפה',
+          body: `דרוש/ה מחליף/ה למשמרת בתאריך ${dateKey}. אפשר להתנדב מתוך "עבודות פתוחות".`,
+          data: { type: 'REPLACEMENT_OPEN', shiftId: id, requestId: request.id } as any,
         })),
       });
     }
@@ -259,6 +275,132 @@ export async function shiftsRoutes(app: FastifyInstance) {
     }
     await prisma.replacementRequest.delete({ where: { id: request.id } });
     await prisma.shift.update({ where: { id }, data: { replacementStatus: 'NONE' } });
+    reply.status(204);
+    return null;
+  });
+
+  // Worker: list open replacement requests they could volunteer for.
+  app.get('/replacement-requests/open', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!worker) return reply.status(403).send({ error: 'Worker profile not found' });
+
+    const now = new Date();
+    const requests = await prisma.replacementRequest.findMany({
+      where: {
+        status: 'PENDING',
+        requestedByWorkerId: { not: worker.id },
+        shift: {
+          attendanceStatus: 'SCHEDULED',
+          job: { date: { gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()) } },
+        },
+      },
+      include: {
+        shift: {
+          include: {
+            job: {
+              include: {
+                address: { select: { fullAddress: true } },
+                customer: { select: { firstName: true, lastName: true } },
+              },
+            },
+          },
+        },
+        volunteers: { select: { workerId: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const myApproved = await prisma.shift.findMany({
+      where: { workerId: worker.id, joinRequestStatus: 'APPROVED' },
+      include: { job: { select: { date: true } } },
+    });
+    const myApprovedDates = new Set(myApproved.map((s) => s.job.date.toISOString().slice(0, 10)));
+    const blocks = (await prisma.workerAvailability.findMany({ where: { workerId: worker.id } })).map((b) => ({
+      type: b.type,
+      startDate: b.startDate ? b.startDate.toISOString() : null,
+      endDate: b.endDate ? b.endDate.toISOString() : null,
+      weekday: b.weekday,
+    }));
+
+    return requests
+      .filter((r) => {
+        const dk = r.shift.job.date.toISOString().slice(0, 10);
+        return !myApprovedDates.has(dk) && !isUnavailableOn(blocks, dk);
+      })
+      .map((r) => ({
+        requestId: r.id,
+        reason: r.reason,
+        jobType: r.shift.job.jobType,
+        date: r.shift.job.date,
+        plannedStart: r.shift.job.plannedStart,
+        plannedEnd: r.shift.job.plannedEnd,
+        address: r.shift.job.address?.fullAddress ?? null,
+        customerName: `${r.shift.job.customer.firstName} ${r.shift.job.customer.lastName}`.trim(),
+        hasVolunteered: r.volunteers.some((v) => v.workerId === worker.id),
+        volunteerCount: r.volunteers.length,
+      }));
+  });
+
+  // Worker: volunteer to take over an open replacement request.
+  app.post('/replacement/:requestId/volunteer', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const { requestId } = req.params as { requestId: string };
+    const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!worker) return reply.status(403).send({ error: 'Worker profile not found' });
+
+    const request = await prisma.replacementRequest.findUnique({
+      where: { id: requestId },
+      include: { shift: { include: { job: true } } },
+    });
+    if (!request || request.status !== 'PENDING') return reply.status(404).send({ error: 'Request not available' });
+    if (request.requestedByWorkerId === worker.id) return reply.status(400).send({ error: 'Cannot volunteer for your own request' });
+
+    const dk = request.shift.job.date.toISOString().slice(0, 10);
+    const conflict = await prisma.shift.findFirst({
+      where: { workerId: worker.id, joinRequestStatus: 'APPROVED', job: { date: request.shift.job.date } },
+    });
+    if (conflict) return reply.status(409).send({ error: 'You already have a confirmed shift on this date' });
+    const blocks = (await prisma.workerAvailability.findMany({ where: { workerId: worker.id } })).map((b) => ({
+      type: b.type,
+      startDate: b.startDate ? b.startDate.toISOString() : null,
+      endDate: b.endDate ? b.endDate.toISOString() : null,
+      weekday: b.weekday,
+    }));
+    if (isUnavailableOn(blocks, dk)) return reply.status(409).send({ error: 'You marked yourself unavailable on this date' });
+
+    await prisma.replacementVolunteer.upsert({
+      where: { replacementRequestId_workerId: { replacementRequestId: requestId, workerId: worker.id } },
+      update: {},
+      create: { replacementRequestId: requestId, workerId: worker.id },
+    });
+
+    const owners = await prisma.user.findMany({
+      where: { role: { in: [UserRole.OWNER, UserRole.ADMIN] }, isActive: true },
+      select: { id: true },
+    });
+    if (owners.length) {
+      await prisma.notification.createMany({
+        data: owners.map((o) => ({
+          userId: o.id,
+          title: 'מתנדב/ת חדש/ה להחלפה',
+          body: `${worker.firstName} ${worker.lastName} התנדב/ה למשמרת בתאריך ${dk}.`,
+          data: { type: 'REPLACEMENT_VOLUNTEER', requestId, workerId: worker.id } as any,
+        })),
+      });
+    }
+
+    reply.status(201);
+    return { volunteered: true };
+  });
+
+  // Worker: withdraw their volunteering.
+  app.delete('/replacement/:requestId/volunteer', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const { requestId } = req.params as { requestId: string };
+    const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!worker) return reply.status(403).send({ error: 'Worker profile not found' });
+    await prisma.replacementVolunteer.deleteMany({ where: { replacementRequestId: requestId, workerId: worker.id } });
     reply.status(204);
     return null;
   });
