@@ -16,6 +16,38 @@
   --color-text-muted: #96938e;
   --color-border: #e7e3dc;
   --color-border-strong: #d8d3ca;
+
+  /* Tailwind `primary` scale channels (default: muted green, §2.1) */
+  --tw-primary-50: 244 247 245;
+  --tw-primary-100: 234 240 236;
+  --tw-primary-200: 213 225 218;
+  --tw-primary-300: 179 199 188;
+  --tw-primary-400: 140 170 153;
+  --tw-primary-500: 113 145 128;
+  --tw-primary-600: 95 125 110;
+  --tw-primary-700: 78 105 92;
+  --tw-primary-800: 61 84 73;
+  --tw-primary-900: 47 64 56;
+}
+
+/* Worker area: muted purple theme (worker_experience_ux_spec §3.2) */
+.worker-theme {
+  --tw-primary-50: 247 243 250;
+  --tw-primary-100: 238 232 244;
+  --tw-primary-200: 222 210 234;
+  --tw-primary-300: 196 176 218;
+  --tw-primary-400: 168 143 197;
+  --tw-primary-500: 138 114 168;
+  --tw-primary-600: 115 91 145;
+  --tw-primary-700: 94 74 120;
+  --tw-primary-800: 74 58 96;
+  --tw-primary-900: 56 44 73;
+  /* Keep raw-CSS controls (checkboxes/radios) on-theme too */
+  --color-primary-700: #5e4a78;
+  --color-primary-600: #735b91;
+  --color-primary-500: #8a72a8;
+  --color-primary-100: #eee8f4;
+  --color-primary-050: #f7f3fa;
 }
 
 /* Hebrew RTL base */

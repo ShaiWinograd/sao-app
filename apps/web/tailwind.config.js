@@ -11,18 +11,20 @@ module.exports = {
         sans: ['Assistant', 'Heebo', 'Noto Sans Hebrew', 'Arial', 'sans-serif'],
       },
       colors: {
-        // Muted-green brand from UI_VISUAL_DESIGN_SPEC.md §2.1
+        // Brand scale is driven by CSS variables so a section can retint it.
+        // Default channels (green) live in globals.css :root; the worker area
+        // overrides them to purple via the `.worker-theme` scope.
         primary: {
-          50: '#f4f7f5',
-          100: '#eaf0ec',
-          200: '#d5e1da',
-          300: '#b3c7bc',
-          400: '#8caa99',
-          500: '#719180',
-          600: '#5f7d6e',
-          700: '#4e695c',
-          800: '#3d5449',
-          900: '#2f4038',
+          50: 'rgb(var(--tw-primary-50) / <alpha-value>)',
+          100: 'rgb(var(--tw-primary-100) / <alpha-value>)',
+          200: 'rgb(var(--tw-primary-200) / <alpha-value>)',
+          300: 'rgb(var(--tw-primary-300) / <alpha-value>)',
+          400: 'rgb(var(--tw-primary-400) / <alpha-value>)',
+          500: 'rgb(var(--tw-primary-500) / <alpha-value>)',
+          600: 'rgb(var(--tw-primary-600) / <alpha-value>)',
+          700: 'rgb(var(--tw-primary-700) / <alpha-value>)',
+          800: 'rgb(var(--tw-primary-800) / <alpha-value>)',
+          900: 'rgb(var(--tw-primary-900) / <alpha-value>)',
         },
         // Supporting terracotta accent (use sparingly) §2.3
         accent: {
