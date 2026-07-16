@@ -162,7 +162,7 @@ function ShiftCard({ shift, highlight, pending }: { shift: WorkerShift; highligh
   const { job } = shift;
   return (
     <Link
-      href={`/worker/calendar`}
+      href={`/worker/shifts/${shift.id}`}
       className={`block rounded-xl border p-3 ${highlight ? 'border-primary-300 bg-primary-50/40' : 'border-gray-200 bg-white'} hover:border-primary-300`}
     >
       <div className="flex items-center justify-between gap-2">

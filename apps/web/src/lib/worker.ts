@@ -83,3 +83,29 @@ export function openPositions(job: WorkerJob): number {
   ).length;
   return Math.max((job.requiredWorkerCount ?? 0) - filled, 0);
 }
+
+export function attendanceBadge(status: string): { label: string; className: string } {
+  switch (status) {
+    case 'CLOCKED_IN':
+      return { label: 'בעבודה', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' };
+    case 'CLOCKED_OUT':
+    case 'CORRECTED':
+    case 'AUTO_CLOCKED_OUT':
+      return { label: 'הושלם', className: 'border-gray-200 bg-gray-100 text-gray-600' };
+    case 'NO_SHOW':
+      return { label: 'לא הגיע/ה', className: 'border-rose-200 bg-rose-50 text-rose-700' };
+    default:
+      return { label: 'מתוזמן', className: 'border-sky-200 bg-sky-50 text-sky-700' };
+  }
+}
+
+// A "form missing" badge is only meaningful once the shift has been clocked out.
+export function missingFormBadge(shift: { attendanceStatus: string; formStatus: string }): boolean {
+  const clockedOut = ['CLOCKED_OUT', 'CORRECTED', 'AUTO_CLOCKED_OUT'].includes(shift.attendanceStatus);
+  return clockedOut && shift.formStatus === 'NOT_SUBMITTED';
+}
+
+// A shift is "active" for the worker (shows on the calendar) unless rejected/cancelled.
+export function isActiveShift(status: string): boolean {
+  return status === 'APPROVED' || status === 'PENDING' || status === 'WAITLISTED';
+}
