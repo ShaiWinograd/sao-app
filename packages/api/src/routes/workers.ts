@@ -272,7 +272,9 @@ export async function workersRoutes(app: FastifyInstance) {
         await clerk.invitations.createInvitation({
           emailAddress: email,
           publicMetadata: { role: UserRole.WORKER },
-          redirectUrl: process.env.NEXT_PUBLIC_APP_URL || undefined,
+          redirectUrl: process.env.NEXT_PUBLIC_APP_URL
+            ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')}/sign-up`
+            : undefined,
           ignoreExisting: true,
         });
         return { invited: true };
