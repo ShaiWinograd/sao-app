@@ -125,6 +125,20 @@ export async function shiftsRoutes(app: FastifyInstance) {
     });
     if (overlap) return reply.status(409).send({ error: 'Worker already has a confirmed shift on this date' });
 
+    // Owner cannot assign a worker who marked themselves unavailable on this date.
+    const jobDateKey = job.date.toISOString().slice(0, 10);
+    const availabilityBlocks = await prisma.workerAvailability.findMany({ where: { workerId: worker.id } });
+    const unavailable = isUnavailableOn(
+      availabilityBlocks.map((b) => ({
+        type: b.type,
+        startDate: b.startDate ? b.startDate.toISOString() : null,
+        endDate: b.endDate ? b.endDate.toISOString() : null,
+        weekday: b.weekday,
+      })),
+      jobDateKey,
+    );
+    if (unavailable) return reply.status(409).send({ error: 'Worker is unavailable on this date' });
+
     // Prevent assigning the same slot twice
     if (slotId) {
       const slotTaken = await prisma.shift.findFirst({

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createClerkClient } from '@clerk/clerk-sdk-node';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
-import { CreateWorkerSchema, UpdateWorkerSchema, CreateWorkerAvailabilitySchema, UpdateWorkerProfileSchema, UserRole, rankWorkerAvailability, findCandidateDates } from '@workforce/shared';
+import { CreateWorkerSchema, UpdateWorkerSchema, CreateWorkerAvailabilitySchema, UpdateWorkerProfileSchema, UserRole, rankWorkerAvailability, findCandidateDates, isUnavailableOn } from '@workforce/shared';
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 
@@ -42,20 +42,32 @@ export async function workersRoutes(app: FastifyInstance) {
         isActive: true,
         homeArea: true,
         shifts: { select: { job: { select: { date: true } } } },
+        availability: { select: { type: true, startDate: true, endDate: true, weekday: true } },
       },
     });
 
-    const candidates = workers.map((worker) => ({
-      id: worker.id,
-      name: `${worker.firstName} ${worker.lastName}`.trim(),
-      skills: worker.skills as string[],
-      isActive: worker.isActive,
-      homeArea: worker.homeArea,
-      bookedDates: worker.shifts
+    const candidates = workers.map((worker) => {
+      const bookedDates = worker.shifts
         .map((shift) => shift.job?.date)
         .filter((date): date is Date => Boolean(date))
-        .map((date) => date.toISOString().slice(0, 10)),
-    }));
+        .map((date) => date.toISOString().slice(0, 10));
+      // A worker who blocked this date is treated as unavailable for assignment.
+      const blocks = worker.availability.map((b) => ({
+        type: b.type,
+        startDate: b.startDate ? b.startDate.toISOString() : null,
+        endDate: b.endDate ? b.endDate.toISOString() : null,
+        weekday: b.weekday,
+      }));
+      if (isUnavailableOn(blocks, query.date!)) bookedDates.push(query.date!);
+      return {
+        id: worker.id,
+        name: `${worker.firstName} ${worker.lastName}`.trim(),
+        skills: worker.skills as string[],
+        isActive: worker.isActive,
+        homeArea: worker.homeArea,
+        bookedDates,
+      };
+    });
 
     return rankWorkerAvailability(
       {
@@ -182,6 +194,26 @@ export async function workersRoutes(app: FastifyInstance) {
     const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
     if (!worker) return reply.status(404).send({ error: 'Worker profile not found' });
     const body = CreateWorkerAvailabilitySchema.parse(req.body);
+
+    // Assigned dates cannot be blocked (acceptance criteria §Availability).
+    if (body.type === 'DATE' || body.type === 'RANGE') {
+      const startKey = body.startDate!.slice(0, 10);
+      const endKey = (body.type === 'RANGE' ? body.endDate! : body.startDate!).slice(0, 10);
+      const start = new Date(`${startKey}T00:00:00.000Z`);
+      const endExclusive = new Date(`${endKey}T00:00:00.000Z`);
+      endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+      const conflict = await prisma.shift.findFirst({
+        where: {
+          workerId: worker.id,
+          joinRequestStatus: 'APPROVED',
+          job: { date: { gte: start, lt: endExclusive } },
+        },
+      });
+      if (conflict) {
+        return reply.status(409).send({ error: 'You are already assigned to a shift on one of these dates' });
+      }
+    }
+
     const created = await prisma.workerAvailability.create({
       data: {
         workerId: worker.id,
