@@ -43,9 +43,16 @@ export async function authenticate(req: FastifyRequest, reply: FastifyReply) {
         const matchedWorker = email
           ? await prisma.worker.findUnique({ where: { email }, select: { id: true, userId: true } })
           : null;
-        const role = matchedWorker
-          ? UserRole.WORKER
-          : ((clerkUser.publicMetadata?.role as UserRole) ?? UserRole.OWNER);
+        const metaRole = clerkUser.publicMetadata?.role as UserRole | undefined;
+        // An explicit owner/admin invitation always wins over a worker email
+        // match, so a business owner is never demoted to a worker just because a
+        // worker profile happens to exist for their email.
+        const role =
+          metaRole === UserRole.OWNER || metaRole === UserRole.ADMIN
+            ? metaRole
+            : matchedWorker
+              ? UserRole.WORKER
+              : metaRole ?? UserRole.OWNER;
 
         // A worker added via the admin page has a placeholder user holding this
         // email (User.email is unique). Free that email so the real Clerk account
@@ -72,7 +79,7 @@ export async function authenticate(req: FastifyRequest, reply: FastifyReply) {
             isActive: true,
           },
         });
-        if (matchedWorker && matchedWorker.userId !== dbUser.id) {
+        if (role === UserRole.WORKER && matchedWorker && matchedWorker.userId !== dbUser.id) {
           // Point the worker profile at the real Clerk user, then drop the now
           // orphaned placeholder user (best-effort; it has no other references).
           const orphanUserId = matchedWorker.userId;

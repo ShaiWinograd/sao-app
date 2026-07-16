@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Lock, Save, ShieldCheck, SlidersHorizontal, UserCog } from 'lucide-react';
+import { Lock, Save, ShieldCheck, SlidersHorizontal, UserCog, UserPlus } from 'lucide-react';
 import { api } from '../../lib/api';
 
 type AppRole = 'owner' | 'operations_admin' | 'finance_admin';
@@ -177,6 +177,8 @@ export default function SettingsPage() {
         </select>
       </section>
 
+      <TeamInviteCard />
+
       <section className="grid gap-4 lg:grid-cols-2">
         <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm space-y-3">
           <div className="flex items-center gap-2">
@@ -282,5 +284,93 @@ export default function SettingsPage() {
 
       {message ? <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">{message}</div> : null}
     </div>
+  );
+}
+
+function TeamInviteCard() {
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<'ADMIN' | 'OWNER'>('ADMIN');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [ok, setOk] = useState<boolean | null>(null);
+
+  const invite = async () => {
+    const value = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      setOk(false);
+      setMsg('כתובת אימייל לא תקינה.');
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    setOk(null);
+    try {
+      await api.post('/admin/invite', { email: value, role });
+      setOk(true);
+      setMsg('נשלחה הזמנה לאימייל. לאחר ההרשמה החשבון יקבל את ההרשאה שנבחרה.');
+      setEmail('');
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      setOk(false);
+      setMsg(
+        status === 403
+          ? 'רק בעל/ת העסק יכול/ה להזמין בעלים נוסף/ת.'
+          : 'שליחת ההזמנה נכשלה (ייתכן שכבר קיים חשבון עם אימייל זה).',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center gap-2 mb-2">
+        <UserPlus className="w-4 h-4 text-gray-500" />
+        <h2 className="text-lg font-semibold">הזמנת חברי צוות (ניהול)</h2>
+      </div>
+      <p className="text-xs text-gray-500 mb-3">
+        שליחת קישור הרשמה למנהל/ת או בעל/ת עסק. עובדים מתווספים בעמוד "עובדים" עם קישור משלהם.
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex-1 min-w-[200px] text-xs text-gray-600">
+          אימייל
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="name@example.com"
+            className="mt-1 block w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-right"
+          />
+        </label>
+        <label className="text-xs text-gray-600">
+          תפקיד
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value as 'ADMIN' | 'OWNER')}
+            className="mt-1 block rounded-xl border border-gray-300 px-3 py-2 text-sm bg-white"
+          >
+            <option value="ADMIN">מנהל/ת</option>
+            <option value="OWNER">בעל/ת עסק</option>
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={() => void invite()}
+          disabled={busy}
+          className="rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+        >
+          {busy ? 'שולח…' : 'שליחת הזמנה'}
+        </button>
+      </div>
+      {msg && (
+        <p
+          className={`mt-2 rounded-lg px-3 py-2 text-xs ${
+            ok ? 'border border-emerald-200 bg-emerald-50 text-emerald-700' : 'border border-rose-200 bg-rose-50 text-rose-700'
+          }`}
+        >
+          {msg}
+        </p>
+      )}
+    </section>
   );
 }

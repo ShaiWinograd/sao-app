@@ -307,6 +307,12 @@ export const WorkerReplacementRequestSchema = z.object({
   reason: z.string().min(1).max(300),
 });
 
+// Owner/admin invites a team member (non-worker) with an explicit role.
+export const TeamInviteSchema = z.object({
+  email: z.string().email(),
+  role: z.enum(['OWNER', 'ADMIN']),
+});
+
 // Worker signs off on (or disputes) their published monthly report.
 export const WorkerReportApprovalSchema = z
   .object({
