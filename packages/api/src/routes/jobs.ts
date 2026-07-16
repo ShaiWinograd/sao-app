@@ -156,11 +156,15 @@ export async function jobsRoutes(app: FastifyInstance) {
 
     // Strip sensitive data for workers
     if (user.role === UserRole.WORKER) {
-      const { customer, shifts, ...rest } = job as any;
+      const { customer, shifts, formTemplate, ...rest } = job as any;
       return {
         ...rest,
         customer: { firstName: customer.firstName, lastName: customer.lastName },
         shifts: (shifts ?? []).map(({ replacementRequests, ...shift }: any) => shift),
+        // Workers only see/fill questions marked for them.
+        formTemplate: formTemplate
+          ? { ...formTemplate, questions: (formTemplate.questions ?? []).filter((q: any) => q.visibility === 'WORKER') }
+          : null,
       };
     }
     return job;

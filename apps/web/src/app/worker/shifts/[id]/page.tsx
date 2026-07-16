@@ -9,6 +9,8 @@ import { requiresManagerNoteForEndShift } from '@workforce/shared';
 import { api, authHeaders } from '../../../../lib/api';
 import {
   type WorkerJob,
+  type WorkerFormQuestion,
+  type WorkerAnswerValue,
   jobTypeLabel,
   jobTypeClasses,
   formatTime,
@@ -49,6 +51,7 @@ export default function WorkerShiftDetailPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [completion, setCompletion] = useState<Completion>('COMPLETED');
   const [note, setNote] = useState('');
+  const [answers, setAnswers] = useState<Record<string, WorkerAnswerValue>>({});
   const [dropReason, setDropReason] = useState('');
 
   const load = useCallback(async () => {
@@ -115,9 +118,18 @@ export default function WorkerShiftDetailPage() {
     if (ok) {
       setCompletion('COMPLETED');
       setNote('');
+      setAnswers({});
       setFormOpen(true);
     }
   }, [runAttendance]);
+
+  const formQuestions = useMemo(
+    () =>
+      (job?.formTemplate?.questions ?? [])
+        .filter((q) => q.visibility === 'WORKER')
+        .sort((a, b) => a.order - b.order),
+    [job],
+  );
 
   const submitForm = useCallback(async () => {
     if (!shift) return;
@@ -125,16 +137,33 @@ export default function WorkerShiftDetailPage() {
       setActionMsg('יש להוסיף הערה כשהמשמרת לא הושלמה במלואה.');
       return;
     }
+    for (const q of formQuestions) {
+      if (q.type === 'PHOTO_UPLOAD' || !q.isRequired) continue;
+      const v = answers[q.id];
+      const empty = v === undefined || v === '' || (Array.isArray(v) && v.length === 0);
+      if (empty) {
+        setActionMsg(`יש למלא: ${q.questionText}`);
+        return;
+      }
+    }
     setBusy(true);
     setActionMsg(null);
     try {
       const auth = await authHeaders(getToken);
+      const answerArr = formQuestions
+        .filter((q) => q.type !== 'PHOTO_UPLOAD')
+        .filter((q) => {
+          const v = answers[q.id];
+          return v !== undefined && v !== '' && !(Array.isArray(v) && v.length === 0);
+        })
+        .map((q) => ({ questionId: q.id, value: answers[q.id]! }));
       await api.post(
         '/forms/submit',
-        { shiftId: shift.id, completionStatus: completion, answers: [], managerNote: note.trim() || undefined },
+        { shiftId: shift.id, completionStatus: completion, answers: answerArr, managerNote: note.trim() || undefined },
         auth,
       );
       setFormOpen(false);
+      setAnswers({});
       setActionMsg('טופס הסיום נשמר. תודה!');
       await load();
     } catch {
@@ -142,7 +171,7 @@ export default function WorkerShiftDetailPage() {
     } finally {
       setBusy(false);
     }
-  }, [shift, completion, note, getToken, load]);
+  }, [shift, completion, note, formQuestions, answers, getToken, load]);
 
   const pendingReplacement = useMemo(
     () => (shift?.replacementRequests ?? []).find((r) => r.status === 'PENDING') ?? null,
@@ -306,6 +335,7 @@ export default function WorkerShiftDetailPage() {
           onOpenForm={() => {
             setCompletion('COMPLETED');
             setNote('');
+            setAnswers({});
             setFormOpen(true);
           }}
         />
@@ -333,6 +363,9 @@ export default function WorkerShiftDetailPage() {
           setCompletion={setCompletion}
           note={note}
           setNote={setNote}
+          questions={formQuestions}
+          answers={answers}
+          onAnswer={(id, value) => setAnswers((prev) => ({ ...prev, [id]: value }))}
           busy={busy}
           onSubmit={() => void submitForm()}
           onClose={() => setFormOpen(false)}
@@ -510,6 +543,9 @@ function EndShiftForm({
   setCompletion,
   note,
   setNote,
+  questions,
+  answers,
+  onAnswer,
   busy,
   onSubmit,
   onClose,
@@ -518,6 +554,9 @@ function EndShiftForm({
   setCompletion: (c: Completion) => void;
   note: string;
   setNote: (n: string) => void;
+  questions: WorkerFormQuestion[];
+  answers: Record<string, WorkerAnswerValue>;
+  onAnswer: (id: string, value: WorkerAnswerValue) => void;
   busy: boolean;
   onSubmit: () => void;
   onClose: () => void;
@@ -530,7 +569,7 @@ function EndShiftForm({
   const noteRequired = requiresManagerNoteForEndShift(completion);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onMouseDown={onClose}>
-      <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl" dir="rtl" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-xl bg-white p-5 shadow-xl" dir="rtl" onMouseDown={(e) => e.stopPropagation()}>
         <h3 className="text-base font-bold text-gray-900">טופס סיום משמרת</h3>
         <p className="mt-1 text-xs text-gray-500">איך הסתיימה המשמרת?</p>
         <div className="mt-3 space-y-1.5">
@@ -541,7 +580,16 @@ function EndShiftForm({
             </label>
           ))}
         </div>
-        <label className="mt-3 block text-sm">
+
+        {questions.length > 0 && (
+          <div className="mt-4 space-y-3 border-t border-gray-100 pt-3">
+            {questions.map((q) => (
+              <QuestionField key={q.id} q={q} value={answers[q.id]} onChange={(v) => onAnswer(q.id, v)} />
+            ))}
+          </div>
+        )}
+
+        <label className="mt-4 block text-sm">
           <span className="text-gray-600">הערה {noteRequired ? '(חובה)' : '(רשות)'}</span>
           <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
         </label>
@@ -560,5 +608,133 @@ function EndShiftForm({
         </div>
       </div>
     </div>
+  );
+}
+
+function QuestionField({
+  q,
+  value,
+  onChange,
+}: {
+  q: WorkerFormQuestion;
+  value: WorkerAnswerValue | undefined;
+  onChange: (value: WorkerAnswerValue) => void;
+}) {
+  const label = (
+    <span className="text-sm text-gray-800">
+      {q.questionText}
+      {q.isRequired && <span className="text-rose-500"> *</span>}
+    </span>
+  );
+  const inputClass = 'mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm';
+
+  if (q.type === 'YES_NO') {
+    return (
+      <div>
+        {label}
+        <div className="mt-1 flex gap-4">
+          {[['yes', 'כן', true], ['no', 'לא', false]].map(([key, text, val]) => (
+            <label key={key as string} className="flex items-center gap-1.5 text-sm text-gray-800">
+              <input type="radio" name={q.id} checked={value === val} onChange={() => onChange(val as boolean)} />
+              {text as string}
+            </label>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (q.type === 'MULTIPLE_CHOICE') {
+    return (
+      <div>
+        {label}
+        <div className="mt-1 space-y-1">
+          {q.options.map((opt) => (
+            <label key={opt} className="flex items-center gap-1.5 text-sm text-gray-800">
+              <input type="radio" name={q.id} checked={value === opt} onChange={() => onChange(opt)} />
+              {opt}
+            </label>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (q.type === 'CHECKBOX') {
+    const arr = Array.isArray(value) ? value : [];
+    return (
+      <div>
+        {label}
+        <div className="mt-1 space-y-1">
+          {q.options.map((opt) => (
+            <label key={opt} className="flex items-center gap-1.5 text-sm text-gray-800">
+              <input
+                type="checkbox"
+                checked={arr.includes(opt)}
+                onChange={(e) => onChange(e.target.checked ? [...arr, opt] : arr.filter((o) => o !== opt))}
+              />
+              {opt}
+            </label>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (q.type === 'NUMBER') {
+    return (
+      <label className="block">
+        {label}
+        <input
+          type="number"
+          value={value === undefined ? '' : String(value)}
+          onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
+          className={inputClass}
+        />
+      </label>
+    );
+  }
+
+  if (q.type === 'LONG_TEXT') {
+    return (
+      <label className="block">
+        {label}
+        <textarea value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} rows={2} className={inputClass} />
+      </label>
+    );
+  }
+
+  if (q.type === 'DATE') {
+    return (
+      <label className="block">
+        {label}
+        <input type="date" value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} className={inputClass} />
+      </label>
+    );
+  }
+
+  if (q.type === 'PHOTO_UPLOAD') {
+    return (
+      <div>
+        {label}
+        <p className="mt-1 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-xs text-gray-500">
+          צירוף תמונות זמין באפליקציה הניידת.
+        </p>
+      </div>
+    );
+  }
+
+  // SHORT_TEXT and SIGNATURE
+  return (
+    <label className="block">
+      {label}
+      <input
+        type="text"
+        value={(value as string) ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={q.type === 'SIGNATURE' ? 'שם מלא לאישור' : undefined}
+        className={inputClass}
+      />
+    </label>
   );
 }
