@@ -47,6 +47,8 @@ type WorkerPayrollSummary = {
   shifts: WorkerShift[];
   adjustments: WorkerAdjustment[];
   payments: WorkerPayment[];
+  approval?: { status: string; note: string | null; resolvedAt: string | null };
+  notes?: Array<{ id: string; shiftId: string | null; type: string; message: string; createdAt: string }>;
   summary: {
     shiftsCount: number;
     totalApprovedHours: string;
@@ -465,6 +467,46 @@ export default function PayrollPage() {
                 סיכום: {selectedSummary.summary.shiftsCount} משמרות • {selectedSummary.summary.totalApprovedHours} שעות מאושרות • לתשלום{' '}
                 <span className="font-semibold text-gray-900">{canSeeFinancials ? formatCurrency(toNumber(selectedSummary.summary.totalDue)) : 'מוסתר'}</span>
               </div>
+
+              {/* Worker report feedback (approval + comments/missing-shift reports) */}
+              {(() => {
+                const status = selectedSummary.approval?.status ?? 'PENDING';
+                const notes = selectedSummary.notes ?? [];
+                const statusMeta: Record<string, { label: string; cls: string }> = {
+                  APPROVED: { label: 'העובדת אישרה את הדוח', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+                  CHANGES_REQUESTED: { label: 'העובדת ביקשה תיקון', cls: 'border-amber-200 bg-amber-50 text-amber-700' },
+                  PENDING: { label: 'ממתין לאישור העובדת', cls: 'border-gray-200 bg-gray-50 text-gray-500' },
+                };
+                const meta = statusMeta[status] ?? statusMeta.PENDING;
+                if (status === 'PENDING' && notes.length === 0) return null;
+                return (
+                  <div className="rounded-lg border border-gray-200 p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-gray-700">משוב העובדת על הדוח</span>
+                      <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${meta.cls}`}>{meta.label}</span>
+                    </div>
+                    {status === 'CHANGES_REQUESTED' && selectedSummary.approval?.note && (
+                      <p className="rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">{selectedSummary.approval.note}</p>
+                    )}
+                    {notes.length > 0 && (
+                      <div className="space-y-1.5">
+                        {notes.map((n) => {
+                          const s = selectedSummary.shifts.find((x) => x.id === n.shiftId);
+                          const linked = s ? ` · ${new Date(s.date).toLocaleDateString('he-IL')} · ${s.caseName}` : '';
+                          return (
+                            <div key={n.id} className="rounded-md border border-gray-100 px-2.5 py-1.5">
+                              <p className="text-[11px] font-medium text-gray-500">
+                                {n.type === 'MISSING_SHIFT' ? 'דיווח על משמרת חסרה' : `הערה${linked}`}
+                              </p>
+                              <p className="text-xs text-gray-800">{n.message}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
