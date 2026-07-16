@@ -46,6 +46,20 @@ export async function authenticate(req: FastifyRequest, reply: FastifyReply) {
         const role = matchedWorker
           ? UserRole.WORKER
           : ((clerkUser.publicMetadata?.role as UserRole) ?? UserRole.OWNER);
+
+        // A worker added via the admin page has a placeholder user holding this
+        // email (User.email is unique). Free that email so the real Clerk account
+        // can claim it, otherwise the create below fails with a unique violation.
+        if (email) {
+          const placeholder = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+          if (placeholder && placeholder.id !== payload.sub) {
+            await prisma.user.update({
+              where: { id: placeholder.id },
+              data: { email: `migrated+${placeholder.id}@spaceorder.local`, isActive: false },
+            });
+          }
+        }
+
         dbUser = await prisma.user.upsert({
           where: { id: payload.sub },
           update: { email, firstName: clerkUser.firstName ?? '', lastName: clerkUser.lastName ?? '' },
@@ -59,7 +73,13 @@ export async function authenticate(req: FastifyRequest, reply: FastifyReply) {
           },
         });
         if (matchedWorker && matchedWorker.userId !== dbUser.id) {
+          // Point the worker profile at the real Clerk user, then drop the now
+          // orphaned placeholder user (best-effort; it has no other references).
+          const orphanUserId = matchedWorker.userId;
           await prisma.worker.update({ where: { id: matchedWorker.id }, data: { userId: dbUser.id } });
+          if (orphanUserId) {
+            await prisma.user.delete({ where: { id: orphanUserId } }).catch(() => {});
+          }
         }
         req.log.info({ userId: payload.sub, role }, 'Auto-provisioned new user from Clerk');
       } catch (provisionErr) {
