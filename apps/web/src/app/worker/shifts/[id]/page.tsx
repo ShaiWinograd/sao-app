@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
-import { ArrowRight, MapPin, Clock, CalendarDays, Users, Phone, Navigation, Star, LogIn, LogOut, CheckCircle2, Loader2 } from 'lucide-react';
+import { ArrowRight, MapPin, Clock, CalendarDays, Users, Phone, Navigation, Star, LogIn, LogOut, CheckCircle2, Loader2, Repeat, X } from 'lucide-react';
 import { requiresManagerNoteForEndShift } from '@workforce/shared';
 import { api, authHeaders } from '../../../../lib/api';
 import {
@@ -28,6 +28,8 @@ type ShiftDetail = {
   formStatus: string;
   actualStart?: string | null;
   actualEnd?: string | null;
+  replacementStatus?: string;
+  replacementRequests?: { id: string; status: string; reason: string; requestedByWorkerId: string }[];
   job: WorkerJob & {
     jobNotes?: string | null;
     customer?: { firstName?: string; lastName?: string; phone?: string | null } | null;
@@ -47,6 +49,7 @@ export default function WorkerShiftDetailPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [completion, setCompletion] = useState<Completion>('COMPLETED');
   const [note, setNote] = useState('');
+  const [dropReason, setDropReason] = useState('');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -140,6 +143,48 @@ export default function WorkerShiftDetailPage() {
       setBusy(false);
     }
   }, [shift, completion, note, getToken, load]);
+
+  const pendingReplacement = useMemo(
+    () => (shift?.replacementRequests ?? []).find((r) => r.status === 'PENDING') ?? null,
+    [shift],
+  );
+
+  const requestReplacement = useCallback(async () => {
+    if (!shift) return;
+    if (!dropReason.trim()) {
+      setActionMsg('יש להוסיף סיבה לבקשה.');
+      return;
+    }
+    setBusy(true);
+    setActionMsg(null);
+    try {
+      const auth = await authHeaders(getToken);
+      await api.post(`/shifts/${shift.id}/replacement`, { reason: dropReason.trim() }, auth);
+      setDropReason('');
+      setActionMsg('הבקשה נשלחה. תישארי משובצת עד לאישור בעל/ת העסק.');
+      await load();
+    } catch {
+      setActionMsg('שליחת הבקשה נכשלה. נסי שוב.');
+    } finally {
+      setBusy(false);
+    }
+  }, [shift, dropReason, getToken, load]);
+
+  const cancelReplacement = useCallback(async () => {
+    if (!shift) return;
+    setBusy(true);
+    setActionMsg(null);
+    try {
+      const auth = await authHeaders(getToken);
+      await api.delete(`/shifts/${shift.id}/replacement`, auth);
+      setActionMsg('הבקשה בוטלה.');
+      await load();
+    } catch {
+      setActionMsg('ביטול הבקשה נכשל.');
+    } finally {
+      setBusy(false);
+    }
+  }, [shift, getToken, load]);
 
   if (loading) return <p className="text-sm text-gray-400">טוען…</p>;
 
@@ -268,7 +313,19 @@ export default function WorkerShiftDetailPage() {
       {actionMsg && (
         <div className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-xs text-primary-800">{actionMsg}</div>
       )}
-      <p className="text-center text-[11px] text-gray-400">בקשות ירידה/החלפה יתווספו בשלב הבא.</p>
+
+      {/* Drop / replacement request (only before the shift starts) */}
+      {shift.joinRequestStatus === 'APPROVED' && shift.attendanceStatus === 'SCHEDULED' && (
+        <DropReplacementPanel
+          pending={pendingReplacement}
+          within48={new Date(shift.scheduledStart).getTime() - Date.now() < 48 * 3600 * 1000}
+          reason={dropReason}
+          setReason={setDropReason}
+          busy={busy}
+          onRequest={() => void requestReplacement()}
+          onCancel={() => void cancelReplacement()}
+        />
+      )}
 
       {formOpen && (
         <EndShiftForm
@@ -300,6 +357,77 @@ function BackLink() {
       <ArrowRight className="w-4 h-4" />
       חזרה ליומן
     </Link>
+  );
+}
+
+function DropReplacementPanel({
+  pending,
+  within48,
+  reason,
+  setReason,
+  busy,
+  onRequest,
+  onCancel,
+}: {
+  pending: { id: string; status: string; reason: string } | null;
+  within48: boolean;
+  reason: string;
+  setReason: (v: string) => void;
+  busy: boolean;
+  onRequest: () => void;
+  onCancel: () => void;
+}) {
+  if (pending) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
+        <p className="flex items-center gap-2 text-sm font-semibold text-amber-800">
+          <Repeat className="w-4 h-4" />
+          בקשת החלפה נשלחה
+        </p>
+        <p className="text-xs text-amber-700">הבקשה ממתינה לאישור בעל/ת העסק. עד לאישור את נשארת משובצת למשמרת.</p>
+        {pending.reason && <p className="text-xs text-amber-700">סיבה: {pending.reason}</p>}
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+        >
+          <X className="w-3.5 h-3.5" />
+          ביטול הבקשה
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+        <Repeat className="w-4 h-4 text-gray-400" />
+        ירידה מהמשמרת / בקשת החלפה
+      </h2>
+      {within48 ? (
+        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          לא ניתן לרדת מהמשמרת פחות מ-48 שעות לפני תחילתה. אפשר לבקש החלפה עם עובד/ת אחר/ת.
+        </p>
+      ) : (
+        <p className="text-xs text-gray-500">הבקשה תישלח לאישור בעל/ת העסק. עד לאישור את נשארת משובצת למשמרת.</p>
+      )}
+      <textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        rows={2}
+        placeholder="סיבת הבקשה"
+        className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+      />
+      <button
+        type="button"
+        onClick={onRequest}
+        disabled={busy}
+        className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+      >
+        {within48 ? 'בקשת החלפה' : 'שליחת בקשה'}
+      </button>
+    </div>
   );
 }
 

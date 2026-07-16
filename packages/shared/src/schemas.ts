@@ -302,6 +302,11 @@ export const ApproveReplacementSchema = z.object({
   reason: z.string().optional(),
 });
 
+// Worker asks to leave / be replaced on their own shift (owner approves later).
+export const WorkerReplacementRequestSchema = z.object({
+  reason: z.string().min(1).max(300),
+});
+
 // ─── End-of-Shift Form ────────────────────────────────────────────────────────
 
 export const FormAnswerSchema = z.object({
