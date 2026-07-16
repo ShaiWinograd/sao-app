@@ -1,0 +1,302 @@
+# Worker Shift History
+
+## Purpose
+
+Workers should be able to review all past shifts they attended, including their approved clock-in and clock-out information.
+
+This is a worker-visible employment history and is separate from the owner-only worker log.
+
+The owner-only worker log may contain internal events such as:
+
+* Shift-drop requests
+* Missing forms
+* Rejected assignments
+* Attendance anomalies
+* Swap requests
+
+These internal records must not appear in the worker's shift history unless they directly affect the worker's approved attendance or monthly report.
+
+---
+
+## Navigation
+
+Add a page named:
+
+```text
+היסטוריית עבודות
+```
+
+It may be accessible from:
+
+* The main worker navigation
+* `היומן שלי`
+* `הפרופיל שלי`
+* Monthly report job lines
+
+Recommended navigation structure:
+
+```text
+היומן שלי
+├── עבודות קרובות
+└── היסטוריית עבודות
+```
+
+---
+
+## Shift History List
+
+Show completed and past shifts in reverse chronological order.
+
+Each shift card should display:
+
+* Date
+* Customer name
+* Job type
+* Address
+* Scheduled start and end time
+* Approved clock-in time
+* Approved clock-out time
+* Approved payable duration
+* Worker role during the shift
+* Attendance status
+* End-of-shift form status
+* Monthly report association, when available
+
+Example:
+
+```text
+12.8.2026
+
+אריזה – משפחת כהן
+רמת השרון
+
+תפקיד: עובדת
+
+שעות מתוכננות:
+09:00–14:00
+
+כניסה בפועל:
+08:58
+
+יציאה בפועל:
+14:17
+
+משך מאושר:
+5 שעות ו-19 דקות
+
+טופס סיום עבודה: הוגש
+דוח חודשי: אוגוסט 2026
+```
+
+---
+
+## Attendance Values
+
+The page should distinguish between:
+
+* Recorded time
+* Requested corrected time
+* Approved time
+
+The default card should show the final approved values.
+
+When a correction is still pending, show:
+
+```text
+שעות הנוכחות עדיין מחכות לאישור
+```
+
+and display:
+
+* Original recorded value
+* Requested value
+* Pending status
+
+Example:
+
+```text
+יציאה שנרשמה:
+13:55
+
+תיקון שהתבקש:
+14:20
+
+סטטוס:
+מחכה לאישור
+```
+
+---
+
+## Shift Detail View
+
+Clicking a past shift should open a detailed view containing:
+
+### General details
+
+* Project/customer
+* Job type
+* Date
+* Address
+* Scheduled hours
+* Worker role
+* Assigned team members
+
+### Attendance
+
+* Scheduled clock-in
+* Actual clock-in
+* Scheduled clock-out
+* Actual clock-out
+* Approved payable duration
+* Manual or automatic attendance indicator
+* Attendance correction history visible to the worker
+* Current approval state
+
+### Forms
+
+* End-of-shift form status
+* Submission time
+* Worker responses
+* Edit action when the form-editing window is still open
+
+### Monthly report
+
+When the shift is included in a published monthly report, show:
+
+* Report month
+* Hours included in the report
+* Hourly payment
+* Fixed daily payment
+* Report version
+* Report status
+* Link to the report
+
+---
+
+## Filters
+
+Support filtering by:
+
+* Month
+* Year
+* Job type
+* Customer
+* Worker role
+* Attendance state
+* Form state
+* Monthly report state
+
+Recommended quick filters:
+
+```text
+החודש
+החודש הקודם
+השנה
+דורש טיפול
+```
+
+---
+
+## Search
+
+Allow search by:
+
+* Customer name
+* Address
+* Project name
+
+---
+
+## Summary
+
+At the top of the page, show a summary for the selected period:
+
+* Number of shifts
+* Number of workdays
+* Approved work hours
+* Number of shifts as ראש צוות
+* Number of shifts with pending attendance corrections
+* Number of missing or overdue forms
+
+Do not show an estimated payment total in this section until the approximate-payment feature is finalized.
+
+Example:
+
+```text
+אוגוסט 2026
+
+12 עבודות
+58 שעות ו-30 דקות מאושרות
+3 עבודות כראש צוות
+תיקון נוכחות אחד מחכה לאישור
+```
+
+---
+
+## Calendar Integration
+
+Past shifts should remain visible in the worker calendar.
+
+Past calendar cards should show:
+
+* Completed status
+* Clock-in and clock-out times
+* Attendance issue indicator
+* Missing-form indicator
+
+Clicking a past calendar shift should open the same shift-detail view used by the history page.
+
+---
+
+## Monthly Report Integration
+
+Every job line in a monthly report should link to its corresponding shift-history entry.
+
+The values in the monthly report should be based on the approved attendance shown in the shift history.
+
+When there is a difference between shift history and a published report, show:
+
+```text
+השעות בדוח אינן תואמות לשעות המאושרות בעבודה
+```
+
+The worker should be able to create a correction comment directly from that shift.
+
+---
+
+## Data Visibility Rules
+
+Workers may see:
+
+* Their own recorded attendance
+* Their own approved attendance
+* Their own correction requests
+* Their own submitted forms
+* Customer and shift information
+* Names of workers who were assigned to the shift
+
+Workers may not see:
+
+* Attendance times of other workers
+* Other workers' pay
+* Internal owner comments
+* Owner-only worker-log entries
+* Location history or raw location samples
+* Internal reliability indicators
+
+---
+
+## Acceptance Criteria
+
+* Workers can view all past shifts they attended.
+* Past shifts are ordered from newest to oldest.
+* Each shift shows scheduled, recorded, and approved attendance when applicable.
+* Approved payable duration is clearly displayed.
+* Pending attendance corrections are visibly marked.
+* Workers can open a detailed shift view.
+* Shift history links to the relevant monthly report.
+* Monthly report lines link back to the shift.
+* Past shifts remain visible in the calendar.
+* Workers cannot see other workers' attendance records.
+* Workers cannot see the owner-only worker log.
+* Workers can filter history by month, year, type, customer, role, and status.
