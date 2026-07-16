@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
-import { JoinRequestSchema, ApproveReplacementSchema, WorkerReplacementRequestSchema, UserRole, StaffingMode, isUnavailableOn } from '@workforce/shared';
+import { JoinRequestSchema, ApproveReplacementSchema, WorkerReplacementRequestSchema, UserRole, StaffingMode, isUnavailableOn, MANAGER_SKILL } from '@workforce/shared';
 
 export async function shiftsRoutes(app: FastifyInstance) {
   // Worker: get my confirmed/pending shifts
@@ -267,16 +267,44 @@ export async function shiftsRoutes(app: FastifyInstance) {
   // Approve → release the worker and reopen the position; reject → keep them.
   app.post('/replacement/:requestId/resolve', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { requestId } = req.params as { requestId: string };
-    const { approved, note } = req.body as { approved: boolean; note?: string };
+    const { approved, note, override } = req.body as { approved: boolean; note?: string; override?: boolean };
 
     const request = await prisma.replacementRequest.findUnique({
       where: { id: requestId },
-      include: { shift: { include: { job: true } }, requestedByWorker: true },
+      include: {
+        shift: {
+          include: {
+            job: {
+              include: {
+                slots: true,
+                shifts: { where: { joinRequestStatus: 'APPROVED' }, include: { worker: { select: { skills: true } } } },
+              },
+            },
+          },
+        },
+        requestedByWorker: { select: { userId: true, firstName: true, lastName: true, skills: true } },
+      },
     });
     if (!request) return reply.status(404).send({ error: 'Request not found' });
     if (request.status !== 'PENDING') return reply.status(409).send({ error: 'Request already resolved' });
     if (approved && request.shift.attendanceStatus !== 'SCHEDULED') {
       return reply.status(409).send({ error: 'Cannot release a shift that already started' });
+    }
+
+    // Team-leader coverage: releasing the only leader needs an explicit override.
+    if (approved && !override) {
+      const job = request.shift.job;
+      const jobRequiresLeader = (job.slots ?? []).some((s) => s.requiredSkill === MANAGER_SKILL);
+      const releasedIsLeader = (request.requestedByWorker.skills as string[]).includes(MANAGER_SKILL);
+      const otherLeaderRemains = (job.shifts ?? []).some(
+        (s) => s.id !== request.shiftId && ((s.worker?.skills as string[]) ?? []).includes(MANAGER_SKILL),
+      );
+      if (jobRequiresLeader && releasedIsLeader && !otherLeaderRemains) {
+        return reply.status(409).send({
+          error: 'team_leader_coverage',
+          message: 'שחרור העובד/ת יותיר את המשמרת ללא ראש צוות. לאישור בכל זאת יש לאשר חריגה.',
+        });
+      }
     }
 
     const dateKey = request.shift.job.date.toISOString().slice(0, 10);
