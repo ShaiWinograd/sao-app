@@ -104,6 +104,25 @@ export async function shiftsRoutes(app: FastifyInstance) {
       },
     });
 
+    // Approval mode: let owners know a worker is waiting for a decision (spec §5/§19).
+    if (status === 'PENDING') {
+      const owners = await prisma.user.findMany({
+        where: { role: { in: [UserRole.OWNER, UserRole.ADMIN] }, isActive: true },
+        select: { id: true },
+      });
+      if (owners.length) {
+        const dk = job.date.toISOString().slice(0, 10);
+        await prisma.notification.createMany({
+          data: owners.map((o) => ({
+            userId: o.id,
+            title: 'בקשת הצטרפות חדשה',
+            body: `${worker.firstName} ${worker.lastName} ביקש/ה להצטרף לעבודה בתאריך ${dk}.`,
+            data: { type: 'JOIN_REQUEST', shiftId: shift.id, jobId: job.id } as any,
+          })),
+        });
+      }
+    }
+
     reply.status(201);
     return { shift, autoApproved: status === 'APPROVED' };
   });
@@ -112,10 +131,37 @@ export async function shiftsRoutes(app: FastifyInstance) {
   app.post('/:shiftId/approve', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { shiftId } = req.params as { shiftId: string };
     const { approved, reason } = req.body as { approved: boolean; reason?: string };
-    return prisma.shift.update({
+    const shift = await prisma.shift.findUnique({
+      where: { id: shiftId },
+      include: { worker: { select: { userId: true } }, job: { select: { date: true } } },
+    });
+    if (!shift) return reply.status(404).send({ error: 'Shift not found' });
+
+    const updated = await prisma.shift.update({
       where: { id: shiftId },
       data: { joinRequestStatus: approved ? 'APPROVED' : 'REJECTED' },
     });
+
+    const dk = shift.job.date.toISOString().slice(0, 10);
+    // Confirming a worker for a date invalidates their other pending same-date
+    // requests (integration spec §5).
+    if (approved) {
+      await prisma.shift.updateMany({
+        where: { id: { not: shiftId }, workerId: shift.workerId, joinRequestStatus: 'PENDING', job: { date: shift.job.date } },
+        data: { joinRequestStatus: 'REJECTED' },
+      });
+    }
+    await prisma.notification.create({
+      data: {
+        userId: shift.worker.userId,
+        title: approved ? 'בקשת ההצטרפות אושרה' : 'בקשת ההצטרפות נדחתה',
+        body: approved
+          ? `שובצת לעבודה בתאריך ${dk}.`
+          : `בקשתך להצטרף לעבודה בתאריך ${dk} נדחתה.${reason ? ' סיבה: ' + reason : ''}`,
+        data: { type: 'JOIN_DECISION', shiftId, approved } as any,
+      },
+    });
+    return updated;
   });
 
   // Admin: directly assign a worker to a job slot (creates an approved shift)
@@ -175,6 +221,17 @@ export async function shiftsRoutes(app: FastifyInstance) {
         hourlyWageSnapshot: worker.hourlyWage,
         dailyPaymentSnapshot: worker.dailyPaymentAmount,
         workerNameSnapshot: `${worker.firstName} ${worker.lastName}`,
+      },
+    });
+
+    // Tell the worker they were assigned directly (integration spec §7).
+    const dk = job.date.toISOString().slice(0, 10);
+    await prisma.notification.create({
+      data: {
+        userId: worker.userId,
+        title: 'שובצת למשמרת',
+        body: `שובצת לעבודה בתאריך ${dk}.`,
+        data: { type: 'DIRECT_ASSIGNMENT', shiftId: shift.id, jobId: job.id } as any,
       },
     });
 
