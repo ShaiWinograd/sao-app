@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { MapPin, Clock, Users, Star } from 'lucide-react';
 import { api, authHeaders } from '../../../lib/api';
+import { isUnavailableOn, type AvailabilityBlock } from '@workforce/shared';
 import {
   type WorkerJob,
   type WorkerShift,
@@ -20,6 +21,7 @@ export default function OpenJobsPage() {
   const { getToken } = useAuth();
   const [jobs, setJobs] = useState<WorkerJob[]>([]);
   const [shifts, setShifts] = useState<WorkerShift[]>([]);
+  const [availability, setAvailability] = useState<AvailabilityBlock[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyJobId, setBusyJobId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -44,6 +46,19 @@ export default function OpenJobsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Availability blocks the worker set (unavailable dates). Non-fatal if missing.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const auth = await authHeaders(getToken);
+        const res = await api.get<AvailabilityBlock[]>('/workers/me/availability', auth);
+        setAvailability(res.data ?? []);
+      } catch {
+        setAvailability([]);
+      }
+    })();
+  }, [getToken]);
 
   // Dates the worker is already approved on (blocks joining another job that day).
   const approvedDates = useMemo(
@@ -112,6 +127,7 @@ export default function OpenJobsPage() {
             const myStatus = myStatusByJob.get(job.id);
             const needsLead = (job.slots ?? []).some((s) => s.requiredSkill === 'SHIFT_LEADER');
             const conflict = approvedDates.has(dateKey(job.date)) && !myStatus;
+            const blocked = !myStatus && isUnavailableOn(availability, dateKey(job.date));
             const isFull = open === 0 && !myStatus;
             const assigned = (job.shifts ?? []).filter(
               (s) => s.joinRequestStatus === 'APPROVED' || s.joinRequestStatus === 'PENDING',
@@ -163,6 +179,8 @@ export default function OpenJobsPage() {
                     </span>
                   ) : conflict ? (
                     <p className="text-xs text-rose-600">לא ניתן להצטרף – כבר שובצת לעבודה אחרת בתאריך זה</p>
+                  ) : blocked ? (
+                    <p className="text-xs text-rose-600">סימנת שאינך זמינה בתאריך זה</p>
                   ) : isFull ? (
                     <span className="inline-flex rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500">
                       העבודה מלאה

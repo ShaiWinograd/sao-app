@@ -16,6 +16,7 @@ export * from './packing-automation';
 export * from './job-readiness';
 export * from './job-status';
 export * from './worker-availability';
+export * from './availability-blocks';
 export * from './date-finder';
 export * from './pricing-review';
 export * from './staffing-insights';
