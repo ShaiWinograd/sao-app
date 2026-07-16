@@ -35,7 +35,17 @@ export async function authenticate(req: FastifyRequest, reply: FastifyReply) {
       try {
         const clerkUser = await clerk.users.getUser(payload.sub);
         const email = clerkUser.emailAddresses[0]?.emailAddress ?? '';
-        const role = (clerkUser.publicMetadata?.role as UserRole) ?? UserRole.OWNER;
+        // If an admin already created a worker profile with this email, onboard
+        // this login as that worker (role WORKER + link the profile to the Clerk
+        // user so `/workers/me` resolves). Otherwise fall back to Clerk metadata
+        // (default OWNER). This only runs on first login, so it never changes an
+        // existing user's role.
+        const matchedWorker = email
+          ? await prisma.worker.findUnique({ where: { email }, select: { id: true, userId: true } })
+          : null;
+        const role = matchedWorker
+          ? UserRole.WORKER
+          : ((clerkUser.publicMetadata?.role as UserRole) ?? UserRole.OWNER);
         dbUser = await prisma.user.upsert({
           where: { id: payload.sub },
           update: { email, firstName: clerkUser.firstName ?? '', lastName: clerkUser.lastName ?? '' },
@@ -48,6 +58,9 @@ export async function authenticate(req: FastifyRequest, reply: FastifyReply) {
             isActive: true,
           },
         });
+        if (matchedWorker && matchedWorker.userId !== dbUser.id) {
+          await prisma.worker.update({ where: { id: matchedWorker.id }, data: { userId: dbUser.id } });
+        }
         req.log.info({ userId: payload.sub, role }, 'Auto-provisioned new user from Clerk');
       } catch (provisionErr) {
         req.log.error({ err: provisionErr }, 'Failed to auto-provision user');
