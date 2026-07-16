@@ -48,6 +48,7 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<ApiJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pendingSwapCount, setPendingSwapCount] = useState(0);
   const [monthAnchor, setMonthAnchor] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -70,6 +71,19 @@ export default function JobsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Count swaps awaiting the owner's final approval (spec §3 Two-way swap).
+  useEffect(() => {
+    void (async () => {
+      try {
+        const auth = await authHeaders(getToken);
+        const res = await api.get<unknown[]>('/shifts/swaps/pending-owner', auth);
+        setPendingSwapCount(res.data?.length ?? 0);
+      } catch {
+        setPendingSwapCount(0);
+      }
+    })();
+  }, [getToken]);
 
   const jobsByDate = useMemo(() => {
     const map = new Map<string, ApiJob[]>();
@@ -121,6 +135,18 @@ export default function JobsPage() {
           </Link>
         </div>
       </div>
+
+      {pendingSwapCount > 0 && (
+        <Link
+          href="/shifts/swaps"
+          className="flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 hover:bg-amber-100"
+        >
+          <span className="font-medium">
+            {pendingSwapCount} בקשות החלפת משמרות ממתינות לאישורך
+          </span>
+          <span className="text-xs font-semibold">לאישור ←</span>
+        </Link>
+      )}
 
       <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">

@@ -143,6 +143,15 @@ enum ReplacementStatus {
   REJECTED
 }
 
+// Two-way shift swap between two workers (worker_web_spec §3 Two-way swap).
+enum SwapStatus {
+  PENDING_WORKER
+  PENDING_OWNER
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 // A worker's sign-off on their published monthly report (worker_web_spec §Reports).
 enum ReportApprovalStatus {
   PENDING
@@ -322,6 +331,8 @@ model Worker {
   reportApprovals     WorkerReportApproval[]
   reportNotes         WorkerReportNote[]
   replacementVolunteers ReplacementVolunteer[]
+  swapsProposed       ShiftSwap[]          @relation("SwapFromWorker")
+  swapsReceived       ShiftSwap[]          @relation("SwapToWorker")
 
   @@map("workers")
 }
@@ -517,6 +528,8 @@ model Shift {
   locationChecks          LocationCheck[]
   replacementRequests     ReplacementRequest[]
   formSubmission          FormSubmission?
+  swapsFrom               ShiftSwap[]        @relation("SwapFromShift")
+  swapsTo                 ShiftSwap[]        @relation("SwapToShift")
 
   @@map("shifts")
 }
@@ -591,6 +604,31 @@ model ReplacementVolunteer {
 
   @@unique([replacementRequestId, workerId])
   @@map("replacement_volunteers")
+}
+
+// A two-way swap: proposer's fromShift <-> target worker's toShift.
+model ShiftSwap {
+  id               String     @id @default(cuid())
+  fromShiftId      String
+  toShiftId        String
+  fromWorkerId     String
+  toWorkerId       String
+  status           SwapStatus @default(PENDING_WORKER)
+  note             String?
+  workerRespondedAt DateTime?
+  resolvedAt       DateTime?
+  adminNote        String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  fromShift        Shift      @relation("SwapFromShift", fields: [fromShiftId], references: [id], onDelete: Cascade)
+  toShift          Shift      @relation("SwapToShift", fields: [toShiftId], references: [id], onDelete: Cascade)
+  fromWorker       Worker     @relation("SwapFromWorker", fields: [fromWorkerId], references: [id])
+  toWorker         Worker     @relation("SwapToWorker", fields: [toWorkerId], references: [id])
+
+  @@index([toWorkerId, status])
+  @@index([fromWorkerId, status])
+  @@map("shift_swaps")
 }
 
 // ─── Form Template ────────────────────────────────────────────────────────────

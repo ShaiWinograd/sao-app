@@ -63,6 +63,10 @@ export default function WorkerShiftDetailPage() {
   const [dropReason, setDropReason] = useState('');
   const [colleagues, setColleagues] = useState<{ id: string; name: string }[]>([]);
   const [suggestedWorkerId, setSuggestedWorkerId] = useState('');
+  const [swapColleagueId, setSwapColleagueId] = useState('');
+  const [swapCandidates, setSwapCandidates] = useState<SwapCandidate[]>([]);
+  const [swapToShiftId, setSwapToShiftId] = useState('');
+  const [swapNote, setSwapNote] = useState('');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -258,6 +262,43 @@ export default function WorkerShiftDetailPage() {
     }
   }, [shift, getToken, load]);
 
+  // Load the chosen colleague's swappable shifts.
+  useEffect(() => {
+    setSwapToShiftId('');
+    if (!swapColleagueId) {
+      setSwapCandidates([]);
+      return;
+    }
+    void (async () => {
+      try {
+        const auth = await authHeaders(getToken);
+        const res = await api.get<SwapCandidate[]>(`/shifts/swaps/candidates/${swapColleagueId}`, auth);
+        setSwapCandidates(res.data ?? []);
+      } catch {
+        setSwapCandidates([]);
+      }
+    })();
+  }, [swapColleagueId, getToken]);
+
+  const proposeSwap = useCallback(async () => {
+    if (!shift || !swapToShiftId) return;
+    setBusy(true);
+    setActionMsg(null);
+    try {
+      const auth = await authHeaders(getToken);
+      await api.post(`/shifts/${shift.id}/swap`, { toShiftId: swapToShiftId, note: swapNote || undefined }, auth);
+      setActionMsg('הצעת ההחלפה נשלחה לאישור העובד/ת.');
+      setSwapColleagueId('');
+      setSwapToShiftId('');
+      setSwapNote('');
+    } catch (err) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      setActionMsg(msg ? `שליחת ההצעה נכשלה: ${msg}` : 'שליחת ההצעה נכשלה.');
+    } finally {
+      setBusy(false);
+    }
+  }, [shift, swapToShiftId, swapNote, getToken]);
+
   if (loading) return <p className="text-sm text-gray-400">טוען…</p>;
 
   if (notFound || !shift) {
@@ -410,6 +451,22 @@ export default function WorkerShiftDetailPage() {
         />
       )}
 
+      {/* Two-way swap proposal (before the shift starts) */}
+      {shift.joinRequestStatus === 'APPROVED' && shift.attendanceStatus === 'SCHEDULED' && colleagues.length > 0 && (
+        <SwapProposePanel
+          colleagues={colleagues}
+          colleagueId={swapColleagueId}
+          setColleagueId={setSwapColleagueId}
+          candidates={swapCandidates}
+          toShiftId={swapToShiftId}
+          setToShiftId={setSwapToShiftId}
+          note={swapNote}
+          setNote={setSwapNote}
+          busy={busy}
+          onPropose={() => void proposeSwap()}
+        />
+      )}
+
       {formOpen && (
         <EndShiftForm
           completion={completion}
@@ -443,6 +500,99 @@ function BackLink() {
       <ArrowRight className="w-4 h-4" />
       חזרה ליומן
     </Link>
+  );
+}
+
+type SwapCandidate = {
+  shiftId: string;
+  date: string;
+  plannedStart: string;
+  plannedEnd: string;
+  jobType: string;
+  customerName: string;
+};
+
+function SwapProposePanel({
+  colleagues,
+  colleagueId,
+  setColleagueId,
+  candidates,
+  toShiftId,
+  setToShiftId,
+  note,
+  setNote,
+  busy,
+  onPropose,
+}: {
+  colleagues: { id: string; name: string }[];
+  colleagueId: string;
+  setColleagueId: (v: string) => void;
+  candidates: SwapCandidate[];
+  toShiftId: string;
+  setToShiftId: (v: string) => void;
+  note: string;
+  setNote: (v: string) => void;
+  busy: boolean;
+  onPropose: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+        <Repeat className="w-4 h-4 text-gray-400" />
+        החלפת משמרות עם עובד/ת אחר/ת
+      </h2>
+      <p className="text-xs text-gray-500">בחר/י עובד/ת ומשמרת שלה/ו להחלפה. ההחלפה תתבצע רק לאחר אישור העובד/ת ובעל/ת העסק.</p>
+      <label className="block text-xs text-gray-600">
+        עובד/ת
+        <select
+          value={colleagueId}
+          onChange={(e) => setColleagueId(e.target.value)}
+          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+        >
+          <option value="">בחר/י עובד/ת</option>
+          {colleagues.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {colleagueId && candidates.length === 0 && (
+        <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">אין לעובד/ת זו משמרות זמינות להחלפה.</p>
+      )}
+      {candidates.length > 0 && (
+        <label className="block text-xs text-gray-600">
+          המשמרת שלה/ו
+          <select
+            value={toShiftId}
+            onChange={(e) => setToShiftId(e.target.value)}
+            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+          >
+            <option value="">בחר/י משמרת</option>
+            {candidates.map((c) => (
+              <option key={c.shiftId} value={c.shiftId}>
+                {new Date(c.date).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })} · {jobTypeLabel(c.jobType)} · {formatTime(c.plannedStart)}–{formatTime(c.plannedEnd)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        rows={2}
+        placeholder="הערה (רשות)"
+        className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+      />
+      <button
+        type="button"
+        onClick={onPropose}
+        disabled={busy || !toShiftId}
+        className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+      >
+        שליחת הצעת החלפה
+      </button>
+    </div>
   );
 }
 
