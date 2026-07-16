@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
-import { JoinRequestSchema, ApproveReplacementSchema, UserRole, StaffingMode, isUnavailableOn } from '@workforce/shared';
+import { JoinRequestSchema, ApproveReplacementSchema, WorkerReplacementRequestSchema, UserRole, StaffingMode, isUnavailableOn } from '@workforce/shared';
 
 export async function shiftsRoutes(app: FastifyInstance) {
   // Worker: get my confirmed/pending shifts
@@ -186,5 +186,66 @@ export async function shiftsRoutes(app: FastifyInstance) {
       return safe;
     }
     return shift;
+  });
+
+  // Worker: request to leave / be replaced on their own confirmed shift.
+  // The worker stays assigned until an owner approves; owners are notified.
+  app.post('/:id/replacement', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const { id } = req.params as { id: string };
+    const body = WorkerReplacementRequestSchema.parse(req.body);
+
+    const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!worker) return reply.status(403).send({ error: 'Worker profile not found' });
+
+    const shift = await prisma.shift.findUnique({ where: { id }, include: { job: true } });
+    if (!shift || shift.workerId !== worker.id) return reply.status(404).send({ error: 'Shift not found' });
+    if (shift.joinRequestStatus !== 'APPROVED') return reply.status(400).send({ error: 'Only confirmed shifts can be dropped' });
+    if (shift.attendanceStatus !== 'SCHEDULED') return reply.status(409).send({ error: 'Cannot leave a shift that already started' });
+
+    const existing = await prisma.replacementRequest.findFirst({ where: { shiftId: id, status: 'PENDING' } });
+    if (existing) return reply.status(409).send({ error: 'A replacement request is already pending for this shift' });
+
+    const request = await prisma.replacementRequest.create({
+      data: { shiftId: id, requestedByWorkerId: worker.id, reason: body.reason, status: 'PENDING' },
+    });
+    await prisma.shift.update({ where: { id }, data: { replacementStatus: 'PENDING' } });
+
+    const owners = await prisma.user.findMany({
+      where: { role: { in: [UserRole.OWNER, UserRole.ADMIN] }, isActive: true },
+      select: { id: true },
+    });
+    if (owners.length) {
+      const dateKey = shift.job.date.toISOString().slice(0, 10);
+      await prisma.notification.createMany({
+        data: owners.map((o) => ({
+          userId: o.id,
+          title: 'בקשת החלפה למשמרת',
+          body: `${worker.firstName} ${worker.lastName} ביקש/ה החלפה למשמרת בתאריך ${dateKey}.`,
+          data: { type: 'REPLACEMENT_REQUEST', shiftId: id, requestId: request.id } as any,
+        })),
+      });
+    }
+
+    reply.status(201);
+    return request;
+  });
+
+  // Worker: cancel their own pending replacement request.
+  app.delete('/:id/replacement', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const { id } = req.params as { id: string };
+
+    const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!worker) return reply.status(403).send({ error: 'Worker profile not found' });
+
+    const request = await prisma.replacementRequest.findFirst({ where: { shiftId: id, status: 'PENDING' } });
+    if (!request || request.requestedByWorkerId !== worker.id) {
+      return reply.status(404).send({ error: 'No pending request to cancel' });
+    }
+    await prisma.replacementRequest.delete({ where: { id: request.id } });
+    await prisma.shift.update({ where: { id }, data: { replacementStatus: 'NONE' } });
+    reply.status(204);
+    return null;
   });
 }
