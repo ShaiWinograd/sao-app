@@ -7,8 +7,9 @@ import { UserButton } from '@clerk/nextjs';
 import {
   LayoutDashboard, Users, Calendar, BarChart3, Settings, LayoutGrid, Contact, Bug,
 } from 'lucide-react';
-import { canViewReports, viewerRoleLabel, type AppViewerRole } from '../../lib/viewer-access';
-import { useViewerRole, useCanSwitchRole, writeRoleOverride } from '../../lib/use-viewer-role';
+import { canViewReports } from '../../lib/viewer-access';
+import { useViewerRole } from '../../lib/use-viewer-role';
+import RoleSwitcher from './RoleSwitcher';
 
 // Spec 02 (navigation): only these seven top-level items. Quotations, Forms,
 // Attendance, Messages, and Payments must NOT be top-level — they live inside
@@ -25,7 +26,6 @@ const navItems = [
 
 export default function Sidebar() {
   const viewerRole = useViewerRole();
-  const canSwitch = useCanSwitchRole();
   const showReports = canViewReports(viewerRole);
   const pathname = usePathname();
   const visibleNavItems = navItems.filter((item) => item.href !== '/reports' || showReports);
@@ -98,22 +98,7 @@ export default function Sidebar() {
           />
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold text-gray-900 truncate">החשבון שלי</p>
-            {canSwitch ? (
-              <select
-                value={viewerRole === 'OWNER' ? 'OWNER' : 'ADMIN'}
-                onChange={(e) => {
-                  writeRoleOverride(e.target.value as AppViewerRole);
-                  window.location.reload();
-                }}
-                title="תצוגת תפקיד (לפיתוח/בדיקה)"
-                className="mt-0.5 w-full rounded border border-gray-200 bg-white px-1 py-0.5 text-[11px] text-gray-600"
-              >
-                <option value="OWNER">בעל/ת עסק (גישה מלאה)</option>
-                <option value="ADMIN">מנהל/ת (תצוגת אדמין)</option>
-              </select>
-            ) : (
-              <p className="text-xs text-gray-500">{viewerRoleLabel(viewerRole)}</p>
-            )}
+            <RoleSwitcher />
           </div>
         </div>
       </div>

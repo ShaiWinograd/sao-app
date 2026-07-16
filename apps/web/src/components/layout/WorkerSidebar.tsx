@@ -7,6 +7,7 @@ import { UserButton } from '@clerk/nextjs';
 import {
   LayoutDashboard, Search, Calendar, CalendarCheck, BarChart3, User, Bell,
 } from 'lucide-react';
+import RoleSwitcher from './RoleSwitcher';
 
 // Worker navigation (worker_web_spec §1).
 const navItems = [
@@ -68,7 +69,7 @@ export default function WorkerSidebar() {
           />
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold text-gray-900 truncate">החשבון שלי</p>
-            <p className="text-xs text-gray-500">עובד/ת</p>
+            <RoleSwitcher />
           </div>
         </div>
       </div>
