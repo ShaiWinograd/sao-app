@@ -321,6 +321,7 @@ model Worker {
   approvedReplacements ReplacementRequest[] @relation("ReplacementApproved")
   reportApprovals     WorkerReportApproval[]
   reportNotes         WorkerReportNote[]
+  replacementVolunteers ReplacementVolunteer[]
 
   @@map("workers")
 }
@@ -573,8 +574,23 @@ model ReplacementRequest {
   requestedByWorker    Worker            @relation("ReplacementOriginal", fields: [requestedByWorkerId], references: [id])
   suggestedWorker      Worker?           @relation("ReplacementSuggested", fields: [suggestedWorkerId], references: [id])
   approvedWorker       Worker?           @relation("ReplacementApproved", fields: [approvedWorkerId], references: [id])
+  volunteers           ReplacementVolunteer[]
 
   @@map("replacement_requests")
+}
+
+// A worker who volunteered to take over a replacement request.
+model ReplacementVolunteer {
+  id                   String   @id @default(cuid())
+  replacementRequestId String
+  workerId             String
+  createdAt            DateTime @default(now())
+
+  request              ReplacementRequest @relation(fields: [replacementRequestId], references: [id], onDelete: Cascade)
+  worker               Worker             @relation(fields: [workerId], references: [id])
+
+  @@unique([replacementRequestId, workerId])
+  @@map("replacement_volunteers")
 }
 
 // ─── Form Template ────────────────────────────────────────────────────────────
