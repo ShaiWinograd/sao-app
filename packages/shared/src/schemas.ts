@@ -245,6 +245,24 @@ export const ApproveJoinRequestSchema = z.object({
   reason: z.string().optional(),
 });
 
+export const CreateWorkerAvailabilitySchema = z
+  .object({
+    type: z.enum(['DATE', 'RANGE', 'WEEKLY']),
+    startDate: z.string().optional(),
+    endDate: z.string().optional(),
+    weekday: z.number().int().min(0).max(6).optional(),
+    reason: z.string().max(200).optional(),
+  })
+  .refine(
+    (v) =>
+      v.type === 'DATE'
+        ? Boolean(v.startDate)
+        : v.type === 'RANGE'
+          ? Boolean(v.startDate && v.endDate)
+          : v.weekday !== undefined,
+    { message: 'Missing fields for the selected availability type' },
+  );
+
 // ─── Attendance ───────────────────────────────────────────────────────────────
 
 export const ClockInSchema = z.object({

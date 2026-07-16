@@ -302,11 +302,36 @@ model Worker {
   shifts              Shift[]
   adjustments         WorkerAdjustment[]
   workerPayments      WorkerPayment[]
+  availability        WorkerAvailability[]
   replacementRequests ReplacementRequest[] @relation("ReplacementOriginal")
   suggestedReplacements ReplacementRequest[] @relation("ReplacementSuggested")
   approvedReplacements ReplacementRequest[] @relation("ReplacementApproved")
 
   @@map("workers")
+}
+
+enum AvailabilityBlockType {
+  DATE
+  RANGE
+  WEEKLY
+}
+
+// Dates/weekdays a worker has marked as unavailable (worker_web_spec §3).
+model WorkerAvailability {
+  id        String                @id @default(cuid())
+  workerId  String
+  type      AvailabilityBlockType
+  startDate DateTime?
+  endDate   DateTime?
+  weekday   Int?
+  reason    String?
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+
+  worker    Worker                @relation(fields: [workerId], references: [id])
+
+  @@index([workerId])
+  @@map("worker_availability")
 }
 
 // ─── Customer ─────────────────────────────────────────────────────────────────

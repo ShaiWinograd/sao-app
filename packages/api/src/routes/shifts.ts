@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
-import { JoinRequestSchema, ApproveReplacementSchema, UserRole, StaffingMode } from '@workforce/shared';
+import { JoinRequestSchema, ApproveReplacementSchema, UserRole, StaffingMode, isUnavailableOn } from '@workforce/shared';
 
 export async function shiftsRoutes(app: FastifyInstance) {
   // Worker: get my confirmed/pending shifts
@@ -55,6 +55,20 @@ export async function shiftsRoutes(app: FastifyInstance) {
       },
     });
     if (overlap) return reply.status(409).send({ error: 'You already have a confirmed shift on this date' });
+
+    // Block joining on a date the worker marked as unavailable.
+    const jobDateKey = job.date.toISOString().slice(0, 10);
+    const blocks = await prisma.workerAvailability.findMany({ where: { workerId: worker.id } });
+    const isBlocked = isUnavailableOn(
+      blocks.map((b) => ({
+        type: b.type,
+        startDate: b.startDate ? b.startDate.toISOString() : null,
+        endDate: b.endDate ? b.endDate.toISOString() : null,
+        weekday: b.weekday,
+      })),
+      jobDateKey,
+    );
+    if (isBlocked) return reply.status(409).send({ error: 'You marked yourself unavailable on this date' });
 
     // Determine auto-approve or pending
     const status = job.staffingMode === StaffingMode.AUTO_APPROVE ? 'APPROVED' : 'PENDING';

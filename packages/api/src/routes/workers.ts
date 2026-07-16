@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
-import { CreateWorkerSchema, UpdateWorkerSchema, UserRole, rankWorkerAvailability, findCandidateDates } from '@workforce/shared';
+import { CreateWorkerSchema, UpdateWorkerSchema, CreateWorkerAvailabilitySchema, UserRole, rankWorkerAvailability, findCandidateDates } from '@workforce/shared';
 
 export async function workersRoutes(app: FastifyInstance) {
   app.get('/', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
@@ -149,6 +149,50 @@ export async function workersRoutes(app: FastifyInstance) {
     // Strip wage data
     const { hourlyWage, dailyPaymentAmount, internalNotes, ...safe } = worker;
     return safe;
+  });
+
+  // Worker: list own availability blocks
+  app.get('/me/availability', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!worker) return reply.status(404).send({ error: 'Worker profile not found' });
+    return prisma.workerAvailability.findMany({
+      where: { workerId: worker.id },
+      orderBy: [{ startDate: 'asc' }, { weekday: 'asc' }],
+    });
+  });
+
+  // Worker: add an availability block
+  app.post('/me/availability', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!worker) return reply.status(404).send({ error: 'Worker profile not found' });
+    const body = CreateWorkerAvailabilitySchema.parse(req.body);
+    const created = await prisma.workerAvailability.create({
+      data: {
+        workerId: worker.id,
+        type: body.type,
+        startDate: body.startDate ? new Date(body.startDate) : null,
+        endDate: body.endDate ? new Date(body.endDate) : null,
+        weekday: body.weekday ?? null,
+        reason: body.reason ?? null,
+      },
+    });
+    reply.status(201);
+    return created;
+  });
+
+  // Worker: remove one of their availability blocks
+  app.delete('/me/availability/:id', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const { id } = req.params as { id: string };
+    const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!worker) return reply.status(404).send({ error: 'Worker profile not found' });
+    const block = await prisma.workerAvailability.findUnique({ where: { id } });
+    if (!block || block.workerId !== worker.id) return reply.status(404).send({ error: 'Not found' });
+    await prisma.workerAvailability.delete({ where: { id } });
+    reply.status(204);
+    return null;
   });
 
   app.post('/', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
