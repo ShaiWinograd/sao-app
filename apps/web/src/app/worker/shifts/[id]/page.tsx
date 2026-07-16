@@ -32,6 +32,13 @@ type ShiftDetail = {
   actualEnd?: string | null;
   replacementStatus?: string;
   replacementRequests?: { id: string; status: string; reason: string; requestedByWorkerId: string }[];
+  formSubmission?: {
+    id: string;
+    completionStatus: string;
+    managerNote: string | null;
+    editDeadline: string | null;
+    answers: { questionId: string; value: string }[];
+  } | null;
   job: WorkerJob & {
     jobNotes?: string | null;
     customer?: { firstName?: string; lastName?: string; phone?: string | null } | null;
@@ -49,6 +56,7 @@ export default function WorkerShiftDetailPage() {
   const [busy, setBusy] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
   const [completion, setCompletion] = useState<Completion>('COMPLETED');
   const [note, setNote] = useState('');
   const [answers, setAnswers] = useState<Record<string, WorkerAnswerValue>>({});
@@ -158,20 +166,39 @@ export default function WorkerShiftDetailPage() {
         })
         .map((q) => ({ questionId: q.id, value: answers[q.id]! }));
       await api.post(
-        '/forms/submit',
+        editMode ? '/forms/edit' : '/forms/submit',
         { shiftId: shift.id, completionStatus: completion, answers: answerArr, managerNote: note.trim() || undefined },
         auth,
       );
       setFormOpen(false);
+      setEditMode(false);
       setAnswers({});
-      setActionMsg('טופס הסיום נשמר. תודה!');
+      setActionMsg(editMode ? 'הטופס עודכן. תודה!' : 'טופס הסיום נשמר. תודה!');
       await load();
     } catch {
       setActionMsg('שמירת הטופס נכשלה.');
     } finally {
       setBusy(false);
     }
-  }, [shift, completion, note, formQuestions, answers, getToken, load]);
+  }, [shift, completion, note, formQuestions, answers, editMode, getToken, load]);
+
+  const openEditForm = useCallback(() => {
+    const sub = shift?.formSubmission;
+    if (!sub) return;
+    setCompletion((sub.completionStatus as Completion) ?? 'COMPLETED');
+    setNote(sub.managerNote ?? '');
+    const prefilled: Record<string, WorkerAnswerValue> = {};
+    for (const a of sub.answers ?? []) {
+      try {
+        prefilled[a.questionId] = JSON.parse(a.value);
+      } catch {
+        prefilled[a.questionId] = a.value;
+      }
+    }
+    setAnswers(prefilled);
+    setEditMode(true);
+    setFormOpen(true);
+  }, [shift]);
 
   const pendingReplacement = useMemo(
     () => (shift?.replacementRequests ?? []).find((r) => r.status === 'PENDING') ?? null,
@@ -330,12 +357,19 @@ export default function WorkerShiftDetailPage() {
         <AttendancePanel
           shift={shift}
           busy={busy}
+          canEditForm={
+            shift.formStatus === 'SUBMITTED' &&
+            !!shift.formSubmission?.editDeadline &&
+            Date.now() < new Date(shift.formSubmission.editDeadline).getTime()
+          }
           onClockIn={() => void runAttendance('/attendance/clock-in')}
           onClockOut={() => void clockOut()}
+          onEditForm={openEditForm}
           onOpenForm={() => {
             setCompletion('COMPLETED');
             setNote('');
             setAnswers({});
+            setEditMode(false);
             setFormOpen(true);
           }}
         />
@@ -483,15 +517,19 @@ function getBrowserPosition(): Promise<{ latitude: number; longitude: number }> 
 function AttendancePanel({
   shift,
   busy,
+  canEditForm,
   onClockIn,
   onClockOut,
   onOpenForm,
+  onEditForm,
 }: {
   shift: ShiftDetail;
   busy: boolean;
+  canEditForm: boolean;
   onClockIn: () => void;
   onClockOut: () => void;
   onOpenForm: () => void;
+  onEditForm: () => void;
 }) {
   const clockedOut = ['CLOCKED_OUT', 'CORRECTED', 'AUTO_CLOCKED_OUT'].includes(shift.attendanceStatus);
   return (
@@ -529,10 +567,22 @@ function AttendancePanel({
         </button>
       )}
       {clockedOut && shift.formStatus !== 'NOT_SUBMITTED' && (
-        <p className="flex items-center justify-center gap-2 text-sm text-emerald-700">
-          <CheckCircle2 className="w-4 h-4" />
-          המשמרת הושלמה והטופס הוגש.
-        </p>
+        <div className="space-y-2 text-center">
+          <p className="flex items-center justify-center gap-2 text-sm text-emerald-700">
+            <CheckCircle2 className="w-4 h-4" />
+            המשמרת הושלמה והטופס הוגש.
+          </p>
+          {canEditForm && (
+            <button
+              type="button"
+              onClick={onEditForm}
+              disabled={busy}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              עריכת הטופס
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

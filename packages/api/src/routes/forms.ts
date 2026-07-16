@@ -17,8 +17,12 @@ export async function formsRoutes(app: FastifyInstance) {
     if (shift.formStatus === 'SUBMITTED') return reply.status(400).send({ error: 'Form already submitted' });
 
     const editMinSetting = await prisma.appSetting.findUnique({ where: { key: 'FORM_EDIT_MINUTES' } });
-    const editMinutes = Number(editMinSetting?.value ?? 30);
-    const editDeadline = new Date(Date.now() + editMinutes * 60 * 1000);
+    const now = new Date();
+    // Editable until the end of the next day (worker_web_spec §Forms), unless a
+    // FORM_EDIT_MINUTES override is configured.
+    const editDeadline = editMinSetting
+      ? new Date(now.getTime() + Number(editMinSetting.value) * 60 * 1000)
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2, 0, 0, 0);
 
     const [submission] = await prisma.$transaction([
       prisma.formSubmission.create({
@@ -41,6 +45,42 @@ export async function formsRoutes(app: FastifyInstance) {
 
     reply.status(201);
     return submission;
+  });
+
+  // Worker: edit an already-submitted end-of-shift form within the edit window.
+  app.post('/edit', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const body = FormSubmissionSchema.parse(req.body);
+
+    const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!worker) return reply.status(403).send({ error: 'Worker profile not found' });
+
+    const shift = await prisma.shift.findUnique({
+      where: { id: body.shiftId },
+      include: { formSubmission: true },
+    });
+    if (!shift || shift.workerId !== worker.id) return reply.status(404).send({ error: 'Shift not found' });
+    const submission = shift.formSubmission;
+    if (!submission) return reply.status(404).send({ error: 'No submitted form to edit' });
+    if (submission.editDeadline && new Date() > submission.editDeadline) {
+      return reply.status(409).send({ error: 'The editing window has closed' });
+    }
+
+    await prisma.$transaction([
+      prisma.formAnswer.deleteMany({ where: { submissionId: submission.id } }),
+      prisma.formSubmission.update({
+        where: { id: submission.id },
+        data: {
+          completionStatus: body.completionStatus,
+          managerNote: body.managerNote,
+          answers: {
+            create: body.answers.map((a) => ({ questionId: a.questionId, value: JSON.stringify(a.value) })),
+          },
+        },
+      }),
+    ]);
+
+    return { success: true };
   });
 
   // Get form submission for a shift
