@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
-import { ArrowRight, CheckCircle2, RefreshCw, Send, UserCheck, XCircle } from 'lucide-react';
+import { ArrowRight, CheckCircle2, RefreshCw, Send, UserCheck, XCircle, Repeat } from 'lucide-react';
 import { evaluateJobPublishReadiness, MANAGER_SKILL, deriveJobStatusBadge } from '@workforce/shared';
 import { api, authHeaders } from '../../../lib/api';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
@@ -24,6 +24,7 @@ type ApiJobShift = {
   joinRequestStatus: string;
   formStatus: string;
   worker?: { firstName: string; lastName: string } | null;
+  replacementRequests?: { id: string; reason: string; status: string }[];
 };
 
 type ApiJobDetail = {
@@ -166,6 +167,23 @@ export default function JobDetailPage() {
     [getToken, load],
   );
 
+  const resolveReplacement = useCallback(
+    async (requestId: string, approved: boolean) => {
+      setBusy(true);
+      setError(null);
+      try {
+        const auth = await authHeaders(getToken);
+        await api.post(`/shifts/replacement/${requestId}/resolve`, { approved }, auth);
+        await load();
+      } catch {
+        setError('עדכון בקשת ההחלפה נכשל');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [getToken, load],
+  );
+
   const managerSlots = useMemo(
     () => (job ? job.slots.filter((slot) => slot.requiredSkill === MANAGER_SKILL) : []),
     [job],
@@ -253,33 +271,63 @@ export default function JobDetailPage() {
   }, [job, workerSlots, managerSlots, shiftForSlot]);
 
   const renderShiftStatus = (shift: ApiJobShift) => {
-    if (shift.joinRequestStatus === 'PENDING') {
-      return (
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => void decideJoinRequest(shift.id, true)}
-            disabled={busy}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            אישור
-          </button>
-          <button
-            onClick={() => void decideJoinRequest(shift.id, false)}
-            disabled={busy}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-          >
-            <XCircle className="w-3.5 h-3.5" />
-            דחייה
-          </button>
-        </div>
-      );
-    }
+    const pendingReplacement = (shift.replacementRequests ?? []).find((r) => r.status === 'PENDING');
     return (
-      <StatusBadge
-        tone={shift.joinRequestStatus === 'REJECTED' ? 'error' : 'success'}
-        label={JOIN_STATUS_LABELS[shift.joinRequestStatus] ?? shift.joinRequestStatus}
-      />
+      <div className="flex flex-col items-end gap-1">
+        {shift.joinRequestStatus === 'PENDING' ? (
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => void decideJoinRequest(shift.id, true)}
+              disabled={busy}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              אישור
+            </button>
+            <button
+              onClick={() => void decideJoinRequest(shift.id, false)}
+              disabled={busy}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+              דחייה
+            </button>
+          </div>
+        ) : (
+          <StatusBadge
+            tone={shift.joinRequestStatus === 'REJECTED' ? 'error' : 'success'}
+            label={JOIN_STATUS_LABELS[shift.joinRequestStatus] ?? shift.joinRequestStatus}
+          />
+        )}
+        {pendingReplacement && (
+          <div className="flex items-center gap-1.5">
+            <span
+              title={pendingReplacement.reason}
+              className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full border border-amber-200 bg-amber-50 text-amber-700"
+            >
+              <Repeat className="w-3 h-3" />
+              בקשת החלפה
+            </span>
+            <button
+              onClick={() => void resolveReplacement(pendingReplacement.id, true)}
+              disabled={busy}
+              title="שחרור העובד/ת ופתיחת העמדה מחדש"
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              אישור החלפה
+            </button>
+            <button
+              onClick={() => void resolveReplacement(pendingReplacement.id, false)}
+              disabled={busy}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+              דחייה
+            </button>
+          </div>
+        )}
+      </div>
     );
   };
 
