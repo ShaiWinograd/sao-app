@@ -129,6 +129,7 @@ export default function WorkersPage() {
   const [editEffectiveFrom, setEditEffectiveFrom] = useState(firstDayOfNextMonthDateKey());
   const [linkEmail, setLinkEmail] = useState('');
   const [linkMsg, setLinkMsg] = useState<string | null>(null);
+  const [linkOk, setLinkOk] = useState<boolean | null>(null);
   const [linkBusy, setLinkBusy] = useState(false);
 
   useEffect(() => {
@@ -307,23 +308,28 @@ export default function WorkersPage() {
     if (!editingWorkerId) return;
     const email = linkEmail.trim();
     if (!isValidEmail(email)) {
+      setLinkOk(false);
       setLinkMsg('כתובת האימייל לא תקינה.');
       return;
     }
     setLinkBusy(true);
     setLinkMsg(null);
+    setLinkOk(null);
     try {
       const res = await api.post<{ linked: boolean; pendingFirstLogin?: boolean }>(
         `/workers/${editingWorkerId}/link-login`,
         { email },
       );
+      setLinkOk(true);
       setLinkMsg(
         res.data.linked
           ? 'החשבון קושר בהצלחה. המשתמשת תתחבר כעובדת.'
           : 'אין עדיין חשבון עם אימייל זה — הקישור יתבצע אוטומטית בהתחברות הראשונה.',
       );
+      void loadData();
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
+      setLinkOk(false);
       setLinkMsg(status === 409 ? 'האימייל כבר משויך לעובדת אחרת.' : 'הקישור נכשל. נסי שוב.');
     } finally {
       setLinkBusy(false);
@@ -624,10 +630,18 @@ export default function WorkersPage() {
                     disabled={linkBusy}
                     className="rounded-lg border border-primary-200 text-primary-700 px-3 py-2 text-xs font-medium hover:bg-primary-50 disabled:opacity-50 whitespace-nowrap"
                   >
-                    קישור
+                    {linkBusy ? 'מקשר…' : 'קישור'}
                   </button>
                 </div>
-                {linkMsg && <p className="text-[11px] text-gray-600">{linkMsg}</p>}
+                {linkMsg && (
+                  <p
+                    className={`rounded-md px-2.5 py-1.5 text-[11px] ${
+                      linkOk ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                    }`}
+                  >
+                    {linkMsg}
+                  </p>
+                )}
               </div>
               <button
                 type="button"
