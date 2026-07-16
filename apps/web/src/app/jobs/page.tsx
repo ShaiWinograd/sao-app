@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
-import { ChevronLeft, ChevronRight, Loader2, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Plus, Repeat } from 'lucide-react';
 import { api, authHeaders } from '../../lib/api';
 
 type ApiJob = {
@@ -126,6 +126,13 @@ export default function JobsPage() {
           <p className="text-sm text-gray-600 mt-1">כל העבודות המתוזמנות, לפי תאריך וסוג. עבודות נוצרות מתוך פרויקט.</p>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href="/shifts/swaps"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <Repeat className="w-3.5 h-3.5" />
+            החלפות משמרות
+          </Link>
           <Link
             href="/cases/new"
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700"
