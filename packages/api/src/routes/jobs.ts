@@ -148,7 +148,7 @@ export async function jobsRoutes(app: FastifyInstance) {
         address: true,
         customer: true,
         slots: true,
-        shifts: { include: { worker: true } },
+        shifts: { include: { worker: true, replacementRequests: { where: { status: 'PENDING' } } } },
         formTemplate: { include: { questions: { orderBy: { order: 'asc' } } } },
       },
     });
@@ -156,10 +156,11 @@ export async function jobsRoutes(app: FastifyInstance) {
 
     // Strip sensitive data for workers
     if (user.role === UserRole.WORKER) {
-      const { customer, ...rest } = job as any;
+      const { customer, shifts, ...rest } = job as any;
       return {
         ...rest,
         customer: { firstName: customer.firstName, lastName: customer.lastName },
+        shifts: (shifts ?? []).map(({ replacementRequests, ...shift }: any) => shift),
       };
     }
     return job;

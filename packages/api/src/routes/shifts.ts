@@ -248,4 +248,48 @@ export async function shiftsRoutes(app: FastifyInstance) {
     reply.status(204);
     return null;
   });
+
+  // Owner/admin: approve or reject a worker's replacement request.
+  // Approve → release the worker and reopen the position; reject → keep them.
+  app.post('/replacement/:requestId/resolve', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { requestId } = req.params as { requestId: string };
+    const { approved, note } = req.body as { approved: boolean; note?: string };
+
+    const request = await prisma.replacementRequest.findUnique({
+      where: { id: requestId },
+      include: { shift: { include: { job: true } }, requestedByWorker: true },
+    });
+    if (!request) return reply.status(404).send({ error: 'Request not found' });
+    if (request.status !== 'PENDING') return reply.status(409).send({ error: 'Request already resolved' });
+    if (approved && request.shift.attendanceStatus !== 'SCHEDULED') {
+      return reply.status(409).send({ error: 'Cannot release a shift that already started' });
+    }
+
+    const dateKey = request.shift.job.date.toISOString().slice(0, 10);
+
+    if (approved) {
+      // Release the original worker; the position reopens for restaffing.
+      await prisma.replacementRequest.deleteMany({ where: { shiftId: request.shiftId } });
+      await prisma.shift.delete({ where: { id: request.shiftId } });
+    } else {
+      await prisma.replacementRequest.update({
+        where: { id: requestId },
+        data: { status: 'REJECTED', adminNote: note ?? null, resolvedAt: new Date() },
+      });
+      await prisma.shift.update({ where: { id: request.shiftId }, data: { replacementStatus: 'NONE' } });
+    }
+
+    await prisma.notification.create({
+      data: {
+        userId: request.requestedByWorker.userId,
+        title: approved ? 'בקשת ההחלפה אושרה' : 'בקשת ההחלפה נדחתה',
+        body: approved
+          ? `שוחררת מהמשמרת בתאריך ${dateKey}.`
+          : `בקשתך להחלפה במשמרת בתאריך ${dateKey} נדחתה. את/ה עדיין משובץ/ת.`,
+        data: { type: 'REPLACEMENT_DECISION', shiftId: request.shiftId, approved } as any,
+      },
+    });
+
+    return { success: true };
+  });
 }
