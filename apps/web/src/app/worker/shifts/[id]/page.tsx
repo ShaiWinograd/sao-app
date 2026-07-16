@@ -313,12 +313,19 @@ export default function WorkerShiftDetailPage() {
   const att = attendanceBadge(shift.attendanceStatus);
   const missingForm = missingFormBadge(shift);
   const address = shift.job.address?.fullAddress ?? '';
+  const isCancelled = shift.job.status === 'CANCELLED';
   const mapsHref = address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : null;
   const phone = shift.job.customer?.phone;
 
   return (
     <div className="max-w-2xl space-y-4">
       <BackLink />
+
+      {isCancelled && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+          העבודה בוטלה. אינך משובץ/ת אליה יותר ואין צורך בפעולה נוספת.
+        </div>
+      )}
 
       <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
         <div className="flex items-center justify-between gap-2">
@@ -410,7 +417,7 @@ export default function WorkerShiftDetailPage() {
       )}
 
       {/* Attendance + end-of-shift form */}
-      {shift.joinRequestStatus === 'APPROVED' && (
+      {shift.joinRequestStatus === 'APPROVED' && !isCancelled && (
         <AttendancePanel
           shift={shift}
           busy={busy}
@@ -436,7 +443,7 @@ export default function WorkerShiftDetailPage() {
       )}
 
       {/* Drop / replacement request (only before the shift starts) */}
-      {shift.joinRequestStatus === 'APPROVED' && shift.attendanceStatus === 'SCHEDULED' && (
+      {shift.joinRequestStatus === 'APPROVED' && shift.attendanceStatus === 'SCHEDULED' && !isCancelled && (
         <DropReplacementPanel
           pending={pendingReplacement}
           within48={new Date(shift.scheduledStart).getTime() - Date.now() < 48 * 3600 * 1000}
@@ -452,7 +459,7 @@ export default function WorkerShiftDetailPage() {
       )}
 
       {/* Two-way swap proposal (before the shift starts) */}
-      {shift.joinRequestStatus === 'APPROVED' && shift.attendanceStatus === 'SCHEDULED' && colleagues.length > 0 && (
+      {shift.joinRequestStatus === 'APPROVED' && shift.attendanceStatus === 'SCHEDULED' && !isCancelled && colleagues.length > 0 && (
         <SwapProposePanel
           colleagues={colleagues}
           colleagueId={swapColleagueId}

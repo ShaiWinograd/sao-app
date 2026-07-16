@@ -54,7 +54,7 @@ export default function WorkerCalendarPage() {
       try {
         const auth = await authHeaders(getToken);
         const res = await api.get<WorkerShift[]>('/shifts/mine', auth);
-        setShifts((res.data ?? []).filter((s) => isActiveShift(s.joinRequestStatus)));
+        setShifts((res.data ?? []).filter((s) => isActiveShift(s.joinRequestStatus) && s.job.status !== 'CANCELLED'));
       } catch {
         setShifts([]);
       } finally {
