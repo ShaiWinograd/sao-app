@@ -29,6 +29,9 @@ export type WorkerShift = {
   attendanceStatus: string;
   joinRequestStatus: string;
   formStatus: string;
+  actualStart?: string | null;
+  actualEnd?: string | null;
+  approvedHours?: number | string | null;
   job: WorkerJob;
 };
 
@@ -74,6 +77,32 @@ export function dateKey(iso: string | undefined | null): string {
   if (!iso) return '';
   const d = new Date(iso);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Full date (day.month.year) for history/detail headers.
+export function formatFullDate(iso?: string | null): string {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  } catch {
+    return '';
+  }
+}
+
+// Approved payable duration in Hebrew, e.g. "5 שעות ו-19 דקות".
+export function formatDuration(hours?: number | string | null): string {
+  const h = Number(hours);
+  if (!h || Number.isNaN(h)) return '—';
+  const totalMin = Math.round(h * 60);
+  const hh = Math.floor(totalMin / 60);
+  const mm = totalMin % 60;
+  if (hh && mm) return `${hh} שעות ו-${mm} דקות`;
+  if (hh) return `${hh} שעות`;
+  return `${mm} דקות`;
+}
+
+export function formStatusLabel(status: string): string {
+  return status === 'SUBMITTED' ? 'הוגש' : status === 'WAIVED' ? 'לא נדרש' : 'לא הוגש';
 }
 
 // Open positions on a job = required workers minus non-rejected/cancelled shifts.
