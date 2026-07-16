@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
-import { ChevronRight, ChevronLeft, CalendarDays, Clock, Wallet, CheckCircle2, MessageSquareWarning } from 'lucide-react';
+import { ChevronRight, ChevronLeft, CalendarDays, Clock, Wallet, CheckCircle2, MessageSquareWarning, MessageSquarePlus, Trash2 } from 'lucide-react';
 import { api, authHeaders } from '../../../lib/api';
 
 type EarningsLine = { shiftId: string; date: string; customerName: string; approvedHours: number; pay: number };
 type Adjustment = { id: string; amount: number; reason: string; category: string };
 type Payment = { id: string; amount: number; paymentDate: string; method: string };
 type Approval = { status: string; note: string | null; resolvedAt: string | null };
+type ReportNote = { id: string; shiftId: string | null; type: string; message: string; createdAt: string };
 type Earnings = {
   month: number;
   year: number;
@@ -16,6 +17,7 @@ type Earnings = {
   adjustments: Adjustment[];
   payments: Payment[];
   approval: Approval;
+  notes: ReportNote[];
   summary: {
     shiftsCount: number;
     totalApprovedHours: number;
@@ -66,6 +68,7 @@ export default function WorkerReportsPage() {
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [disputeNote, setDisputeNote] = useState('');
   const [approvalBusy, setApprovalBusy] = useState(false);
+  const [noteBusy, setNoteBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -120,6 +123,35 @@ export default function WorkerReportsPage() {
     const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     return first >= thisMonth;
   }, [month, year, now]);
+
+  const addNote = useCallback(
+    async (type: 'COMMENT' | 'MISSING_SHIFT', message: string, shiftId?: string) => {
+      setNoteBusy(true);
+      try {
+        const auth = await authHeaders(getToken);
+        await api.post('/payroll/me/notes', { month, year, type, message, shiftId }, auth);
+        await load();
+      } catch {
+        /* surfaced by reload */
+      } finally {
+        setNoteBusy(false);
+      }
+    },
+    [getToken, month, year, load],
+  );
+
+  const removeNote = useCallback(
+    async (id: string) => {
+      try {
+        const auth = await authHeaders(getToken);
+        await api.delete(`/payroll/me/notes/${id}`, auth);
+        await load();
+      } catch {
+        /* surfaced by reload */
+      }
+    },
+    [getToken, load],
+  );
 
   return (
     <div className="space-y-4 max-w-2xl">
@@ -237,6 +269,15 @@ export default function WorkerReportsPage() {
               </div>
             </section>
           )}
+
+          {/* Comments & missing-shift reports */}
+          <NotesSection
+            notes={data.notes}
+            shifts={data.shifts}
+            busy={noteBusy}
+            onAdd={addNote}
+            onDelete={removeNote}
+          />
         </>
       )}
     </div>
@@ -350,5 +391,134 @@ function ApprovalCard({
         </div>
       )}
     </div>
+  );
+}
+
+function NotesSection({
+  notes,
+  shifts,
+  busy,
+  onAdd,
+  onDelete,
+}: {
+  notes: ReportNote[];
+  shifts: EarningsLine[];
+  busy: boolean;
+  onAdd: (type: 'COMMENT' | 'MISSING_SHIFT', message: string, shiftId?: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [commentShiftId, setCommentShiftId] = useState('');
+  const [commentText, setCommentText] = useState('');
+  const [missingText, setMissingText] = useState('');
+
+  const shiftLabel = (id: string | null) => {
+    if (!id) return null;
+    const s = shifts.find((x) => x.shiftId === id);
+    return s ? `${fmtDate(s.date)} · ${s.customerName || 'לקוח/ה'}` : null;
+  };
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-sm font-semibold text-gray-900">הערות ודיווחים</h2>
+
+      {notes.length > 0 && (
+        <div className="space-y-2">
+          {notes.map((n) => (
+            <div key={n.id} className="flex items-start justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+              <div>
+                <p className="flex items-center gap-1.5 text-[11px] font-medium text-gray-500">
+                  {n.type === 'MISSING_SHIFT' ? (
+                    <>
+                      <MessageSquareWarning className="w-3.5 h-3.5 text-amber-500" /> דיווח על משמרת חסרה
+                    </>
+                  ) : (
+                    <>
+                      <MessageSquarePlus className="w-3.5 h-3.5 text-primary-500" /> הערה{shiftLabel(n.shiftId) ? ` · ${shiftLabel(n.shiftId)}` : ''}
+                    </>
+                  )}
+                </p>
+                <p className="mt-0.5 text-sm text-gray-800">{n.message}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onDelete(n.id)}
+                aria-label="מחיקה"
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-rose-50 hover:text-rose-600"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add a comment on a shift */}
+      <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-2">
+        <p className="text-xs font-semibold text-gray-700">הוספת הערה על משמרת</p>
+        {shifts.length === 0 ? (
+          <p className="text-xs text-gray-400">אין משמרות בחודש זה.</p>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={commentShiftId}
+                onChange={(e) => setCommentShiftId(e.target.value)}
+                className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
+              >
+                <option value="">בחירת משמרת…</option>
+                {shifts.map((s) => (
+                  <option key={s.shiftId} value={s.shiftId}>
+                    {fmtDate(s.date)} · {s.customerName || 'לקוח/ה'}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <textarea
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              rows={2}
+              placeholder="ההערה שלך"
+              className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                onAdd('COMMENT', commentText.trim(), commentShiftId || undefined);
+                setCommentText('');
+                setCommentShiftId('');
+              }}
+              disabled={busy || !commentShiftId || !commentText.trim()}
+              className="rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+            >
+              הוספת הערה
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Report a missing shift */}
+      <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-2">
+        <p className="text-xs font-semibold text-gray-700">דיווח על משמרת חסרה</p>
+        <p className="text-[11px] text-gray-500">עבדת ביום שלא מופיע בדוח? כתבי את התאריך והפרטים.</p>
+        <textarea
+          value={missingText}
+          onChange={(e) => setMissingText(e.target.value)}
+          rows={2}
+          placeholder="למשל: עבדתי ב-12.8 אצל משפחת כהן ולא מופיע"
+          className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        />
+        <button
+          type="button"
+          onClick={() => {
+            onAdd('MISSING_SHIFT', missingText.trim());
+            setMissingText('');
+          }}
+          disabled={busy || !missingText.trim()}
+          className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+        >
+          שליחת דיווח
+        </button>
+      </div>
+    </section>
   );
 }

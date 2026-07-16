@@ -325,6 +325,15 @@ export const WorkerReportApprovalSchema = z
     message: 'A note is required when requesting changes',
   });
 
+// Worker feedback on a monthly report: a job comment, or a missing-shift report.
+export const WorkerReportNoteSchema = z.object({
+  month: z.number().int().min(1).max(12),
+  year: z.number().int().min(2020).max(2100),
+  shiftId: z.string().optional(),
+  type: z.enum(['COMMENT', 'MISSING_SHIFT']),
+  message: z.string().min(1).max(1000),
+});
+
 // ─── End-of-Shift Form ────────────────────────────────────────────────────────
 
 export const FormAnswerSchema = z.object({
