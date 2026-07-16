@@ -22,7 +22,7 @@ export default function SignUpPage() {
           <SignUp
             routing="path"
             path="/sign-up"
-            forceRedirectUrl="/jobs?view=shifts&range=week"
+            forceRedirectUrl="/"
             appearance={{
               elements: {
                 rootBox: 'w-full',
