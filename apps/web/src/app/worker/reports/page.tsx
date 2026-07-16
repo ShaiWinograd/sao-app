@@ -2,18 +2,20 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
-import { ChevronRight, ChevronLeft, CalendarDays, Clock, Wallet } from 'lucide-react';
+import { ChevronRight, ChevronLeft, CalendarDays, Clock, Wallet, CheckCircle2, MessageSquareWarning } from 'lucide-react';
 import { api, authHeaders } from '../../../lib/api';
 
 type EarningsLine = { shiftId: string; date: string; customerName: string; approvedHours: number; pay: number };
 type Adjustment = { id: string; amount: number; reason: string; category: string };
 type Payment = { id: string; amount: number; paymentDate: string; method: string };
+type Approval = { status: string; note: string | null; resolvedAt: string | null };
 type Earnings = {
   month: number;
   year: number;
   shifts: EarningsLine[];
   adjustments: Adjustment[];
   payments: Payment[];
+  approval: Approval;
   summary: {
     shiftsCount: number;
     totalApprovedHours: number;
@@ -61,6 +63,9 @@ export default function WorkerReportsPage() {
   const [data, setData] = useState<Earnings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [disputeOpen, setDisputeOpen] = useState(false);
+  const [disputeNote, setDisputeNote] = useState('');
+  const [approvalBusy, setApprovalBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -83,11 +88,31 @@ export default function WorkerReportsPage() {
   const step = useCallback(
     (delta: number) => {
       setData(null);
+      setDisputeOpen(false);
+      setDisputeNote('');
       const next = new Date(year, month - 1 + delta, 1);
       setMonth(next.getMonth() + 1);
       setYear(next.getFullYear());
     },
     [month, year],
+  );
+
+  const submitApproval = useCallback(
+    async (action: 'APPROVE' | 'REQUEST_CHANGES', note?: string) => {
+      setApprovalBusy(true);
+      try {
+        const auth = await authHeaders(getToken);
+        await api.post('/payroll/me/approval', { month, year, action, note }, auth);
+        setDisputeOpen(false);
+        setDisputeNote('');
+        await load();
+      } catch {
+        /* surfaced by reload */
+      } finally {
+        setApprovalBusy(false);
+      }
+    },
+    [getToken, month, year, load],
   );
 
   const isCurrentOrFuture = useMemo(() => {
@@ -148,6 +173,20 @@ export default function WorkerReportsPage() {
               <Stat label="יתרה לתשלום" value={ils(data.summary.outstanding)} strong />
             </div>
           </div>
+
+          {/* Report approval */}
+          {data.summary.shiftsCount > 0 && (
+            <ApprovalCard
+              approval={data.approval}
+              busy={approvalBusy}
+              disputeOpen={disputeOpen}
+              disputeNote={disputeNote}
+              setDisputeOpen={setDisputeOpen}
+              setDisputeNote={setDisputeNote}
+              onApprove={() => void submitApproval('APPROVE')}
+              onRequestChanges={() => void submitApproval('REQUEST_CHANGES', disputeNote.trim())}
+            />
+          )}
 
           {/* Shifts */}
           <section>
@@ -212,6 +251,104 @@ function Stat({ label, value, icon, strong }: { label: string; value: string; ic
         {label}
       </p>
       <p className={`mt-0.5 ${strong ? 'text-base font-bold text-gray-900' : 'text-sm font-medium text-gray-800'}`}>{value}</p>
+    </div>
+  );
+}
+
+function ApprovalCard({
+  approval,
+  busy,
+  disputeOpen,
+  disputeNote,
+  setDisputeOpen,
+  setDisputeNote,
+  onApprove,
+  onRequestChanges,
+}: {
+  approval: Approval;
+  busy: boolean;
+  disputeOpen: boolean;
+  disputeNote: string;
+  setDisputeOpen: (v: boolean) => void;
+  setDisputeNote: (v: string) => void;
+  onApprove: () => void;
+  onRequestChanges: () => void;
+}) {
+  if (approval.status === 'APPROVED') {
+    return (
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+        <p className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
+          <CheckCircle2 className="w-4 h-4" />
+          אישרת את הדוח החודשי
+        </p>
+        <p className="mt-1 text-xs text-emerald-700">אם יבוצע תיקון בדוח, האישור יתאפס ותתבקשי לאשר מחדש.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+      <div>
+        <h2 className="text-sm font-semibold text-gray-900">אישור הדוח החודשי</h2>
+        <p className="text-xs text-gray-500 mt-0.5">בדקי את הנתונים ואשרי, או בקשי תיקון.</p>
+      </div>
+      {approval.status === 'CHANGES_REQUESTED' && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+          <p className="flex items-center gap-1.5 text-xs font-medium text-amber-800">
+            <MessageSquareWarning className="w-3.5 h-3.5" />
+            ביקשת תיקון — ממתין לטיפול בעל/ת העסק
+          </p>
+          {approval.note && <p className="mt-1 text-xs text-amber-700">{approval.note}</p>}
+        </div>
+      )}
+      {disputeOpen ? (
+        <div className="space-y-2">
+          <textarea
+            value={disputeNote}
+            onChange={(e) => setDisputeNote(e.target.value)}
+            rows={3}
+            placeholder="מה צריך לתקן בדוח?"
+            className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onRequestChanges}
+              disabled={busy || !disputeNote.trim()}
+              className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+            >
+              שליחת בקשת תיקון
+            </button>
+            <button
+              type="button"
+              onClick={() => setDisputeOpen(false)}
+              disabled={busy}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
+            >
+              ביטול
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onApprove}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            אישור הדוח
+          </button>
+          <button
+            type="button"
+            onClick={() => setDisputeOpen(true)}
+            disabled={busy}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          >
+            בקשת תיקון
+          </button>
+        </div>
+      )}
     </div>
   );
 }

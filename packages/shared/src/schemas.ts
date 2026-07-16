@@ -307,6 +307,18 @@ export const WorkerReplacementRequestSchema = z.object({
   reason: z.string().min(1).max(300),
 });
 
+// Worker signs off on (or disputes) their published monthly report.
+export const WorkerReportApprovalSchema = z
+  .object({
+    month: z.number().int().min(1).max(12),
+    year: z.number().int().min(2020).max(2100),
+    action: z.enum(['APPROVE', 'REQUEST_CHANGES']),
+    note: z.string().max(500).optional(),
+  })
+  .refine((v) => v.action !== 'REQUEST_CHANGES' || Boolean(v.note && v.note.trim()), {
+    message: 'A note is required when requesting changes',
+  });
+
 // ─── End-of-Shift Form ────────────────────────────────────────────────────────
 
 export const FormAnswerSchema = z.object({

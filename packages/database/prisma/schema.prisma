@@ -143,6 +143,13 @@ enum ReplacementStatus {
   REJECTED
 }
 
+// A worker's sign-off on their published monthly report (worker_web_spec §Reports).
+enum ReportApprovalStatus {
+  PENDING
+  APPROVED
+  CHANGES_REQUESTED
+}
+
 enum InvoiceStatus {
   NOT_INVOICED
   DRAFT
@@ -306,6 +313,7 @@ model Worker {
   replacementRequests ReplacementRequest[] @relation("ReplacementOriginal")
   suggestedReplacements ReplacementRequest[] @relation("ReplacementSuggested")
   approvedReplacements ReplacementRequest[] @relation("ReplacementApproved")
+  reportApprovals     WorkerReportApproval[]
 
   @@map("workers")
 }
@@ -732,6 +740,25 @@ model WorkerPayment {
   worker      Worker             @relation(fields: [workerId], references: [id])
 
   @@map("worker_payments")
+}
+
+// ─── Worker Report Approval ───────────────────────────────────────────────────
+
+model WorkerReportApproval {
+  id         String               @id @default(cuid())
+  workerId   String
+  month      Int
+  year       Int
+  status     ReportApprovalStatus @default(PENDING)
+  note       String?
+  resolvedAt DateTime?
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+
+  worker     Worker               @relation(fields: [workerId], references: [id])
+
+  @@unique([workerId, month, year])
+  @@map("worker_report_approvals")
 }
 
 // ─── Job Expense ──────────────────────────────────────────────────────────────

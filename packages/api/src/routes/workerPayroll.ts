@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireOwner, requireAnyRole } from '../middleware/auth.js';
-import { WorkerAdjustmentSchema, WorkerPaymentSchema } from '@workforce/shared';
+import { WorkerAdjustmentSchema, WorkerPaymentSchema, WorkerReportApprovalSchema } from '@workforce/shared';
 import { UserRole } from '@workforce/shared';
 import { money, round2 } from '../lib/money.js';
 
@@ -72,12 +72,19 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
     const totalDue = hourlyPay + dailyPay + adjustmentTotal;
     const totalPaid = payments.reduce((s: number, p: any) => s + money(p.amount), 0);
 
+    const approval = await prisma.workerReportApproval.findUnique({
+      where: { workerId_month_year: { workerId: worker.id, month: m, year: y } },
+    });
+
     return {
       month: m,
       year: y,
       shifts: lines,
       adjustments: adjustments.map((a) => ({ id: a.id, amount: round2(money(a.amount)), reason: a.reason, category: a.category })),
       payments: payments.map((p) => ({ id: p.id, amount: round2(money(p.amount)), paymentDate: p.paymentDate, method: p.method })),
+      approval: approval
+        ? { status: approval.status, note: approval.note, resolvedAt: approval.resolvedAt }
+        : { status: 'PENDING', note: null, resolvedAt: null },
       summary: {
         shiftsCount: shifts.length,
         totalApprovedHours: round2(totalHours),
@@ -90,6 +97,41 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
         status: totalPaid >= totalDue ? 'PAID' : totalPaid > 0 ? 'PARTIALLY_PAID' : 'NOT_PREPARED',
       },
     };
+  });
+
+  // Worker: approve or request changes on their own monthly report.
+  app.post('/me/approval', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!worker) return reply.status(404).send({ error: 'Worker profile not found' });
+
+    const body = WorkerReportApprovalSchema.parse(req.body);
+    const status = body.action === 'APPROVE' ? 'APPROVED' : 'CHANGES_REQUESTED';
+
+    const approval = await prisma.workerReportApproval.upsert({
+      where: { workerId_month_year: { workerId: worker.id, month: body.month, year: body.year } },
+      update: { status, note: body.note ?? null, resolvedAt: new Date() },
+      create: { workerId: worker.id, month: body.month, year: body.year, status, note: body.note ?? null, resolvedAt: new Date() },
+    });
+
+    if (status === 'CHANGES_REQUESTED') {
+      const owners = await prisma.user.findMany({
+        where: { role: { in: [UserRole.OWNER, UserRole.ADMIN] }, isActive: true },
+        select: { id: true },
+      });
+      if (owners.length) {
+        await prisma.notification.createMany({
+          data: owners.map((o) => ({
+            userId: o.id,
+            title: 'בקשת תיקון לדוח חודשי',
+            body: `${worker.firstName} ${worker.lastName} ביקש/ה תיקון לדוח ${body.month}/${body.year}.`,
+            data: { type: 'REPORT_CHANGES_REQUESTED', workerId: worker.id, month: body.month, year: body.year } as any,
+          })),
+        });
+      }
+    }
+
+    return { status: approval.status, note: approval.note, resolvedAt: approval.resolvedAt };
   });
 
   app.get('/worker/:workerId', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
@@ -149,6 +191,11 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
     const body = WorkerAdjustmentSchema.parse(req.body);
     await ensureMonthOpenOrOwner(body.payrollMonth, body.payrollYear, user.role);
     const adjustment = await prisma.workerAdjustment.create({ data: body as any });
+    // A correction returns the worker's report to an unapproved state.
+    await prisma.workerReportApproval.updateMany({
+      where: { workerId: body.workerId, month: body.payrollMonth, year: body.payrollYear, status: { not: 'PENDING' } },
+      data: { status: 'PENDING', note: null, resolvedAt: null },
+    });
     const auditUser = await resolveAuditUser(user.id);
     if (auditUser) {
       await prisma.auditLog.create({
@@ -172,6 +219,11 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
     const body = WorkerPaymentSchema.parse(req.body);
     await ensureMonthOpenOrOwner(body.month, body.year, user.role);
     const payment = await prisma.workerPayment.create({ data: { ...body, paymentDate: new Date(body.paymentDate) } });
+    // A correction returns the worker's report to an unapproved state.
+    await prisma.workerReportApproval.updateMany({
+      where: { workerId: body.workerId, month: body.month, year: body.year, status: { not: 'PENDING' } },
+      data: { status: 'PENDING', note: null, resolvedAt: null },
+    });
     const auditUser = await resolveAuditUser(user.id);
     if (auditUser) {
       await prisma.auditLog.create({
