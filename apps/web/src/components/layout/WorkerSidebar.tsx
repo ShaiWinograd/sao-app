@@ -25,7 +25,7 @@ export default function WorkerSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-56 bg-white border-l border-gray-200 flex flex-col h-screen overflow-hidden shadow-sm">
+    <aside className="w-56 bg-white border-l border-gray-200 flex flex-col h-screen overflow-hidden shadow-sm no-print">
       {/* Logo */}
       <div className="px-4 py-4 border-b border-gray-100">
         <div className="flex items-center gap-3">

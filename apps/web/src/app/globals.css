@@ -149,3 +149,24 @@ input[type='radio']:disabled {
   cursor: not-allowed;
 }
 
+/* Print: hide app chrome so a report can be saved as a clean PDF. */
+@media print {
+  body {
+    background: #ffffff;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  main {
+    overflow: visible !important;
+    border: 0 !important;
+  }
+}
+.print-only {
+  display: none;
+}
+
+

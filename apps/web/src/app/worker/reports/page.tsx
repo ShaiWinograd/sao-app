@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
-import { ChevronRight, ChevronLeft, CalendarDays, Clock, Wallet, CheckCircle2, MessageSquareWarning, MessageSquarePlus, Trash2 } from 'lucide-react';
+import { ChevronRight, ChevronLeft, CalendarDays, Clock, Wallet, CheckCircle2, MessageSquareWarning, MessageSquarePlus, Trash2, Download } from 'lucide-react';
 import { api, authHeaders } from '../../../lib/api';
 
 type EarningsLine = { shiftId: string; date: string; customerName: string; approvedHours: number; pay: number };
@@ -155,10 +155,27 @@ export default function WorkerReportsPage() {
 
   return (
     <div className="space-y-4 max-w-2xl">
-      <h1 className="text-xl font-bold text-gray-900">הדוחות שלי</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold text-gray-900">הדוחות שלי</h1>
+        {data && !loading && !error && (
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="no-print inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <Download className="w-3.5 h-3.5" />
+            הורדת PDF
+          </button>
+        )}
+      </div>
+
+      {/* Print-only report header */}
+      <div className="print-only">
+        <p className="text-lg font-bold text-gray-900">דוח חודשי · {MONTHS[month - 1]} {year}</p>
+      </div>
 
       {/* Month navigation */}
-      <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2">
+      <div className="no-print flex items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2">
         <button type="button" onClick={() => step(-1)} aria-label="חודש קודם" className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-50">
           <ChevronRight className="w-4 h-4" />
         </button>
@@ -208,16 +225,18 @@ export default function WorkerReportsPage() {
 
           {/* Report approval */}
           {data.summary.shiftsCount > 0 && (
-            <ApprovalCard
-              approval={data.approval}
-              busy={approvalBusy}
-              disputeOpen={disputeOpen}
-              disputeNote={disputeNote}
-              setDisputeOpen={setDisputeOpen}
-              setDisputeNote={setDisputeNote}
-              onApprove={() => void submitApproval('APPROVE')}
-              onRequestChanges={() => void submitApproval('REQUEST_CHANGES', disputeNote.trim())}
-            />
+            <div className="no-print">
+              <ApprovalCard
+                approval={data.approval}
+                busy={approvalBusy}
+                disputeOpen={disputeOpen}
+                disputeNote={disputeNote}
+                setDisputeOpen={setDisputeOpen}
+                setDisputeNote={setDisputeNote}
+                onApprove={() => void submitApproval('APPROVE')}
+                onRequestChanges={() => void submitApproval('REQUEST_CHANGES', disputeNote.trim())}
+              />
+            </div>
           )}
 
           {/* Shifts */}
@@ -271,13 +290,15 @@ export default function WorkerReportsPage() {
           )}
 
           {/* Comments & missing-shift reports */}
-          <NotesSection
-            notes={data.notes}
-            shifts={data.shifts}
-            busy={noteBusy}
-            onAdd={addNote}
-            onDelete={removeNote}
-          />
+          <div className="no-print">
+            <NotesSection
+              notes={data.notes}
+              shifts={data.shifts}
+              busy={noteBusy}
+              onAdd={addNote}
+              onDelete={removeNote}
+            />
+          </div>
         </>
       )}
     </div>
