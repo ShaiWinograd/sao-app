@@ -220,8 +220,18 @@ export async function shiftsRoutes(app: FastifyInstance) {
     const existing = await prisma.replacementRequest.findFirst({ where: { shiftId: id, status: 'PENDING' } });
     if (existing) return reply.status(409).send({ error: 'A replacement request is already pending for this shift' });
 
+    // Optional specific-worker suggestion (must be a different active worker).
+    let suggestedWorkerId: string | null = null;
+    if (body.suggestedWorkerId && body.suggestedWorkerId !== worker.id) {
+      const suggested = await prisma.worker.findFirst({
+        where: { id: body.suggestedWorkerId, isActive: true },
+        select: { id: true, userId: true },
+      });
+      if (suggested) suggestedWorkerId = suggested.id;
+    }
+
     const request = await prisma.replacementRequest.create({
-      data: { shiftId: id, requestedByWorkerId: worker.id, reason: body.reason, status: 'PENDING' },
+      data: { shiftId: id, requestedByWorkerId: worker.id, reason: body.reason, suggestedWorkerId, status: 'PENDING' },
     });
     await prisma.shift.update({ where: { id }, data: { replacementStatus: 'PENDING' } });
 
@@ -255,6 +265,21 @@ export async function shiftsRoutes(app: FastifyInstance) {
           data: { type: 'REPLACEMENT_OPEN', shiftId: id, requestId: request.id } as any,
         })),
       });
+    }
+
+    // Extra targeted nudge for a specifically-suggested colleague.
+    if (suggestedWorkerId) {
+      const suggested = await prisma.worker.findUnique({ where: { id: suggestedWorkerId }, select: { userId: true } });
+      if (suggested) {
+        await prisma.notification.create({
+          data: {
+            userId: suggested.userId,
+            title: 'הוצעת להחלפת משמרת',
+            body: `${worker.firstName} ${worker.lastName} הציע/ה אותך להחלפה במשמרת בתאריך ${dateKey}. אפשר להתנדב מתוך "עבודות פתוחות".`,
+            data: { type: 'REPLACEMENT_SUGGESTED', shiftId: id, requestId: request.id } as any,
+          },
+        });
+      }
     }
 
     reply.status(201);
@@ -339,6 +364,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
         customerName: `${r.shift.job.customer.firstName} ${r.shift.job.customer.lastName}`.trim(),
         hasVolunteered: r.volunteers.some((v) => v.workerId === worker.id),
         volunteerCount: r.volunteers.length,
+        suggestedForYou: r.suggestedWorkerId === worker.id,
       }));
   });
 

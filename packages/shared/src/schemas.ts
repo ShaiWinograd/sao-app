@@ -305,6 +305,7 @@ export const ApproveReplacementSchema = z.object({
 // Worker asks to leave / be replaced on their own shift (owner approves later).
 export const WorkerReplacementRequestSchema = z.object({
   reason: z.string().min(1).max(300),
+  suggestedWorkerId: z.string().optional(),
 });
 
 // Owner/admin invites a team member (non-worker) with an explicit role.
