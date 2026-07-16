@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
-import { CreateWorkerSchema, UpdateWorkerSchema, CreateWorkerAvailabilitySchema, UserRole, rankWorkerAvailability, findCandidateDates } from '@workforce/shared';
+import { CreateWorkerSchema, UpdateWorkerSchema, CreateWorkerAvailabilitySchema, UpdateWorkerProfileSchema, UserRole, rankWorkerAvailability, findCandidateDates } from '@workforce/shared';
 
 export async function workersRoutes(app: FastifyInstance) {
   app.get('/', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
@@ -148,6 +148,17 @@ export async function workersRoutes(app: FastifyInstance) {
     if (!worker) return reply.status(404).send({ error: 'Worker profile not found' });
     // Strip wage data
     const { hourlyWage, dailyPaymentAmount, internalNotes, ...safe } = worker;
+    return safe;
+  });
+
+  // Worker: update own contact details (phone, email, home area).
+  app.patch('/me', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!worker) return reply.status(404).send({ error: 'Worker profile not found' });
+    const body = UpdateWorkerProfileSchema.parse(req.body);
+    const updated = await prisma.worker.update({ where: { id: worker.id }, data: body });
+    const { hourlyWage, dailyPaymentAmount, internalNotes, ...safe } = updated;
     return safe;
   });
 

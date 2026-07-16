@@ -383,6 +383,15 @@ export const WorkerProfileSchema = z.object({
 export const CreateWorkerSchema = WorkerProfileSchema;
 export const UpdateWorkerSchema = WorkerProfileSchema.partial();
 
+// Fields a worker may edit on their own profile (contact details only).
+export const UpdateWorkerProfileSchema = z
+  .object({
+    phone: z.string().min(9),
+    email: z.string().email(),
+    homeArea: z.string().max(100),
+  })
+  .partial();
+
 // ─── Worker Adjustment ────────────────────────────────────────────────────────
 
 export const WorkerAdjustmentSchema = z.object({
