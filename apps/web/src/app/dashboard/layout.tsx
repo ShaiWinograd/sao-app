@@ -1,9 +1,11 @@
 import Sidebar from '@/components/layout/Sidebar';
 import QueryProvider from '@/components/layout/QueryProvider';
+import WorkerRedirectGuard from '@/components/layout/WorkerRedirectGuard';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <QueryProvider>
+      <WorkerRedirectGuard />
       <div className="flex h-screen bg-white">
         {/* Sidebar */}
         <Sidebar />

@@ -81,6 +81,12 @@ export async function authenticate(req: FastifyRequest, reply: FastifyReply) {
             await prisma.user.delete({ where: { id: orphanUserId } }).catch(() => {});
           }
         }
+        // Keep Clerk metadata in sync so the web app's role-based UI is correct.
+        if (role === UserRole.WORKER) {
+          await clerk.users
+            .updateUserMetadata(dbUser.id, { publicMetadata: { role: UserRole.WORKER } })
+            .catch(() => undefined);
+        }
         req.log.info({ userId: payload.sub, role }, 'Auto-provisioned new user from Clerk');
       } catch (provisionErr) {
         req.log.error({ err: provisionErr }, 'Failed to auto-provision user');
