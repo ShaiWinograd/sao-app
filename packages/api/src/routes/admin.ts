@@ -1,8 +1,12 @@
 import { FastifyInstance } from 'fastify';
 import { Prisma } from '@prisma/client';
+import { createClerkClient } from '@clerk/clerk-sdk-node';
 import { prisma } from '../lib/prisma.js';
 import { deleteCaseCascade } from '../lib/deleteCase.js';
-import { UserRole } from '@workforce/shared';
+import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { UserRole, TeamInviteSchema } from '@workforce/shared';
+
+const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 
 /**
  * Demo workers seeded via the guarded seed endpoint. Each worker is backed by a
@@ -18,6 +22,35 @@ const DEMO_WORKERS = [
 ] as const;
 
 export async function adminRoutes(app: FastifyInstance) {
+  // Invite an owner/admin team member by email (no worker profile). The invited
+  // role is carried in the Clerk invitation metadata and wins over any worker
+  // match on first login. Only owners may invite owners.
+  app.post('/invite', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const caller = (req as any).user;
+    const body = TeamInviteSchema.parse(req.body);
+    if (body.role === UserRole.OWNER && caller.role !== UserRole.OWNER) {
+      return reply.status(403).send({ error: 'Only an owner can invite another owner' });
+    }
+    if (!process.env.CLERK_SECRET_KEY) {
+      return reply.status(503).send({ error: 'Invitations are not configured' });
+    }
+    try {
+      await clerk.invitations.createInvitation({
+        emailAddress: body.email.trim().toLowerCase(),
+        publicMetadata: { role: body.role },
+        redirectUrl: process.env.NEXT_PUBLIC_APP_URL
+          ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')}/sign-up`
+          : undefined,
+        ignoreExisting: true,
+      });
+      return { invited: true };
+    } catch (err) {
+      req.log.error({ err }, 'Failed to send team invitation');
+      return reply.status(400).send({ error: 'Could not send the invitation (the account may already exist).' });
+    }
+  });
+
+
   // One-shot demo data seeding. Guarded by BOOTSTRAP_SECRET: the endpoint is
   // inert unless the env var is set AND the request carries a matching
   // `x-seed-secret` header. Unset BOOTSTRAP_SECRET to disable it entirely.
