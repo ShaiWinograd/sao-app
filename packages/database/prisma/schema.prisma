@@ -150,6 +150,12 @@ enum ReportApprovalStatus {
   CHANGES_REQUESTED
 }
 
+// Worker feedback on a monthly report: a comment on a job, or a missing-shift report.
+enum ReportNoteType {
+  COMMENT
+  MISSING_SHIFT
+}
+
 enum InvoiceStatus {
   NOT_INVOICED
   DRAFT
@@ -314,6 +320,7 @@ model Worker {
   suggestedReplacements ReplacementRequest[] @relation("ReplacementSuggested")
   approvedReplacements ReplacementRequest[] @relation("ReplacementApproved")
   reportApprovals     WorkerReportApproval[]
+  reportNotes         WorkerReportNote[]
 
   @@map("workers")
 }
@@ -759,6 +766,24 @@ model WorkerReportApproval {
 
   @@unique([workerId, month, year])
   @@map("worker_report_approvals")
+}
+
+// ─── Worker Report Note ───────────────────────────────────────────────────────
+
+model WorkerReportNote {
+  id         String         @id @default(cuid())
+  workerId   String
+  month      Int
+  year       Int
+  shiftId    String?
+  type       ReportNoteType @default(COMMENT)
+  message    String
+  createdAt  DateTime       @default(now())
+
+  worker     Worker         @relation(fields: [workerId], references: [id])
+
+  @@index([workerId, month, year])
+  @@map("worker_report_notes")
 }
 
 // ─── Job Expense ──────────────────────────────────────────────────────────────

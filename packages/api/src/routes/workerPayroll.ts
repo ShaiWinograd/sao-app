@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireOwner, requireAnyRole } from '../middleware/auth.js';
-import { WorkerAdjustmentSchema, WorkerPaymentSchema, WorkerReportApprovalSchema } from '@workforce/shared';
+import { WorkerAdjustmentSchema, WorkerPaymentSchema, WorkerReportApprovalSchema, WorkerReportNoteSchema } from '@workforce/shared';
 import { UserRole } from '@workforce/shared';
 import { money, round2 } from '../lib/money.js';
 
@@ -75,6 +75,10 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
     const approval = await prisma.workerReportApproval.findUnique({
       where: { workerId_month_year: { workerId: worker.id, month: m, year: y } },
     });
+    const notes = await prisma.workerReportNote.findMany({
+      where: { workerId: worker.id, month: m, year: y },
+      orderBy: { createdAt: 'desc' },
+    });
 
     return {
       month: m,
@@ -85,6 +89,7 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
       approval: approval
         ? { status: approval.status, note: approval.note, resolvedAt: approval.resolvedAt }
         : { status: 'PENDING', note: null, resolvedAt: null },
+      notes: notes.map((n) => ({ id: n.id, shiftId: n.shiftId, type: n.type, message: n.message, createdAt: n.createdAt })),
       summary: {
         shiftsCount: shifts.length,
         totalApprovedHours: round2(totalHours),
@@ -132,6 +137,63 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
     }
 
     return { status: approval.status, note: approval.note, resolvedAt: approval.resolvedAt };
+  });
+
+  // Worker: add a comment on a job or report a missing shift for a month.
+  app.post('/me/notes', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!worker) return reply.status(404).send({ error: 'Worker profile not found' });
+
+    const body = WorkerReportNoteSchema.parse(req.body);
+    // If a shift is referenced, it must belong to this worker.
+    if (body.shiftId) {
+      const owned = await prisma.shift.findFirst({ where: { id: body.shiftId, workerId: worker.id }, select: { id: true } });
+      if (!owned) return reply.status(404).send({ error: 'Shift not found' });
+    }
+
+    const note = await prisma.workerReportNote.create({
+      data: {
+        workerId: worker.id,
+        month: body.month,
+        year: body.year,
+        shiftId: body.shiftId ?? null,
+        type: body.type,
+        message: body.message,
+      },
+    });
+
+    const owners = await prisma.user.findMany({
+      where: { role: { in: [UserRole.OWNER, UserRole.ADMIN] }, isActive: true },
+      select: { id: true },
+    });
+    if (owners.length) {
+      const title = body.type === 'MISSING_SHIFT' ? 'דיווח על משמרת חסרה' : 'הערה לדוח חודשי';
+      await prisma.notification.createMany({
+        data: owners.map((o) => ({
+          userId: o.id,
+          title,
+          body: `${worker.firstName} ${worker.lastName} · דוח ${body.month}/${body.year}: ${body.message}`,
+          data: { type: 'REPORT_NOTE', noteType: body.type, workerId: worker.id, month: body.month, year: body.year } as any,
+        })),
+      });
+    }
+
+    reply.status(201);
+    return { id: note.id, shiftId: note.shiftId, type: note.type, message: note.message, createdAt: note.createdAt };
+  });
+
+  // Worker: remove one of their own report notes.
+  app.delete('/me/notes/:id', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const { id } = req.params as { id: string };
+    const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!worker) return reply.status(404).send({ error: 'Worker profile not found' });
+    const note = await prisma.workerReportNote.findUnique({ where: { id } });
+    if (!note || note.workerId !== worker.id) return reply.status(404).send({ error: 'Not found' });
+    await prisma.workerReportNote.delete({ where: { id } });
+    reply.status(204);
+    return null;
   });
 
   app.get('/worker/:workerId', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
