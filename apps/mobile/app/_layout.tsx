@@ -1,16 +1,30 @@
 import { Slot } from 'expo-router';
 import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
 import * as SecureStore from 'expo-secure-store';
-import { I18nManager } from 'react-native';
+import { I18nManager, Text, TextInput, View, ActivityIndicator } from 'react-native';
 import { useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
+import {
+  useFonts,
+  Assistant_400Regular,
+  Assistant_500Medium,
+  Assistant_600SemiBold,
+  Assistant_700Bold,
+} from '@expo-google-fonts/assistant';
 import { setAuthTokenGetter } from '../lib/api';
+import { colors, fonts } from '../lib/theme';
 
 // Force RTL
 I18nManager.allowRTL(true);
 I18nManager.forceRTL(true);
+
+// Default every Text/TextInput to Assistant regular (matches the web font stack).
+// Bold/semibold styles set an explicit Assistant family, since RN needs a family per weight.
+const defaultTextStyle = { fontFamily: fonts.regular };
+((Text as any).defaultProps ??= {}).style = defaultTextStyle;
+((TextInput as any).defaultProps ??= {}).style = defaultTextStyle;
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -45,6 +59,21 @@ function ApiAuthBridge() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    Assistant_400Regular,
+    Assistant_500Medium,
+    Assistant_600SemiBold,
+    Assistant_700Bold,
+  });
+
+  if (!fontsLoaded) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
   return (
     <ClerkProvider
       publishableKey={process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!}

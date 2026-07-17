@@ -5,7 +5,7 @@ import { useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../lib/api';
 import { HE, formatDate } from '@workforce/shared';
-import { colors } from '../../lib/theme';
+import { colors, fonts } from '../../lib/theme';
 
 export default function HomeScreen() {
   const { user } = useUser();
@@ -85,8 +85,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20 },
   header: { marginBottom: 20 },
-  greeting: { fontSize: 26, fontWeight: '700', color: colors.text, marginBottom: 4 },
-  subGreeting: { fontSize: 15, color: colors.muted },
+  greeting: { fontSize: 20, fontFamily: fonts.bold, color: colors.text, marginBottom: 2, textAlign: 'right' },
+  subGreeting: { fontSize: 14, fontFamily: fonts.regular, color: colors.muted, textAlign: 'right' },
   stateBox: { paddingVertical: 40, alignItems: 'center' },
   emptyCard: {
     backgroundColor: colors.card, borderRadius: 16, padding: 28, alignItems: 'center',
@@ -96,16 +96,16 @@ const styles = StyleSheet.create({
     width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primaryLight,
     alignItems: 'center', justifyContent: 'center', marginBottom: 12,
   },
-  emptyTitle: { fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: 4 },
-  emptySub: { fontSize: 13, color: colors.muted, textAlign: 'center' },
+  emptyTitle: { fontSize: 16, fontFamily: fonts.semibold, color: colors.text, marginBottom: 4 },
+  emptySub: { fontSize: 13, fontFamily: fonts.regular, color: colors.muted, textAlign: 'center' },
   card: {
     backgroundColor: colors.card, borderRadius: 14, padding: 16, marginBottom: 12,
     shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
   },
   cardRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  cardType: { fontSize: 12, color: colors.primary, fontWeight: '700' },
-  cardCustomer: { fontSize: 17, fontWeight: '600', color: colors.text },
-  cardAddress: { fontSize: 13, color: colors.muted, marginTop: 2 },
+  cardType: { fontSize: 12, color: colors.primary, fontFamily: fonts.bold },
+  cardCustomer: { fontSize: 17, fontFamily: fonts.semibold, color: colors.text, textAlign: 'right' },
+  cardAddress: { fontSize: 13, color: colors.muted, marginTop: 2, textAlign: 'right' },
   cardDateRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10 },
   cardDate: { fontSize: 13, color: colors.muted },
 });

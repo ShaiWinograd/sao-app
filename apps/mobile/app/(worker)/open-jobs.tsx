@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { HE, formatDate, formatTime } from '@workforce/shared';
-import { colors, jobTypeColor, jobTypeBg } from '../../lib/theme';
+import { colors, fonts, jobTypeColor, jobTypeBg } from '../../lib/theme';
 
 type MyStatus = 'NONE' | 'APPROVED' | 'AWAITING_WORKER' | 'PENDING';
 
@@ -220,11 +220,11 @@ function BoardCard({ shift, onJoin, joining }: { shift: BoardShift; onJoin: () =
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, padding: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  title: { fontSize: 22, fontWeight: '700', color: colors.text, marginBottom: 12 },
+  title: { fontSize: 20, fontFamily: fonts.bold, color: colors.text, marginBottom: 12, textAlign: 'right' },
   filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
   filterChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
   filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  filterChipText: { fontSize: 13, color: colors.muted, fontWeight: '600' },
+  filterChipText: { fontSize: 13, color: colors.muted, fontFamily: fonts.semibold },
   filterChipTextActive: { color: colors.white },
   muted: { color: colors.muted, textAlign: 'center', marginTop: 40 },
   card: { borderRadius: 14, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2, backgroundColor: colors.card },
