@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
 import { FormSubmissionSchema } from '@workforce/shared';
 import { UserRole } from '@workforce/shared';
+import { logAudit } from '../lib/audit.js';
 
 export async function formsRoutes(app: FastifyInstance) {
   // Submit an end-of-shift form
@@ -43,6 +44,7 @@ export async function formsRoutes(app: FastifyInstance) {
       prisma.shift.update({ where: { id: body.shiftId }, data: { formStatus: 'SUBMITTED' } }),
     ]);
 
+    await logAudit((req as any).user, 'CREATE', 'FormSubmission', submission.id, null, { shiftId: body.shiftId, completionStatus: body.completionStatus }, 'form-submit');
     reply.status(201);
     return submission;
   });
@@ -80,6 +82,7 @@ export async function formsRoutes(app: FastifyInstance) {
       }),
     ]);
 
+    await logAudit(user, 'UPDATE', 'FormSubmission', submission.id, null, { completionStatus: body.completionStatus }, 'form-edit');
     return { success: true };
   });
 

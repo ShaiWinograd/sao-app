@@ -118,8 +118,8 @@ export default function AttendancePage() {
   const approveRecord = async (shiftId: string) => {
     setBusyId(shiftId);
     try {
-      await api.post('/attendance/correct', { shiftId, reason: 'אושר על ידי אדמין' });
-      setMessage('הנוכחות אושרה.');
+      const res = await api.post<{ reportWarning?: boolean }>('/attendance/correct', { shiftId, reason: 'אושר על ידי אדמין' });
+      setMessage(res.data?.reportWarning ? 'הנוכחות אושרה. שעות הנוכחות השתנו לאחר פרסום הדוח – נדרש אישור דוח מחדש.' : 'הנוכחות אושרה.');
       await loadData();
     } catch {
       setMessage('אישור הנוכחות נכשל. נסי שוב.');
@@ -131,7 +131,7 @@ export default function AttendancePage() {
   const saveCorrection = async (shiftId: string) => {
     setBusyId(shiftId);
     try {
-      await api.post('/attendance/correct', {
+      const res = await api.post<{ reportWarning?: boolean }>('/attendance/correct', {
         shiftId,
         ...(editClockIn ? { clockIn: editClockIn } : {}),
         ...(editClockOut ? { clockOut: editClockOut } : {}),
@@ -141,7 +141,7 @@ export default function AttendancePage() {
       setEditClockIn('');
       setEditClockOut('');
       setEditReason('');
-      setMessage('התיקון נשמר.');
+      setMessage(res.data?.reportWarning ? 'התיקון נשמר. שעות הנוכחות השתנו לאחר פרסום הדוח – נדרש אישור דוח מחדש.' : 'התיקון נשמר.');
       await loadData();
     } catch {
       setMessage('שמירת התיקון נכשלה. נסי שוב.');
