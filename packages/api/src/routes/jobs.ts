@@ -6,7 +6,7 @@ import { CreateJobSchema, UpdateJobSchema } from '@workforce/shared';
 import { UserRole, MANAGER_SKILL } from '@workforce/shared';
 import { validateServiceAddition } from '@workforce/shared';
 import { evaluateJobPublishReadiness } from '@workforce/shared';
-import { resolveActor } from '../lib/actor.js';
+import { logAudit } from '../lib/audit.js';
 import { z } from 'zod';
 
 const JOB_TYPE_HE: Record<string, string> = {
@@ -51,28 +51,6 @@ async function notifyAssignedWorkers(jobId: string, title: string, body: string,
   if (!userIds.length) return;
   await prisma.notification.createMany({
     data: userIds.map((userId) => ({ userId, title, body, data: { type: dataType, jobId } as any })),
-  });
-}
-
-async function logJobAudit(
-  user: { id?: string } | null,
-  action: 'CREATE' | 'UPDATE' | 'DELETE',
-  jobId: string,
-  previousValue: unknown,
-  newValue: unknown,
-  reason?: string,
-): Promise<void> {
-  const actor = await resolveActor(user);
-  await prisma.auditLog.create({
-    data: {
-      performedById: actor.id,
-      action,
-      entityType: 'Job',
-      entityId: jobId,
-      previousValue: (previousValue ?? undefined) as any,
-      newValue: (newValue ?? undefined) as any,
-      reason: reason ?? null,
-    },
   });
 }
 
@@ -312,7 +290,7 @@ export async function jobsRoutes(app: FastifyInstance) {
 
     await refreshScheduleStatus(prisma, job.caseId);
 
-    await logJobAudit((req as any).user, 'CREATE', job.id, null, { status: job.status }, publishNow ? 'created+published' : 'created');
+    await logAudit((req as any).user, 'CREATE', 'Job', job.id, null, { status: job.status }, publishNow ? 'created+published' : 'created');
     if (publishNow) await notifyJobPublished(job.id);
 
     reply.status(201);
@@ -359,7 +337,7 @@ export async function jobsRoutes(app: FastifyInstance) {
         : `בוצע עדכון קטן בפרטי העבודה בתאריך ${heDate(nextDate)}.`;
       await notifyAssignedWorkers(id, 'עדכון בפרטי העבודה', body_, 'JOB_CHANGED');
     }
-    await logJobAudit((req as any).user, 'UPDATE', id, { date: existingJob.date, plannedStart: existingJob.plannedStart, addressId: existingJob.addressId }, body, isMaterial ? 'material-change' : 'update');
+    await logAudit((req as any).user, 'UPDATE', 'Job', id, { date: existingJob.date, plannedStart: existingJob.plannedStart, addressId: existingJob.addressId }, body, isMaterial ? 'material-change' : 'update');
 
     return updated;
   });
@@ -403,7 +381,7 @@ export async function jobsRoutes(app: FastifyInstance) {
     }
 
     const published = await prisma.job.update({ where: { id }, data: { status: 'PUBLISHED' } });
-    await logJobAudit((req as any).user, 'UPDATE', id, { status: job.status }, { status: 'PUBLISHED' }, 'publish');
+    await logAudit((req as any).user, 'UPDATE', 'Job', id, { status: job.status }, { status: 'PUBLISHED' }, 'publish');
     await notifyJobPublished(id);
     return published;
   });
@@ -415,7 +393,7 @@ export async function jobsRoutes(app: FastifyInstance) {
     const cancelled = await prisma.job.update({ where: { id }, data: { status: 'CANCELLED' } });
     await refreshScheduleStatus(prisma, cancelled.caseId);
     await notifyAssignedWorkers(id, 'עבודה בוטלה', `העבודה בתאריך ${heDate(cancelled.date)} בוטלה. אינך משובץ/ת אליה יותר.`, 'JOB_CANCELLED');
-    await logJobAudit((req as any).user, 'UPDATE', id, { status: before?.status ?? null }, { status: 'CANCELLED' }, 'cancel');
+    await logAudit((req as any).user, 'UPDATE', 'Job', id, { status: before?.status ?? null }, { status: 'CANCELLED' }, 'cancel');
     return cancelled;
   });
 }
