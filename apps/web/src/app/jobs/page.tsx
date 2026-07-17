@@ -43,12 +43,56 @@ function formatTime(iso: string): string {
   }
 }
 
+type OwnerTasks = {
+  joinRequests: number;
+  replacementRequests: number;
+  swapApprovals: number;
+  missingForms: number;
+  reportCorrections: number;
+};
+
+function OwnerTasksPanel({ tasks }: { tasks: OwnerTasks }) {
+  const items: { key: keyof OwnerTasks; label: string; href?: string }[] = [
+    { key: 'joinRequests', label: 'בקשות הצטרפות' },
+    { key: 'replacementRequests', label: 'בקשות החלפה' },
+    { key: 'swapApprovals', label: 'אישורי החלפת משמרות', href: '/shifts/swaps' },
+    { key: 'missingForms', label: 'טפסים חסרים' },
+    { key: 'reportCorrections', label: 'בקשות תיקון דוח', href: '/payroll' },
+  ];
+  const active = items.filter((i) => tasks[i.key] > 0);
+  if (active.length === 0) return null;
+  return (
+    <section className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+      <h2 className="mb-2 text-sm font-semibold text-amber-900">משימות ממתינות לטיפול</h2>
+      <div className="flex flex-wrap gap-2">
+        {active.map((i) => {
+          const chip = (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-800">
+              {i.label}
+              <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
+                {tasks[i.key]}
+              </span>
+            </span>
+          );
+          return i.href ? (
+            <Link key={i.key} href={i.href} className="hover:opacity-80">
+              {chip}
+            </Link>
+          ) : (
+            <span key={i.key}>{chip}</span>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export default function JobsPage() {
   const { getToken } = useAuth();
   const [jobs, setJobs] = useState<ApiJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [pendingSwapCount, setPendingSwapCount] = useState(0);
+  const [tasks, setTasks] = useState<OwnerTasks | null>(null);
   const [monthAnchor, setMonthAnchor] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -72,15 +116,15 @@ export default function JobsPage() {
     void load();
   }, [load]);
 
-  // Count swaps awaiting the owner's final approval (spec §3 Two-way swap).
+  // Aggregated owner action items for the dashboard (integration spec §21).
   useEffect(() => {
     void (async () => {
       try {
         const auth = await authHeaders(getToken);
-        const res = await api.get<unknown[]>('/shifts/swaps/pending-owner', auth);
-        setPendingSwapCount(res.data?.length ?? 0);
+        const res = await api.get<OwnerTasks>('/admin/tasks', auth);
+        setTasks(res.data ?? null);
       } catch {
-        setPendingSwapCount(0);
+        setTasks(null);
       }
     })();
   }, [getToken]);
@@ -143,17 +187,7 @@ export default function JobsPage() {
         </div>
       </div>
 
-      {pendingSwapCount > 0 && (
-        <Link
-          href="/shifts/swaps"
-          className="flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 hover:bg-amber-100"
-        >
-          <span className="font-medium">
-            {pendingSwapCount} בקשות החלפת משמרות ממתינות לאישורך
-          </span>
-          <span className="text-xs font-semibold">לאישור ←</span>
-        </Link>
-      )}
+      {tasks && <OwnerTasksPanel tasks={tasks} />}
 
       <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
