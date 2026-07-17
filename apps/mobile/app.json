@@ -6,9 +6,11 @@
     "orientation": "portrait",
     "scheme": "workforce",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
     "splash": {
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#5E4A78"
+      "backgroundColor": "#25305C"
     },
     "ios": {
       "supportsTablet": false,
@@ -20,7 +22,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#5E4A78"
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#25305C"
       },
       "package": "com.spaceorder.workforce",
       "permissions": [
