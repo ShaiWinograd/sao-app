@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
 import { ClockInSchema, ClockOutSchema, AttendanceCorrectionSchema } from '@workforce/shared';
 import { distanceInMeters } from '@workforce/shared';
+import { logAudit } from '../lib/audit.js';
 
 export async function attendanceRoutes(app: FastifyInstance) {
   // Clock in
@@ -54,6 +55,7 @@ export async function attendanceRoutes(app: FastifyInstance) {
         isDailyPaymentEligible: true,
       },
     });
+    await logAudit((req as any).user, 'CLOCK_IN', 'Shift', body.shiftId, null, { actualStart: updated.actualStart }, 'clock-in');
     return updated;
   });
 
@@ -80,6 +82,7 @@ export async function attendanceRoutes(app: FastifyInstance) {
         approvedHours: approvedHours.toFixed(2),
       },
     });
+    await logAudit((req as any).user, 'CLOCK_OUT', 'Shift', body.shiftId, null, { actualEnd: updated.actualEnd, approvedHours: updated.approvedHours }, 'clock-out');
     return updated;
   });
 
@@ -136,7 +139,39 @@ export async function attendanceRoutes(app: FastifyInstance) {
         },
       }),
     ]);
-    return shift;
+    await logAudit(user, 'CORRECTION', 'Shift', body.shiftId, null, { clockIn: body.clockIn ?? null, clockOut: body.clockOut ?? null }, body.reason);
+
+    // If this shift's month was already signed off, the report is now stale and
+    // must be re-approved (integration spec §24).
+    let reportWarning = false;
+    const info = await prisma.shift.findUnique({
+      where: { id: body.shiftId },
+      select: { workerId: true, job: { select: { date: true } }, worker: { select: { userId: true } } },
+    });
+    if (info) {
+      const month = info.job.date.getMonth() + 1;
+      const year = info.job.date.getFullYear();
+      const approval = await prisma.workerReportApproval.findUnique({
+        where: { workerId_month_year: { workerId: info.workerId, month, year } },
+      });
+      if (approval && approval.status === 'APPROVED') {
+        await prisma.workerReportApproval.update({
+          where: { workerId_month_year: { workerId: info.workerId, month, year } },
+          data: { status: 'PENDING', resolvedAt: null },
+        });
+        reportWarning = true;
+        await prisma.notification.create({
+          data: {
+            userId: info.worker.userId,
+            title: 'הדוח החודשי עודכן',
+            body: `שעות הנוכחות בדוח לחודש ${month}/${year} עודכנו. יש לאשר את הדוח מחדש.`,
+            data: { type: 'REPORT_REVISED', month, year } as any,
+          },
+        });
+      }
+    }
+
+    return { ...shift, reportWarning };
   });
 
   // List shifts needing review

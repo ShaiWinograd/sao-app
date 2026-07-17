@@ -1,7 +1,16 @@
 import { prisma } from './prisma.js';
 import { resolveActor } from './actor.js';
 
-export type AuditActionType = 'CREATE' | 'UPDATE' | 'DELETE' | 'APPROVE' | 'REJECT';
+export type AuditActionType =
+  | 'CREATE'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'APPROVE'
+  | 'REJECT'
+  | 'CLOCK_IN'
+  | 'CLOCK_OUT'
+  | 'AUTO_CLOCK_OUT'
+  | 'CORRECTION';
 
 /**
  * Write an audit log entry attributed to the acting user (integration spec §23/§26).
