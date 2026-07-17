@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { HE, formatDate, formatTime, canRequestReplacement, requiresManagerNoteForEndShift } from '@workforce/shared';
 import * as Location from 'expo-location';
+import { colors } from '../../lib/theme';
 
 export default function ShiftsScreen() {
   const qc = useQueryClient();
@@ -94,7 +95,43 @@ export default function ShiftsScreen() {
     },
   });
 
-  const confirmed = shifts?.filter((s: any) => s.joinRequestStatus === 'APPROVED') ?? [];
+  const respondAssignmentMutation = useMutation({
+    mutationFn: ({ shiftId, accepted }: { shiftId: string; accepted: boolean }) =>
+      api.post(`/shifts/${shiftId}/respond-assignment`, { accepted }),
+    onSuccess: (_data, vars) => {
+      Alert.alert('✅', vars.accepted ? 'אישרת את השיבוץ.' : 'דחית את השיבוץ.');
+      qc.invalidateQueries({ queryKey: ['my-shifts'] });
+      qc.invalidateQueries({ queryKey: ['board'] });
+    },
+    onError: (err: any) => Alert.alert('שגיאה', err.response?.data?.error ?? 'הפעולה נכשלה'),
+  });
+
+  const replacementMutation = useMutation({
+    mutationFn: (shiftId: string) => api.post(`/shifts/${shiftId}/replacement`, { reason: 'בקשת החלפה מהאפליקציה' }),
+    onSuccess: () => {
+      Alert.alert('נשלח', 'בקשת ההחלפה נשלחה. תישארי משובצת עד לאישור בעל/ת העסק.');
+      qc.invalidateQueries({ queryKey: ['my-shifts'] });
+    },
+    onError: (err: any) => Alert.alert('שגיאה', err.response?.data?.error ?? 'שליחת הבקשה נכשלה'),
+  });
+
+  function confirmReject(shiftId: string) {
+    Alert.alert('דחיית שיבוץ', 'לדחות את השיבוץ למשמרת? המקום ייפתח מחדש.', [
+      { text: 'ביטול', style: 'cancel' },
+      { text: 'דחייה', style: 'destructive', onPress: () => respondAssignmentMutation.mutate({ shiftId, accepted: false }) },
+    ]);
+  }
+
+  function confirmReplacement(shiftId: string) {
+    Alert.alert('בקשת החלפה', 'לשלוח בקשת החלפה למשמרת זו?', [
+      { text: 'ביטול', style: 'cancel' },
+      { text: 'שליחה', onPress: () => replacementMutation.mutate(shiftId) },
+    ]);
+  }
+
+  // Active shifts the worker cares about: confirmed + awaiting acceptance + pending.
+  const active =
+    shifts?.filter((s: any) => ['APPROVED', 'AWAITING_WORKER', 'PENDING'].includes(s.joinRequestStatus)) ?? [];
 
   return (
     <View style={styles.container}>
@@ -103,13 +140,16 @@ export default function ShiftsScreen() {
         <Text style={styles.muted}>טוען...</Text>
       ) : (
         <FlatList
-          data={confirmed}
+          data={active}
           keyExtractor={(item: any) => item.id}
-          ListEmptyComponent={<Text style={styles.muted}>אין משמרות מאושרות</Text>}
+          ListEmptyComponent={<Text style={styles.muted}>אין משמרות פעילות</Text>}
           renderItem={({ item }: any) => {
             const isActive = item.attendanceStatus === 'CLOCKED_IN';
             const isDone = item.attendanceStatus === 'CLOCKED_OUT';
-            const canReplace = canRequestReplacement(item.scheduledStart) && !isActive && !isDone;
+            const isAwaiting = item.joinRequestStatus === 'AWAITING_WORKER';
+            const isPending = item.joinRequestStatus === 'PENDING';
+            const canReplace =
+              item.joinRequestStatus === 'APPROVED' && canRequestReplacement(item.scheduledStart) && !isActive && !isDone;
 
             return (
               <View style={styles.card}>
@@ -121,34 +161,55 @@ export default function ShiftsScreen() {
                 <Text style={styles.time}>
                   {formatTime(item.scheduledStart)} – {formatTime(item.scheduledEnd)}
                 </Text>
-                <Text style={[styles.status, isActive && styles.statusActive, isDone && styles.statusDone]}>
-                  {HE.attendanceStatus[item.attendanceStatus as keyof typeof HE.attendanceStatus]}
-                </Text>
 
-                {!isActive && !isDone && (
-                  <TouchableOpacity
-                    style={styles.btn}
-                    onPress={() => clockInMutation.mutate(item.id)}
-                    disabled={clockInMutation.isPending}
-                  >
-                    <Text style={styles.btnText}>{HE.worker.startShift}</Text>
-                  </TouchableOpacity>
-                )}
+                {isAwaiting ? (
+                  <>
+                    <Text style={[styles.status, styles.statusAwaiting]}>שובצת למשמרת זו – יש לאשר או לדחות</Text>
+                    <TouchableOpacity
+                      style={styles.btn}
+                      onPress={() => respondAssignmentMutation.mutate({ shiftId: item.id, accepted: true })}
+                      disabled={respondAssignmentMutation.isPending}
+                    >
+                      <Text style={styles.btnText}>אישור השיבוץ</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.btnSecondary} onPress={() => confirmReject(item.id)}>
+                      <Text style={styles.btnSecondaryText}>דחייה</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : isPending ? (
+                  <Text style={[styles.status, styles.statusAwaiting]}>ממתין לאישור בעל/ת העסק</Text>
+                ) : (
+                  <>
+                    <Text style={[styles.status, isActive && styles.statusActive, isDone && styles.statusDone]}>
+                      {HE.attendanceStatus[item.attendanceStatus as keyof typeof HE.attendanceStatus]}
+                    </Text>
 
-                {isActive && (
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnDanger]}
-                    onPress={() => clockOutMutation.mutate(item.id)}
-                    disabled={clockOutMutation.isPending}
-                  >
-                    <Text style={styles.btnText}>{HE.worker.endShift}</Text>
-                  </TouchableOpacity>
-                )}
+                    {!isActive && !isDone && (
+                      <TouchableOpacity
+                        style={styles.btn}
+                        onPress={() => clockInMutation.mutate(item.id)}
+                        disabled={clockInMutation.isPending}
+                      >
+                        <Text style={styles.btnText}>{HE.worker.startShift}</Text>
+                      </TouchableOpacity>
+                    )}
 
-                {canReplace && (
-                  <TouchableOpacity style={styles.btnSecondary}>
-                    <Text style={styles.btnSecondaryText}>{HE.worker.requestReplacement}</Text>
-                  </TouchableOpacity>
+                    {isActive && (
+                      <TouchableOpacity
+                        style={[styles.btn, styles.btnDanger]}
+                        onPress={() => clockOutMutation.mutate(item.id)}
+                        disabled={clockOutMutation.isPending}
+                      >
+                        <Text style={styles.btnText}>{HE.worker.endShift}</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {canReplace && (
+                      <TouchableOpacity style={styles.btnSecondary} onPress={() => confirmReplacement(item.id)}>
+                        <Text style={styles.btnSecondaryText}>{HE.worker.requestReplacement}</Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
                 )}
               </View>
             );
@@ -220,13 +281,14 @@ const styles = StyleSheet.create({
   address: { fontSize: 13, color: '#6d6254', marginTop: 2 },
   time: { fontSize: 14, color: '#2f251a', marginTop: 4 },
   status: { fontSize: 12, color: '#6d6254', marginTop: 6, fontWeight: '600' },
-  statusActive: { color: '#0f7a67' },
+  statusActive: { color: colors.primary },
+  statusAwaiting: { color: '#b45309' },
   statusDone: { color: '#6d6254' },
-  btn: { marginTop: 10, backgroundColor: '#0f7a67', borderRadius: 10, padding: 12, alignItems: 'center' },
-  btnDanger: { backgroundColor: '#b34a3e' },
+  btn: { marginTop: 10, backgroundColor: colors.primary, borderRadius: 10, padding: 12, alignItems: 'center' },
+  btnDanger: { backgroundColor: colors.danger },
   btnDisabled: { backgroundColor: '#9ca3af' },
-  btnSecondary: { marginTop: 8, borderWidth: 1.5, borderColor: '#0f7a67', borderRadius: 10, padding: 10, alignItems: 'center' },
-  btnSecondaryText: { color: '#0f7a67', fontWeight: '600', fontSize: 14 },
+  btnSecondary: { marginTop: 8, borderWidth: 1.5, borderColor: colors.primary, borderRadius: 10, padding: 10, alignItems: 'center' },
+  btnSecondaryText: { color: colors.primary, fontWeight: '600', fontSize: 14 },
   btnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
   modalBackdrop: {
     flex: 1,
@@ -253,11 +315,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9f7f2',
   },
   statusBtnActive: {
-    borderColor: '#0f7a67',
-    backgroundColor: '#e7f5f1',
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryBg,
   },
   statusBtnText: { fontSize: 12, color: '#6d6254', fontWeight: '600' },
-  statusBtnTextActive: { color: '#0f7a67' },
+  statusBtnTextActive: { color: colors.primary },
   noteInput: {
     minHeight: 90,
     borderWidth: 1,

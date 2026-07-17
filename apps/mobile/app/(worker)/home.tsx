@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { HE, formatDate } from '@workforce/shared';
+import { colors } from '../../lib/theme';
 
 export default function HomeScreen() {
   const { data: shifts, isLoading } = useQuery({
@@ -53,5 +54,5 @@ const styles = StyleSheet.create({
   cardDate: { fontSize: 13, color: '#6d6254', marginBottom: 4 },
   cardCustomer: { fontSize: 17, fontWeight: '600', color: '#2f251a' },
   cardAddress: { fontSize: 13, color: '#6d6254', marginTop: 2 },
-  cardType: { marginTop: 8, fontSize: 12, color: '#0f7a67', fontWeight: '600' },
+  cardType: { marginTop: 8, fontSize: 12, color: colors.primary, fontWeight: '600' },
 });

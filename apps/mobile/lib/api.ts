@@ -2,7 +2,9 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
 export const api = axios.create({
-  baseURL: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1',
+  baseURL:
+    process.env.EXPO_PUBLIC_API_URL ??
+    'https://spaceorder-api-app-poc-h7hef6a2gtd5euhq.israelcentral-01.azurewebsites.net/api/v1',
 });
 
 api.interceptors.request.use(async (config) => {

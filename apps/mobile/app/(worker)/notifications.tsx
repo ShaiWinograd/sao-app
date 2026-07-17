@@ -48,10 +48,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f6f1e8', padding: 16 },
   header: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   title: { fontSize: 22, fontWeight: '700', color: '#2f251a' },
-  readAll: { fontSize: 13, color: '#0f7a67', fontWeight: '600' },
+  readAll: { fontSize: 13, color: '#735B91', fontWeight: '600' },
   muted: { color: '#6d6254', textAlign: 'center', marginTop: 40 },
   notif: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 10 },
-  notifUnread: { borderRightWidth: 3, borderRightColor: '#0f7a67' },
+  notifUnread: { borderRightWidth: 3, borderRightColor: '#735B91' },
   notifTitle: { fontSize: 15, fontWeight: '600', color: '#2f251a' },
   notifBody: { fontSize: 13, color: '#6d6254', marginTop: 4 },
 });

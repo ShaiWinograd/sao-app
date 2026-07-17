@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "splash": {
       "resizeMode": "contain",
-      "backgroundColor": "#0f7a67"
+      "backgroundColor": "#5E4A78"
     },
     "ios": {
       "supportsTablet": false,
@@ -20,7 +20,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0f7a67"
+        "backgroundColor": "#5E4A78"
       },
       "package": "com.spaceorder.workforce",
       "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION", "FOREGROUND_SERVICE"]
@@ -39,7 +39,7 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#0f7a67"
+          "color": "#5E4A78"
         }
       ]
     ],
