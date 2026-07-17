@@ -70,35 +70,35 @@ export function jobTypeLabel(type: string): string {
 }
 
 export function jobTypeClasses(type: string): string {
-  if (type === 'PACKING') return 'border-sky-200 bg-sky-50 text-sky-800';
+  if (type === 'PACKING') return 'border-red-200 bg-red-50 text-red-800';
   if (type === 'UNPACKING') return 'border-amber-200 bg-amber-50 text-amber-800';
   return 'border-blue-200 bg-blue-50 text-blue-800';
 }
 
 // Solid, high-contrast fill for a fully-assigned shift card.
 export function jobTypeSolidClasses(type: string): string {
-  if (type === 'PACKING') return 'bg-sky-600 text-white';
+  if (type === 'PACKING') return 'bg-red-600 text-white';
   if (type === 'UNPACKING') return 'bg-amber-600 text-white';
   return 'bg-blue-600 text-white';
 }
 
 // Border color for cards that need a full type-colored outline.
 export function jobTypeBorderColor(type: string): string {
-  if (type === 'PACKING') return 'border-sky-500';
+  if (type === 'PACKING') return 'border-red-500';
   if (type === 'UNPACKING') return 'border-amber-500';
   return 'border-blue-500';
 }
 
 // Solid strip color (used as a side accent on open/pending cards).
 export function jobTypeStripColor(type: string): string {
-  if (type === 'PACKING') return 'bg-sky-500';
+  if (type === 'PACKING') return 'bg-red-500';
   if (type === 'UNPACKING') return 'bg-amber-500';
   return 'bg-blue-500';
 }
 
 // Light tint background for the worker's own confirmed shift.
 export function jobTypeTintClasses(type: string): string {
-  if (type === 'PACKING') return 'bg-sky-50';
+  if (type === 'PACKING') return 'bg-red-50';
   if (type === 'UNPACKING') return 'bg-amber-50';
   return 'bg-blue-50';
 }
