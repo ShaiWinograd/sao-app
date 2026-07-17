@@ -22,6 +22,20 @@ const DEMO_WORKERS = [
 ] as const;
 
 export async function adminRoutes(app: FastifyInstance) {
+  // Aggregated owner action items for the dashboard (integration spec §21).
+  app.get('/tasks', { preHandler: [authenticate, requireAdmin] }, async () => {
+    const [joinRequests, replacementRequests, swapApprovals, missingForms, reportCorrections] = await Promise.all([
+      prisma.shift.count({ where: { joinRequestStatus: 'PENDING' } }),
+      prisma.replacementRequest.count({ where: { status: 'PENDING' } }),
+      prisma.shiftSwap.count({ where: { status: 'PENDING_OWNER' } }),
+      prisma.shift.count({
+        where: { attendanceStatus: { in: ['CLOCKED_OUT', 'CORRECTED', 'AUTO_CLOCKED_OUT'] }, formStatus: 'NOT_SUBMITTED' },
+      }),
+      prisma.workerReportApproval.count({ where: { status: 'CHANGES_REQUESTED' } }),
+    ]);
+    return { joinRequests, replacementRequests, swapApprovals, missingForms, reportCorrections };
+  });
+
   // Invite an owner/admin team member by email (no worker profile). The invited
   // role is carried in the Clerk invitation metadata and wins over any worker
   // match on first login. Only owners may invite owners.
