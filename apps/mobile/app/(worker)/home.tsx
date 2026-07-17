@@ -9,7 +9,7 @@ import { colors } from '../../lib/theme';
 
 export default function HomeScreen() {
   const { user } = useUser();
-  const { data: shifts, isLoading } = useQuery({
+  const { data: shifts, isLoading, error } = useQuery({
     queryKey: ['my-shifts'],
     queryFn: () => api.get('/shifts/mine').then((r) => r.data),
   });
@@ -19,6 +19,8 @@ export default function HomeScreen() {
   ) ?? [];
 
   const firstName = user?.firstName?.trim();
+  const errStatus = (error as any)?.response?.status;
+  const errMessage = (error as any)?.response?.data?.error ?? (error as any)?.message;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -33,6 +35,17 @@ export default function HomeScreen() {
         {isLoading ? (
           <View style={styles.stateBox}>
             <ActivityIndicator color={colors.primary} />
+          </View>
+        ) : error ? (
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIconWrap}>
+              <Ionicons name="alert-circle-outline" size={28} color={colors.danger} />
+            </View>
+            <Text style={styles.emptyTitle}>לא הצלחנו לטעון את המשמרות</Text>
+            <Text style={styles.emptySub}>
+              {errStatus ? `שגיאה ${errStatus}` : 'שגיאת רשת'}
+              {errMessage ? ` — ${errMessage}` : ''}
+            </Text>
           </View>
         ) : upcoming.length === 0 ? (
           <View style={styles.emptyCard}>
