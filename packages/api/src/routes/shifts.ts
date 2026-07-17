@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
 import { JoinRequestSchema, ApproveReplacementSchema, WorkerReplacementRequestSchema, ProposeSwapSchema, SwapDecisionSchema, OwnerSwapSchema, UserRole, StaffingMode, isUnavailableOn, MANAGER_SKILL } from '@workforce/shared';
+import { logAudit } from '../lib/audit.js';
 
 // After removing `outgoingShiftId`'s worker from `job`, does a team leader remain?
 // True when the job needs no leader, the incoming worker is leader-eligible, or
@@ -123,6 +124,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
       }
     }
 
+    await logAudit((req as any).user, 'CREATE', 'Shift', shift.id, null, { joinRequestStatus: status, jobId: job.id, workerId: worker.id }, 'join-request');
     reply.status(201);
     return { shift, autoApproved: status === 'APPROVED' };
   });
@@ -161,6 +163,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
         data: { type: 'JOIN_DECISION', shiftId, approved } as any,
       },
     });
+    await logAudit((req as any).user, approved ? 'APPROVE' : 'REJECT', 'Shift', shiftId, { joinRequestStatus: shift.joinRequestStatus }, { joinRequestStatus: approved ? 'APPROVED' : 'REJECTED' }, reason ?? 'join-decision');
     return updated;
   });
 
@@ -235,6 +238,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
       },
     });
 
+    await logAudit((req as any).user, 'CREATE', 'Shift', shift.id, null, { joinRequestStatus: 'APPROVED', jobId: job.id, workerId: worker.id }, 'direct-assign');
     reply.status(201);
     return { shift };
   });
@@ -248,6 +252,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: 'Cannot remove a worker who has already clocked in' });
     }
     await prisma.shift.delete({ where: { id } });
+    await logAudit((req as any).user, 'DELETE', 'Shift', id, { workerId: shift.workerId, jobId: shift.jobId }, null, 'admin-remove');
     return { success: true };
   });
 
@@ -320,6 +325,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
       data: { shiftId: id, requestedByWorkerId: worker.id, reason: body.reason, suggestedWorkerId, status: 'PENDING' },
     });
     await prisma.shift.update({ where: { id }, data: { replacementStatus: 'PENDING' } });
+    await logAudit((req as any).user, 'CREATE', 'ReplacementRequest', request.id, null, { shiftId: id, requestedByWorkerId: worker.id }, 'replacement-request');
 
     const owners = await prisma.user.findMany({
       where: { role: { in: [UserRole.OWNER, UserRole.ADMIN] }, isActive: true },
@@ -626,6 +632,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
           },
         ],
       });
+      await logAudit((req as any).user, 'APPROVE', 'ReplacementRequest', requestId, { status: 'PENDING' }, { status: 'APPROVED', approvedWorkerId: chosenWorker.id }, 'reassigned');
       return { success: true, reassigned: true };
     }
 
@@ -652,6 +659,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
       },
     });
 
+    await logAudit((req as any).user, approved ? 'APPROVE' : 'REJECT', 'ReplacementRequest', requestId, { status: 'PENDING' }, { status: approved ? 'APPROVED' : 'REJECTED' }, approved ? 'released' : 'rejected');
     return { success: true };
   });
 
@@ -743,6 +751,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
         },
       });
     }
+    await logAudit((req as any).user, 'CREATE', 'ShiftSwap', swap.id, null, { status: 'PENDING_WORKER', fromShiftId, toShiftId: toShift.id }, 'swap-proposed');
     return { success: true, swapId: swap.id };
   });
 
@@ -814,6 +823,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
           },
         });
       }
+      await logAudit((req as any).user, 'REJECT', 'ShiftSwap', id, { status: 'PENDING_WORKER' }, { status: 'REJECTED' }, 'worker-rejected');
       return { success: true };
     }
 
@@ -832,6 +842,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
         })),
       });
     }
+    await logAudit((req as any).user, 'APPROVE', 'ShiftSwap', id, { status: 'PENDING_WORKER' }, { status: 'PENDING_OWNER' }, 'worker-approved');
     return { success: true };
   });
 
@@ -910,6 +921,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
           data: { type: 'SWAP_DECISION', swapId: id, approved: false } as any,
         })),
       });
+      await logAudit((req as any).user, 'REJECT', 'ShiftSwap', id, { status: 'PENDING_OWNER' }, { status: 'REJECTED' }, 'owner-rejected');
       return { success: true };
     }
 
@@ -982,6 +994,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
         data: { type: 'SWAP_DECISION', swapId: id, approved: true } as any,
       })),
     });
+    await logAudit((req as any).user, 'APPROVE', 'ShiftSwap', id, { status: 'PENDING_OWNER' }, { status: 'APPROVED' }, 'owner-approved');
     return { success: true };
   });
 
@@ -1080,6 +1093,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
         data: { type: 'SWAP_OWNER', dateKey } as any,
       })),
     });
+    await logAudit((req as any).user, 'CREATE', 'ShiftSwap', `${fromShift.id}:${toShift.id}`, null, { fromShiftId: fromShift.id, toShiftId: toShift.id, status: 'APPROVED' }, 'owner-initiated-swap');
     return { success: true };
   });
 }
