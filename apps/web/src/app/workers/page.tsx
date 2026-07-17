@@ -38,6 +38,7 @@ type ApiWorker = {
   skills: string[];
   isActive: boolean;
   paymentMethod: string;
+  hourlyWage?: number;
   createdAt?: string;
 };
 
@@ -57,7 +58,7 @@ function mapApiWorker(worker: ApiWorker): Worker {
     id: worker.id,
     name: `${worker.firstName} ${worker.lastName}`.trim(),
     role: mapSkillsToRole(worker.skills),
-    hourlyWage: 0,
+    hourlyWage: Number(worker.hourlyWage ?? 0),
     vatIncluded: false,
     phone: worker.phone,
     email: worker.email,

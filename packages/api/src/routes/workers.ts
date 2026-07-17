@@ -14,7 +14,8 @@ export async function workersRoutes(app: FastifyInstance) {
       select: {
         id: true, firstName: true, lastName: true, phone: true, email: true,
         skills: true, isActive: true, paymentMethod: true,
-        // Wages visible to owner/admin only (filtered in UI too, but filtered here for safety)
+        // Wages are owner/admin-only; this route is admin-guarded so they are safe to return.
+        hourlyWage: true, dailyPaymentAmount: true,
       },
       orderBy: { firstName: 'asc' },
     });
