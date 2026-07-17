@@ -26,12 +26,12 @@ const JOB_TYPE_LABELS: Record<string, string> = {
 };
 
 const JOB_TYPE_DOT: Record<string, string> = {
-  PACKING: 'bg-rose-500',
+  PACKING: 'bg-red-500',
   UNPACKING: 'bg-amber-500',
-  HOME_ORGANIZATION: 'bg-sky-500',
-  אריזה: 'bg-rose-500',
+  HOME_ORGANIZATION: 'bg-blue-500',
+  אריזה: 'bg-red-500',
   פריקה: 'bg-amber-500',
-  סידור: 'bg-sky-500',
+  סידור: 'bg-blue-500',
 };
 
 const WEEKDAY_LABELS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
