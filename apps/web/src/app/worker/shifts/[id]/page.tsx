@@ -312,7 +312,7 @@ export default function WorkerShiftDetailPage() {
           setActionMsg('אישרת את השיבוץ. המשמרת נוספה ליומן שלך.');
           await load();
         } else {
-          router.replace('/worker/calendar');
+          router.replace('/worker');
         }
       } catch (err) {
         const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
@@ -553,9 +553,9 @@ function NoteRow({ label, value }: { label: string; value: string }) {
 
 function BackLink() {
   return (
-    <Link href="/worker/calendar" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
+    <Link href="/worker" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
       <ArrowRight className="w-4 h-4" />
-      חזרה ליומן
+      חזרה למשמרות
     </Link>
   );
 }

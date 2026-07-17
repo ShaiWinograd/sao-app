@@ -5,15 +5,14 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
 import {
-  LayoutDashboard, Search, Calendar, CalendarCheck, BarChart3, User, Bell, History,
+  CalendarDays, CalendarCheck, BarChart3, User, Bell, History,
 } from 'lucide-react';
 import RoleSwitcher from './RoleSwitcher';
 
-// Worker navigation (worker_web_spec §1).
+// Worker navigation (worker_web_spec §1). "משמרות" is the consolidated board
+// (general + my shifts as tabs).
 const navItems = [
-  { href: '/worker', label: 'בית', icon: LayoutDashboard, exact: true },
-  { href: '/worker/open-jobs', label: 'עבודות פתוחות', icon: Search },
-  { href: '/worker/calendar', label: 'היומן שלי', icon: Calendar },
+  { href: '/worker', label: 'משמרות', icon: CalendarDays, exact: true },
   { href: '/worker/history', label: 'היסטוריית עבודות', icon: History },
   { href: '/worker/availability', label: 'הזמינות שלי', icon: CalendarCheck },
   { href: '/worker/reports', label: 'הדוחות שלי', icon: BarChart3 },
