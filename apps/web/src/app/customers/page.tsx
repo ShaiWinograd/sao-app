@@ -24,7 +24,7 @@ type Customer = {
   email: string;
   addresses: CustomerAddress[];
   caseName: string;
-  caseStatus: 'planned' | 'in_progress' | 'completed_unpaid' | 'completed_paid' | 'cancelled';
+  caseStatus: 'none' | 'planned' | 'in_progress' | 'completed_unpaid' | 'completed_paid' | 'cancelled';
   notes?: string;
 };
 
@@ -132,11 +132,16 @@ function mapApiCustomer(apiCustomer: ApiCustomer): Customer {
       apartment: addr.apartment ?? undefined,
     })),
     caseName: representativeCase?.name ?? `${apiCustomer.firstName} ${apiCustomer.lastName} - פרוייקט`,
-    caseStatus: representativeCase ? mapApiCaseStatus(representativeCase.status) : 'planned',
+    caseStatus: representativeCase ? mapApiCaseStatus(representativeCase.status) : 'none',
   };
 }
 
 const caseStatusMeta: Record<Customer['caseStatus'], { label: string; helper: string; tone: StatusTone }> = {
+  none: {
+    label: 'ללא פרויקט',
+    helper: 'ללקוח אין פרויקט פעיל (טרם נוצר פרויקט או שהפרויקט נמחק)',
+    tone: 'neutral',
+  },
   planned: {
     label: 'משוריין',
     helper: 'הפרוייקט נפתח וממתין לאישור ביצוע',
@@ -547,6 +552,7 @@ export default function CustomersPage() {
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
             >
               <option value="all">כל הסטטוסים</option>
+              <option value="none">ללא פרויקט</option>
               <option value="planned">משוריין</option>
               <option value="in_progress">מאושר לביצוע</option>
               <option value="completed_unpaid">עבודה הסתיימה</option>
