@@ -296,7 +296,7 @@ export default function WorkerShiftsPage() {
                 {formatTime(r.plannedStart)}–{formatTime(r.plannedEnd)}
               </p>
               {r.suggestedForYou && (
-                <span className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                <span className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-primary-200 bg-primary-50 px-2 py-0.5 text-[11px] font-medium text-primary-700">
                   <Star className="w-3 h-3" />
                   הוצעת להחלפה זו
                 </span>
@@ -416,7 +416,7 @@ function ShiftCard({
         <CardHeader shift={shift} />
         <CardMeta shift={shift} />
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+          <span className="inline-flex items-center rounded-full border border-primary-200 bg-primary-50 px-2 py-0.5 text-[11px] font-medium text-primary-700">
             {shift.openSpots} מקומות פנויים
           </span>
           <AssignedNames workers={shift.assignedWorkers} />
@@ -463,7 +463,7 @@ function ShiftCard({
       <div className={`rounded-xl border-2 ${jobTypeBorderColor(shift.jobType)} ${jobTypeTintClasses(shift.jobType)} p-4`}>
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-bold text-gray-900">{jobTypeLabel(shift.jobType)}</span>
-          <span className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+          <span className="inline-flex items-center rounded-full border border-primary-300 bg-primary-100 px-2 py-0.5 text-[11px] font-semibold text-primary-800">
             את/ה משובץ/ת
           </span>
         </div>

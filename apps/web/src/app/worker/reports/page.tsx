@@ -40,7 +40,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_CLASS: Record<string, string> = {
-  PAID: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  PAID: 'border-primary-200 bg-primary-50 text-primary-700',
   PARTIALLY_PAID: 'border-amber-200 bg-amber-50 text-amber-700',
   NOT_PREPARED: 'border-gray-200 bg-gray-50 text-gray-500',
 };
@@ -267,7 +267,7 @@ export default function WorkerReportsPage() {
                 {data.adjustments.map((a) => (
                   <div key={a.id} className="flex items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
                     <p className="text-sm text-gray-700">{a.reason}</p>
-                    <span className={`text-sm font-semibold ${a.amount < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{ils(a.amount)}</span>
+                    <span className={`text-sm font-semibold ${a.amount < 0 ? 'text-rose-600' : 'text-primary-700'}`}>{ils(a.amount)}</span>
                   </div>
                 ))}
               </div>
@@ -282,7 +282,7 @@ export default function WorkerReportsPage() {
                 {data.payments.map((p) => (
                   <div key={p.id} className="flex items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
                     <p className="text-xs text-gray-500">{fmtDate(p.paymentDate)}</p>
-                    <span className="text-sm font-semibold text-emerald-700">{ils(p.amount)}</span>
+                    <span className="text-sm font-semibold text-primary-700">{ils(p.amount)}</span>
                   </div>
                 ))}
               </div>
@@ -338,12 +338,12 @@ function ApprovalCard({
 }) {
   if (approval.status === 'APPROVED') {
     return (
-      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-        <p className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
+      <div className="rounded-xl border border-primary-200 bg-primary-50 p-4">
+        <p className="flex items-center gap-2 text-sm font-semibold text-primary-800">
           <CheckCircle2 className="w-4 h-4" />
           אישרת את הדוח החודשי
         </p>
-        <p className="mt-1 text-xs text-emerald-700">אם יבוצע תיקון בדוח, האישור יתאפס ותתבקשי לאשר מחדש.</p>
+        <p className="mt-1 text-xs text-primary-700">אם יבוצע תיקון בדוח, האישור יתאפס ותתבקשי לאשר מחדש.</p>
       </div>
     );
   }
