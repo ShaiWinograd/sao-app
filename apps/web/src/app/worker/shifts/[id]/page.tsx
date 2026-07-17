@@ -383,7 +383,7 @@ export default function WorkerShiftDetailPage() {
             {jobTypeLabel(shift.job.jobType)}
           </span>
           {isLead && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+            <span className="inline-flex items-center gap-1 rounded-full border border-primary-200 bg-primary-50 px-2.5 py-0.5 text-xs font-medium text-primary-700">
               <Star className="w-3.5 h-3.5" />
               ראש צוות
             </span>
@@ -817,7 +817,7 @@ function AttendancePanel({
       )}
       {clockedOut && shift.formStatus !== 'NOT_SUBMITTED' && (
         <div className="space-y-2 text-center">
-          <p className="flex items-center justify-center gap-2 text-sm text-emerald-700">
+          <p className="flex items-center justify-center gap-2 text-sm text-primary-700">
             <CheckCircle2 className="w-4 h-4" />
             המשמרת הושלמה והטופס הוגש.
           </p>

@@ -72,35 +72,35 @@ export function jobTypeLabel(type: string): string {
 export function jobTypeClasses(type: string): string {
   if (type === 'PACKING') return 'border-sky-200 bg-sky-50 text-sky-800';
   if (type === 'UNPACKING') return 'border-amber-200 bg-amber-50 text-amber-800';
-  return 'border-purple-200 bg-purple-50 text-purple-800';
+  return 'border-blue-200 bg-blue-50 text-blue-800';
 }
 
 // Solid, high-contrast fill for a fully-assigned shift card.
 export function jobTypeSolidClasses(type: string): string {
   if (type === 'PACKING') return 'bg-sky-600 text-white';
   if (type === 'UNPACKING') return 'bg-amber-600 text-white';
-  return 'bg-purple-600 text-white';
+  return 'bg-blue-600 text-white';
 }
 
 // Border color for cards that need a full type-colored outline.
 export function jobTypeBorderColor(type: string): string {
   if (type === 'PACKING') return 'border-sky-500';
   if (type === 'UNPACKING') return 'border-amber-500';
-  return 'border-purple-500';
+  return 'border-blue-500';
 }
 
 // Solid strip color (used as a side accent on open/pending cards).
 export function jobTypeStripColor(type: string): string {
   if (type === 'PACKING') return 'bg-sky-500';
   if (type === 'UNPACKING') return 'bg-amber-500';
-  return 'bg-purple-500';
+  return 'bg-blue-500';
 }
 
 // Light tint background for the worker's own confirmed shift.
 export function jobTypeTintClasses(type: string): string {
   if (type === 'PACKING') return 'bg-sky-50';
   if (type === 'UNPACKING') return 'bg-amber-50';
-  return 'bg-purple-50';
+  return 'bg-blue-50';
 }
 
 export function formatDate(iso: string | undefined | null): string {
@@ -168,7 +168,7 @@ export function openPositions(job: WorkerJob): number {
 export function attendanceBadge(status: string): { label: string; className: string } {
   switch (status) {
     case 'CLOCKED_IN':
-      return { label: 'בעבודה', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' };
+      return { label: 'בעבודה', className: 'border-primary-200 bg-primary-50 text-primary-700' };
     case 'CLOCKED_OUT':
     case 'CORRECTED':
     case 'AUTO_CLOCKED_OUT':
