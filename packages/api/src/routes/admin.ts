@@ -24,8 +24,9 @@ const DEMO_WORKERS = [
 export async function adminRoutes(app: FastifyInstance) {
   // Aggregated owner action items for the dashboard (integration spec §21).
   app.get('/tasks', { preHandler: [authenticate, requireAdmin] }, async () => {
-    const [joinRequests, replacementRequests, swapApprovals, missingForms, reportCorrections] = await Promise.all([
+    const [joinRequests, pendingAcceptance, replacementRequests, swapApprovals, missingForms, reportCorrections] = await Promise.all([
       prisma.shift.count({ where: { joinRequestStatus: 'PENDING' } }),
+      prisma.shift.count({ where: { joinRequestStatus: 'AWAITING_WORKER' } }),
       prisma.replacementRequest.count({ where: { status: 'PENDING' } }),
       prisma.shiftSwap.count({ where: { status: 'PENDING_OWNER' } }),
       prisma.shift.count({
@@ -33,7 +34,7 @@ export async function adminRoutes(app: FastifyInstance) {
       }),
       prisma.workerReportApproval.count({ where: { status: 'CHANGES_REQUESTED' } }),
     ]);
-    return { joinRequests, replacementRequests, swapApprovals, missingForms, reportCorrections };
+    return { joinRequests, pendingAcceptance, replacementRequests, swapApprovals, missingForms, reportCorrections };
   });
 
   // Invite an owner/admin team member by email (no worker profile). The invited

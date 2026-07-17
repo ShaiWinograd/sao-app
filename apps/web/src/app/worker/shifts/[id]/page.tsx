@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { ArrowRight, MapPin, Clock, CalendarDays, Users, Phone, Navigation, Star, LogIn, LogOut, CheckCircle2, Loader2, Repeat, X } from 'lucide-react';
 import { requiresManagerNoteForEndShift } from '@workforce/shared';
@@ -48,6 +48,7 @@ type ShiftDetail = {
 export default function WorkerShiftDetailPage() {
   const params = useParams();
   const id = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params.id[0] : '';
+  const router = useRouter();
   const { getToken } = useAuth();
   const [shift, setShift] = useState<ShiftDetail | null>(null);
   const [job, setJob] = useState<WorkerJob | null>(null);
@@ -299,8 +300,31 @@ export default function WorkerShiftDetailPage() {
     }
   }, [shift, swapToShiftId, swapNote, getToken]);
 
-  if (loading) return <p className="text-sm text-gray-400">טוען…</p>;
+  const respondAssignment = useCallback(
+    async (accepted: boolean) => {
+      if (!shift) return;
+      setBusy(true);
+      setActionMsg(null);
+      try {
+        const auth = await authHeaders(getToken);
+        await api.post(`/shifts/${shift.id}/respond-assignment`, { accepted }, auth);
+        if (accepted) {
+          setActionMsg('אישרת את השיבוץ. המשמרת נוספה ליומן שלך.');
+          await load();
+        } else {
+          router.replace('/worker/calendar');
+        }
+      } catch (err) {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+        setActionMsg(msg ? `הפעולה נכשלה: ${msg}` : 'הפעולה נכשלה.');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [shift, getToken, load, router],
+  );
 
+  if (loading) return <p className="text-sm text-gray-400">טוען…</p>;
   if (notFound || !shift) {
     return (
       <div className="max-w-2xl">
@@ -314,6 +338,7 @@ export default function WorkerShiftDetailPage() {
   const missingForm = missingFormBadge(shift);
   const address = shift.job.address?.fullAddress ?? '';
   const isCancelled = shift.job.status === 'CANCELLED';
+  const isAwaitingAcceptance = shift.joinRequestStatus === 'AWAITING_WORKER';
   const mapsHref = address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : null;
   const phone = shift.job.customer?.phone;
 
@@ -324,6 +349,31 @@ export default function WorkerShiftDetailPage() {
       {isCancelled && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
           העבודה בוטלה. אינך משובץ/ת אליה יותר ואין צורך בפעולה נוספת.
+        </div>
+      )}
+
+      {isAwaitingAcceptance && !isCancelled && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+          <p className="text-sm font-semibold text-amber-900">שובצת למשמרת זו – נדרש אישורך</p>
+          <p className="text-xs text-amber-800">בעל/ת העסק שיבץ/ה אותך למשמרת. יש לאשר כדי להיקבע, או לדחות כדי לשחרר את המקום.</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void respondAssignment(true)}
+              disabled={busy}
+              className="rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+            >
+              אישור השיבוץ
+            </button>
+            <button
+              type="button"
+              onClick={() => void respondAssignment(false)}
+              disabled={busy}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              דחייה
+            </button>
+          </div>
         </div>
       )}
 

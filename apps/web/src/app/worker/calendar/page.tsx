@@ -291,6 +291,7 @@ function ShiftRow({ shift }: { shift: WorkerShift }) {
   const att = attendanceBadge(shift.attendanceStatus);
   const missingForm = missingFormBadge(shift);
   const pending = shift.joinRequestStatus === 'PENDING';
+  const awaitingMe = shift.joinRequestStatus === 'AWAITING_WORKER';
   return (
     <Link href={`/worker/shifts/${shift.id}`} className="block rounded-xl border border-gray-200 bg-white p-3 hover:border-primary-300">
       <div className="flex items-center justify-between gap-2">
@@ -313,6 +314,8 @@ function ShiftRow({ shift }: { shift: WorkerShift }) {
         </span>
         {pending ? (
           <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">ממתין לאישור</span>
+        ) : awaitingMe ? (
+          <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">ממתין לאישורך</span>
         ) : (
           <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${att.className}`}>{att.label}</span>
         )}

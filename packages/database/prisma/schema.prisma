@@ -114,6 +114,7 @@ enum WorkerSkill {
 
 enum JoinRequestStatus {
   PENDING
+  AWAITING_WORKER
   APPROVED
   REJECTED
   WAITLISTED
