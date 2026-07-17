@@ -19,9 +19,6 @@ import { colors, fonts } from '../lib/theme';
 // Force RTL
 I18nManager.allowRTL(true);
 I18nManager.forceRTL(true);
-// Keep flexDirection mirroring (isRTL) but stop RN from swapping physical
-// left/right style values, so `textAlign: 'right'` stays on the right.
-I18nManager.swapLeftAndRightInRTL(false);
 
 // Default every Text/TextInput to Assistant regular (matches the web font stack).
 // Bold/semibold styles set an explicit Assistant family, since RN needs a family per weight.
