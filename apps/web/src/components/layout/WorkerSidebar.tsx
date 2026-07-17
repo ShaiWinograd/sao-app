@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
 import {
-  CalendarDays, CalendarCheck, BarChart3, User, Bell, History,
+  CalendarDays, CalendarCheck, BarChart3, User, Bell, History, Bug,
 } from 'lucide-react';
 import RoleSwitcher from './RoleSwitcher';
 
@@ -59,6 +59,19 @@ export default function WorkerSidebar() {
           );
         })}
       </nav>
+
+      {/* Report a bug / request */}
+      <div className="px-2 py-2 border-t border-gray-100">
+        <a
+          href={`mailto:shaiwinograd@gmail.com?subject=${encodeURIComponent('Space & Order - משוב מהאפליקציה')}&body=${encodeURIComponent(
+            'מה לחצתי:\n\nמה ציפיתי שיקרה:\n\nמה קרה בפועל:\n\nצילום מסך (אם אפשר):\n',
+          )}`}
+          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-gray-600 hover:bg-primary-50 hover:text-primary-700 transition-colors"
+        >
+          <Bug className="w-4 h-4 flex-shrink-0 text-gray-400" />
+          <span className="truncate">דיווח באג או בקשה</span>
+        </a>
+      </div>
 
       {/* User Profile */}
       <div className="p-3 border-t border-gray-100">
