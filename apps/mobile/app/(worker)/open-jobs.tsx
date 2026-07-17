@@ -1,4 +1,6 @@
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { useState } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { HE, formatDate, formatTime } from '@workforce/shared';
@@ -21,13 +23,36 @@ type BoardShift = {
   myShiftId: string | null;
 };
 
+type Filter = 'ALL' | 'MINE' | 'OPEN' | 'CONFIRM';
+
+function matchesFilter(s: BoardShift, f: Filter): boolean {
+  switch (f) {
+    case 'MINE':
+      return s.myStatus === 'APPROVED' || s.myStatus === 'PENDING';
+    case 'OPEN':
+      return s.myStatus === 'NONE' && s.openSpots > 0;
+    case 'CONFIRM':
+      return s.myStatus === 'AWAITING_WORKER';
+    default:
+      return true;
+  }
+}
+
+const FILTERS: { key: Filter; label: string; empty: string }[] = [
+  { key: 'ALL', label: 'הכול', empty: 'אין משמרות מתוזמנות כרגע' },
+  { key: 'MINE', label: 'שלי', empty: 'אינך משובצת למשמרות כרגע' },
+  { key: 'OPEN', label: 'פנויות', empty: 'אין משמרות פנויות כרגע' },
+  { key: 'CONFIRM', label: 'לאישור', empty: 'אין משמרות הממתינות לאישורך' },
+];
+
 function typeLabel(type: string): string {
   return HE.jobType[type as keyof typeof HE.jobType] ?? type;
 }
 
 export default function BoardScreen() {
   const qc = useQueryClient();
-  const { data: board, isLoading } = useQuery<BoardShift[]>({
+  const [filter, setFilter] = useState<Filter>('ALL');
+  const { data: board, isLoading, error } = useQuery<BoardShift[]>({
     queryKey: ['board'],
     queryFn: () => api.get('/jobs/board').then((r) => r.data),
   });
@@ -53,25 +78,56 @@ export default function BoardScreen() {
     );
   }
 
-  if (isLoading) {
-    return (
-      <View style={[styles.container, styles.center]}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
-  }
+  const all = board ?? [];
+  const counts: Record<Filter, number> = {
+    ALL: all.length,
+    MINE: all.filter((s) => matchesFilter(s, 'MINE')).length,
+    OPEN: all.filter((s) => matchesFilter(s, 'OPEN')).length,
+    CONFIRM: all.filter((s) => matchesFilter(s, 'CONFIRM')).length,
+  };
+  const filtered = all.filter((s) => matchesFilter(s, filter));
+  const emptyText = FILTERS.find((f) => f.key === filter)?.empty ?? 'אין משמרות';
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <Text style={styles.title}>משמרות</Text>
-      <FlatList
-        data={board ?? []}
-        keyExtractor={(item) => item.jobId}
-        contentContainerStyle={{ paddingBottom: 24 }}
-        ListEmptyComponent={<Text style={styles.muted}>אין משמרות מתוזמנות כרגע</Text>}
-        renderItem={({ item }) => <BoardCard shift={item} onJoin={() => confirmJoin(item)} joining={joinMutation.isPending} />}
-      />
-    </View>
+
+      <View style={styles.filterRow}>
+        {FILTERS.map((f) => {
+          const active = filter === f.key;
+          return (
+            <TouchableOpacity
+              key={f.key}
+              onPress={() => setFilter(f.key)}
+              style={[styles.filterChip, active && styles.filterChipActive]}
+            >
+              <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                {f.label} · {counts[f.key]}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {isLoading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      ) : error ? (
+        <Text style={styles.muted}>
+          לא הצלחנו לטעון את המשמרות
+          {(error as any)?.response?.status ? ` (שגיאה ${(error as any).response.status})` : ''}
+        </Text>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => item.jobId}
+          contentContainerStyle={{ paddingBottom: 24 }}
+          ListEmptyComponent={<Text style={styles.muted}>{emptyText}</Text>}
+          renderItem={({ item }) => <BoardCard shift={item} onJoin={() => confirmJoin(item)} joining={joinMutation.isPending} />}
+        />
+      )}
+    </SafeAreaView>
   );
 }
 
@@ -163,8 +219,13 @@ function BoardCard({ shift, onJoin, joining }: { shift: BoardShift; onJoin: () =
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, padding: 16 },
-  center: { justifyContent: 'center', alignItems: 'center' },
-  title: { fontSize: 22, fontWeight: '700', color: colors.text, marginBottom: 16 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  title: { fontSize: 22, fontWeight: '700', color: colors.text, marginBottom: 12 },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  filterChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+  filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  filterChipText: { fontSize: 13, color: colors.muted, fontWeight: '600' },
+  filterChipTextActive: { color: colors.white },
   muted: { color: colors.muted, textAlign: 'center', marginTop: 40 },
   card: { borderRadius: 14, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2, backgroundColor: colors.card },
   stripCard: { borderRightWidth: 5 },
