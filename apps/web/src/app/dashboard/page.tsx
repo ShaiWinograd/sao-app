@@ -143,12 +143,12 @@ function addDaysToDateKey(dateKey: string, days: number) {
 
 function getShiftTypeCardClasses(jobType: JobType) {
   if (jobType === 'אריזה') {
-    return 'border-rose-200 bg-rose-50 hover:border-rose-300 hover:bg-rose-100';
+    return 'border-red-200 bg-red-50 hover:border-red-300 hover:bg-red-100';
   }
   if (jobType === 'פריקה') {
     return 'border-amber-200 bg-amber-50 hover:border-amber-300 hover:bg-amber-100';
   }
-  return 'border-sky-200 bg-sky-50 hover:border-sky-300 hover:bg-sky-100';
+  return 'border-blue-200 bg-blue-50 hover:border-blue-300 hover:bg-blue-100';
 }
 
 function InfoHint({ text }: { text: string }) {  return (

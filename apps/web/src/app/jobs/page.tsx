@@ -20,9 +20,9 @@ type ApiJob = {
 };
 
 const JOB_TYPE: Record<ApiJob['jobType'], { label: string; cls: string; dot: string }> = {
-  PACKING: { label: 'אריזה', cls: 'bg-blue-50 border-blue-200 text-blue-800', dot: 'bg-blue-500' },
+  PACKING: { label: 'אריזה', cls: 'bg-red-50 border-red-200 text-red-800', dot: 'bg-red-500' },
   UNPACKING: { label: 'פריקה', cls: 'bg-amber-50 border-amber-200 text-amber-800', dot: 'bg-amber-500' },
-  HOME_ORGANIZATION: { label: 'סידור', cls: 'bg-purple-50 border-purple-200 text-purple-800', dot: 'bg-purple-500' },
+  HOME_ORGANIZATION: { label: 'סידור', cls: 'bg-blue-50 border-blue-200 text-blue-800', dot: 'bg-blue-500' },
 };
 
 const WEEKDAYS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
