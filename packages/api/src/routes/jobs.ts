@@ -184,6 +184,59 @@ export async function jobsRoutes(app: FastifyInstance) {
     });
   });
 
+  // Worker shift board: every published upcoming job with staffing + the viewer's
+  // own status on it (worker_web_spec — consolidated shifts view).
+  app.get('/board', { preHandler: [authenticate] }, async (req) => {
+    const user = (req as any).user;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const me = await prisma.worker.findUnique({ where: { userId: user.id }, select: { id: true } });
+
+    const jobs = await prisma.job.findMany({
+      where: { status: { in: ['PUBLISHED', 'IN_PROGRESS'] }, date: { gte: today } },
+      include: {
+        customer: { select: { firstName: true, lastName: true } },
+        address: { select: { fullAddress: true } },
+        slots: { select: { id: true, requiredSkill: true, filledByShiftId: true } },
+        shifts: { include: { worker: { select: { id: true, firstName: true, lastName: true, skills: true } } } },
+      },
+      orderBy: [{ date: 'asc' }, { plannedStart: 'asc' }],
+    });
+
+    return jobs.map((job) => {
+      const leaderShiftIds = new Set(
+        job.slots.filter((s) => s.requiredSkill === MANAGER_SKILL && s.filledByShiftId).map((s) => s.filledByShiftId),
+      );
+      const approved = job.shifts.filter((s) => s.joinRequestStatus === 'APPROVED');
+      const assignedWorkers = approved
+        .map((s) => ({
+          name: `${s.worker.firstName} ${s.worker.lastName}`.trim(),
+          isTeamLeader: leaderShiftIds.has(s.id) || (s.worker.skills as string[]).includes(MANAGER_SKILL),
+        }))
+        .sort((a, b) => Number(b.isTeamLeader) - Number(a.isTeamLeader));
+      const openSpots = Math.max(0, job.requiredWorkerCount - approved.length);
+      const myShift = me
+        ? job.shifts.find(
+            (s) => s.workerId === me.id && s.joinRequestStatus !== 'REJECTED' && s.joinRequestStatus !== 'CANCELLED',
+          )
+        : undefined;
+      return {
+        jobId: job.id,
+        jobType: job.jobType,
+        date: job.date.toISOString(),
+        plannedStart: job.plannedStart.toISOString(),
+        plannedEnd: job.plannedEnd.toISOString(),
+        customerName: `${job.customer.firstName} ${job.customer.lastName}`.trim(),
+        address: job.address?.fullAddress ?? null,
+        requiredWorkerCount: job.requiredWorkerCount,
+        assignedWorkers,
+        openSpots,
+        myStatus: myShift ? myShift.joinRequestStatus : 'NONE',
+        myShiftId: myShift?.id ?? null,
+      };
+    });
+  });
+
   app.get('/:id', { preHandler: [authenticate] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const user = (req as any).user;
