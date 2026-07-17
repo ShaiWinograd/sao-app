@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
-import { JoinRequestSchema, ApproveReplacementSchema, WorkerReplacementRequestSchema, ProposeSwapSchema, SwapDecisionSchema, OwnerSwapSchema, UserRole, StaffingMode, isUnavailableOn, MANAGER_SKILL } from '@workforce/shared';
+import { JoinRequestSchema, ApproveReplacementSchema, WorkerReplacementRequestSchema, ProposeSwapSchema, SwapDecisionSchema, OwnerSwapSchema, UserRole, isUnavailableOn, MANAGER_SKILL } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
 
 // After removing `outgoingShiftId`'s worker from `job`, does a team leader remain?
@@ -87,9 +87,6 @@ export async function shiftsRoutes(app: FastifyInstance) {
     );
     if (isBlocked) return reply.status(409).send({ error: 'You marked yourself unavailable on this date' });
 
-    // Determine auto-approve or pending
-    const status = job.staffingMode === StaffingMode.AUTO_APPROVE ? 'APPROVED' : 'PENDING';
-
     const shift = await prisma.shift.create({
       data: {
         workerId: worker.id,
@@ -97,7 +94,8 @@ export async function shiftsRoutes(app: FastifyInstance) {
         slotId: body.slotId ?? null,
         scheduledStart: job.plannedStart,
         scheduledEnd: job.plannedEnd,
-        joinRequestStatus: status,
+        // Every join request needs owner approval — no auto-accept (owner decision).
+        joinRequestStatus: 'PENDING',
         attendanceStatus: 'SCHEDULED',
         hourlyWageSnapshot: worker.hourlyWage,
         dailyPaymentSnapshot: worker.dailyPaymentAmount,
@@ -105,28 +103,26 @@ export async function shiftsRoutes(app: FastifyInstance) {
       },
     });
 
-    // Approval mode: let owners know a worker is waiting for a decision (spec §5/§19).
-    if (status === 'PENDING') {
-      const owners = await prisma.user.findMany({
-        where: { role: { in: [UserRole.OWNER, UserRole.ADMIN] }, isActive: true },
-        select: { id: true },
+    // Let owners know a worker is waiting for a decision (spec §5/§19).
+    const owners = await prisma.user.findMany({
+      where: { role: { in: [UserRole.OWNER, UserRole.ADMIN] }, isActive: true },
+      select: { id: true },
+    });
+    if (owners.length) {
+      const dk = job.date.toISOString().slice(0, 10);
+      await prisma.notification.createMany({
+        data: owners.map((o) => ({
+          userId: o.id,
+          title: 'בקשת הצטרפות חדשה',
+          body: `${worker.firstName} ${worker.lastName} ביקש/ה להצטרף לעבודה בתאריך ${dk}.`,
+          data: { type: 'JOIN_REQUEST', shiftId: shift.id, jobId: job.id } as any,
+        })),
       });
-      if (owners.length) {
-        const dk = job.date.toISOString().slice(0, 10);
-        await prisma.notification.createMany({
-          data: owners.map((o) => ({
-            userId: o.id,
-            title: 'בקשת הצטרפות חדשה',
-            body: `${worker.firstName} ${worker.lastName} ביקש/ה להצטרף לעבודה בתאריך ${dk}.`,
-            data: { type: 'JOIN_REQUEST', shiftId: shift.id, jobId: job.id } as any,
-          })),
-        });
-      }
     }
 
-    await logAudit((req as any).user, 'CREATE', 'Shift', shift.id, null, { joinRequestStatus: status, jobId: job.id, workerId: worker.id }, 'join-request');
+    await logAudit((req as any).user, 'CREATE', 'Shift', shift.id, null, { joinRequestStatus: 'PENDING', jobId: job.id, workerId: worker.id }, 'join-request');
     reply.status(201);
-    return { shift, autoApproved: status === 'APPROVED' };
+    return { shift, autoApproved: false };
   });
 
   // Admin: approve or reject a pending join request
@@ -204,10 +200,11 @@ export async function shiftsRoutes(app: FastifyInstance) {
     );
     if (unavailable) return reply.status(409).send({ error: 'Worker is unavailable on this date' });
 
-    // Prevent assigning the same slot twice
+    // Prevent assigning the same slot twice (a pending-acceptance assignment
+    // still reserves the slot).
     if (slotId) {
       const slotTaken = await prisma.shift.findFirst({
-        where: { slotId, joinRequestStatus: 'APPROVED' },
+        where: { slotId, joinRequestStatus: { in: ['APPROVED', 'AWAITING_WORKER'] } },
       });
       if (slotTaken) return reply.status(409).send({ error: 'This slot is already assigned' });
     }
@@ -219,7 +216,8 @@ export async function shiftsRoutes(app: FastifyInstance) {
         slotId: slotId ?? null,
         scheduledStart: job.plannedStart,
         scheduledEnd: job.plannedEnd,
-        joinRequestStatus: 'APPROVED',
+        // Direct assignment waits for the worker to accept (integration spec §7).
+        joinRequestStatus: 'AWAITING_WORKER',
         attendanceStatus: 'SCHEDULED',
         hourlyWageSnapshot: worker.hourlyWage,
         dailyPaymentSnapshot: worker.dailyPaymentAmount,
@@ -227,20 +225,83 @@ export async function shiftsRoutes(app: FastifyInstance) {
       },
     });
 
-    // Tell the worker they were assigned directly (integration spec §7).
+    // Ask the worker to accept the assignment (integration spec §7).
     const dk = job.date.toISOString().slice(0, 10);
     await prisma.notification.create({
       data: {
         userId: worker.userId,
-        title: 'שובצת למשמרת',
-        body: `שובצת לעבודה בתאריך ${dk}.`,
+        title: 'שובצת למשמרת – נדרש אישורך',
+        body: `בעל/ת העסק שיבץ/ה אותך לעבודה בתאריך ${dk}. יש לאשר או לדחות מ"היומן שלי".`,
         data: { type: 'DIRECT_ASSIGNMENT', shiftId: shift.id, jobId: job.id } as any,
       },
     });
 
-    await logAudit((req as any).user, 'CREATE', 'Shift', shift.id, null, { joinRequestStatus: 'APPROVED', jobId: job.id, workerId: worker.id }, 'direct-assign');
+    await logAudit((req as any).user, 'CREATE', 'Shift', shift.id, null, { joinRequestStatus: 'AWAITING_WORKER', jobId: job.id, workerId: worker.id }, 'direct-assign');
     reply.status(201);
     return { shift };
+  });
+
+  // Worker: accept or reject a direct assignment awaiting their response (spec §7).
+  app.post('/:id/respond-assignment', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const { id } = req.params as { id: string };
+    const { accepted } = req.body as { accepted: boolean };
+    const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!worker) return reply.status(403).send({ error: 'Worker profile not found' });
+
+    const shift = await prisma.shift.findUnique({ where: { id }, include: { job: { select: { date: true } } } });
+    if (!shift || shift.workerId !== worker.id) return reply.status(404).send({ error: 'Assignment not found' });
+    if (shift.joinRequestStatus !== 'AWAITING_WORKER') {
+      return reply.status(409).send({ error: 'This assignment is no longer awaiting your response' });
+    }
+
+    const dk = shift.job.date.toISOString().slice(0, 10);
+    const owners = await prisma.user.findMany({
+      where: { role: { in: [UserRole.OWNER, UserRole.ADMIN] }, isActive: true },
+      select: { id: true },
+    });
+
+    if (!accepted) {
+      // Reject: free the slot and let owners know (position reopens).
+      await prisma.shift.delete({ where: { id } });
+      if (owners.length) {
+        await prisma.notification.createMany({
+          data: owners.map((o) => ({
+            userId: o.id,
+            title: 'שיבוץ נדחה',
+            body: `${worker.firstName} ${worker.lastName} דחה/תה את השיבוץ לעבודה בתאריך ${dk}. המקום נפתח מחדש.`,
+            data: { type: 'ASSIGNMENT_DECLINED', jobId: shift.jobId } as any,
+          })),
+        });
+      }
+      await logAudit(user, 'REJECT', 'Shift', id, { joinRequestStatus: 'AWAITING_WORKER' }, null, 'assignment-declined');
+      return { success: true, accepted: false };
+    }
+
+    // Accept: the worker cannot already be confirmed elsewhere on this date.
+    const conflict = await prisma.shift.findFirst({
+      where: { workerId: worker.id, joinRequestStatus: 'APPROVED', job: { date: shift.job.date }, id: { not: id } },
+    });
+    if (conflict) return reply.status(409).send({ error: 'כבר יש לך משמרת מאושרת בתאריך זה' });
+
+    const updated = await prisma.shift.update({ where: { id }, data: { joinRequestStatus: 'APPROVED' } });
+    // Confirming this date invalidates the worker's other pending same-date requests.
+    await prisma.shift.updateMany({
+      where: { id: { not: id }, workerId: worker.id, joinRequestStatus: 'PENDING', job: { date: shift.job.date } },
+      data: { joinRequestStatus: 'REJECTED' },
+    });
+    if (owners.length) {
+      await prisma.notification.createMany({
+        data: owners.map((o) => ({
+          userId: o.id,
+          title: 'שיבוץ אושר על ידי העובד/ת',
+          body: `${worker.firstName} ${worker.lastName} אישר/ה את השיבוץ לעבודה בתאריך ${dk}.`,
+          data: { type: 'ASSIGNMENT_ACCEPTED', shiftId: id, jobId: shift.jobId } as any,
+        })),
+      });
+    }
+    await logAudit(user, 'APPROVE', 'Shift', id, { joinRequestStatus: 'AWAITING_WORKER' }, { joinRequestStatus: 'APPROVED' }, 'assignment-accepted');
+    return { success: true, accepted: true, shift: updated };
   });
 
   // Admin: remove a worker from a job (deletes the shift / frees the slot)

@@ -45,6 +45,7 @@ function formatTime(iso: string): string {
 
 type OwnerTasks = {
   joinRequests: number;
+  pendingAcceptance: number;
   replacementRequests: number;
   swapApprovals: number;
   missingForms: number;
@@ -54,6 +55,7 @@ type OwnerTasks = {
 function OwnerTasksPanel({ tasks }: { tasks: OwnerTasks }) {
   const items: { key: keyof OwnerTasks; label: string; href?: string }[] = [
     { key: 'joinRequests', label: 'בקשות הצטרפות' },
+    { key: 'pendingAcceptance', label: 'ממתין לאישור העובד/ת' },
     { key: 'replacementRequests', label: 'בקשות החלפה' },
     { key: 'swapApprovals', label: 'אישורי החלפת משמרות', href: '/shifts/swaps' },
     { key: 'missingForms', label: 'טפסים חסרים' },

@@ -68,6 +68,7 @@ const JOB_STATUS_LABELS: Record<string, string> = {
 
 const JOIN_STATUS_LABELS: Record<string, string> = {
   PENDING: 'ממתין לאישור',
+  AWAITING_WORKER: 'ממתין לאישור העובד/ת',
   APPROVED: 'מאושר',
   REJECTED: 'נדחה',
   WAITLISTED: 'רשימת המתנה',
@@ -314,7 +315,7 @@ export default function JobDetailPage() {
           </div>
         ) : (
           <StatusBadge
-            tone={shift.joinRequestStatus === 'REJECTED' ? 'error' : 'success'}
+            tone={shift.joinRequestStatus === 'REJECTED' ? 'error' : shift.joinRequestStatus === 'AWAITING_WORKER' ? 'warning' : 'success'}
             label={JOIN_STATUS_LABELS[shift.joinRequestStatus] ?? shift.joinRequestStatus}
           />
         )}
