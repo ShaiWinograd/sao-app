@@ -1,6 +1,8 @@
-import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
+import { colors, fonts } from '../../lib/theme';
 
 export default function NotificationsScreen() {
   const qc = useQueryClient();
@@ -15,7 +17,7 @@ export default function NotificationsScreen() {
   });
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>התראות</Text>
         {(data?.some((n: any) => !n.isRead)) && (
@@ -26,7 +28,9 @@ export default function NotificationsScreen() {
       </View>
 
       {isLoading ? (
-        <Text style={styles.muted}>טוען...</Text>
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
       ) : (
         <FlatList
           data={data ?? []}
@@ -40,18 +44,19 @@ export default function NotificationsScreen() {
           )}
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f6f1e8', padding: 16 },
-  header: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  title: { fontSize: 22, fontWeight: '700', color: '#2f251a' },
-  readAll: { fontSize: 13, color: '#735B91', fontWeight: '600' },
-  muted: { color: '#6d6254', textAlign: 'center', marginTop: 40 },
-  notif: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 10 },
-  notifUnread: { borderRightWidth: 3, borderRightColor: '#735B91' },
-  notifTitle: { fontSize: 15, fontWeight: '600', color: '#2f251a' },
-  notifBody: { fontSize: 13, color: '#6d6254', marginTop: 4 },
+  container: { flex: 1, backgroundColor: colors.bg, padding: 16 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40 },
+  header: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  title: { fontSize: 20, fontFamily: fonts.bold, color: colors.text, textAlign: 'right' },
+  readAll: { fontSize: 13, color: colors.primary, fontFamily: fonts.semibold },
+  muted: { color: colors.muted, textAlign: 'center', marginTop: 40, fontFamily: fonts.regular },
+  notif: { backgroundColor: colors.card, borderRadius: 12, padding: 14, marginBottom: 10, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, elevation: 1 },
+  notifUnread: { borderRightWidth: 3, borderRightColor: colors.primary },
+  notifTitle: { fontSize: 15, fontFamily: fonts.semibold, color: colors.text, textAlign: 'right' },
+  notifBody: { fontSize: 13, color: colors.muted, marginTop: 4, textAlign: 'right' },
 });

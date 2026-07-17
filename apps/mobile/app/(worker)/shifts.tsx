@@ -1,10 +1,11 @@
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, Modal, TextInput, ActivityIndicator } from 'react-native';
 import { useState } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { HE, formatDate, formatTime, canRequestReplacement, requiresManagerNoteForEndShift } from '@workforce/shared';
 import * as Location from 'expo-location';
-import { colors } from '../../lib/theme';
+import { colors, fonts } from '../../lib/theme';
 
 export default function ShiftsScreen() {
   const qc = useQueryClient();
@@ -134,10 +135,12 @@ export default function ShiftsScreen() {
     shifts?.filter((s: any) => ['APPROVED', 'AWAITING_WORKER', 'PENDING'].includes(s.joinRequestStatus)) ?? [];
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <Text style={styles.title}>המשמרות שלי</Text>
       {isLoading ? (
-        <Text style={styles.muted}>טוען...</Text>
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
       ) : (
         <FlatList
           data={active}
@@ -267,29 +270,30 @@ export default function ShiftsScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f6f1e8', padding: 16 },
-  title: { fontSize: 22, fontWeight: '700', color: '#2f251a', marginBottom: 16 },
-  muted: { color: '#6d6254', textAlign: 'center', marginTop: 40 },
-  card: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
-  date: { fontSize: 13, color: '#6d6254' },
-  customer: { fontSize: 17, fontWeight: '600', color: '#2f251a', marginTop: 2 },
-  address: { fontSize: 13, color: '#6d6254', marginTop: 2 },
-  time: { fontSize: 14, color: '#2f251a', marginTop: 4 },
-  status: { fontSize: 12, color: '#6d6254', marginTop: 6, fontWeight: '600' },
+  container: { flex: 1, backgroundColor: colors.bg, padding: 16 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40 },
+  title: { fontSize: 20, fontFamily: fonts.bold, color: colors.text, marginBottom: 14, textAlign: 'right' },
+  muted: { color: colors.muted, textAlign: 'center', marginTop: 40, fontFamily: fonts.regular },
+  card: { backgroundColor: colors.card, borderRadius: 14, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  date: { fontSize: 13, color: colors.muted, textAlign: 'right' },
+  customer: { fontSize: 17, fontFamily: fonts.semibold, color: colors.text, marginTop: 2, textAlign: 'right' },
+  address: { fontSize: 13, color: colors.muted, marginTop: 2, textAlign: 'right' },
+  time: { fontSize: 14, color: colors.text, marginTop: 4, textAlign: 'right' },
+  status: { fontSize: 12, color: colors.muted, marginTop: 6, fontFamily: fonts.semibold, textAlign: 'right' },
   statusActive: { color: colors.primary },
   statusAwaiting: { color: '#b45309' },
-  statusDone: { color: '#6d6254' },
+  statusDone: { color: colors.muted },
   btn: { marginTop: 10, backgroundColor: colors.primary, borderRadius: 10, padding: 12, alignItems: 'center' },
   btnDanger: { backgroundColor: colors.danger },
   btnDisabled: { backgroundColor: '#9ca3af' },
   btnSecondary: { marginTop: 8, borderWidth: 1.5, borderColor: colors.primary, borderRadius: 10, padding: 10, alignItems: 'center' },
-  btnSecondaryText: { color: colors.primary, fontWeight: '600', fontSize: 14 },
-  btnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  btnSecondaryText: { color: colors.primary, fontFamily: fonts.semibold, fontSize: 14 },
+  btnText: { color: colors.white, fontFamily: fonts.semibold, fontSize: 15 },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -297,19 +301,19 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     padding: 16,
     gap: 12,
   },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: '#2f251a' },
-  modalSubtitle: { fontSize: 13, color: '#6d6254' },
+  modalTitle: { fontSize: 18, fontFamily: fonts.bold, color: colors.text, textAlign: 'right' },
+  modalSubtitle: { fontSize: 13, color: colors.muted, textAlign: 'right' },
   statusRow: { flexDirection: 'row', gap: 8 },
   statusBtn: {
     flex: 1,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#d8d2c7',
+    borderColor: colors.border,
     paddingVertical: 10,
     alignItems: 'center',
     backgroundColor: '#f9f7f2',
@@ -318,17 +322,18 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     backgroundColor: colors.primaryBg,
   },
-  statusBtnText: { fontSize: 12, color: '#6d6254', fontWeight: '600' },
+  statusBtnText: { fontSize: 12, color: colors.muted, fontFamily: fonts.semibold },
   statusBtnTextActive: { color: colors.primary },
   noteInput: {
     minHeight: 90,
     borderWidth: 1,
-    borderColor: '#d8d2c7',
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
     fontSize: 14,
-    color: '#2f251a',
+    color: colors.text,
     backgroundColor: '#faf8f4',
+    textAlign: 'right',
   },
 });
