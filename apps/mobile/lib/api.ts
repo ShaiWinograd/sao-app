@@ -1,5 +1,14 @@
 import axios from 'axios';
-import * as SecureStore from 'expo-secure-store';
+
+type TokenGetter = () => Promise<string | null>;
+
+// Registered from the app tree (inside ClerkProvider) so the interceptor can
+// fetch a fresh, short-lived Clerk session token for every request.
+let tokenGetter: TokenGetter | null = null;
+
+export function setAuthTokenGetter(getter: TokenGetter | null) {
+  tokenGetter = getter;
+}
 
 export const api = axios.create({
   baseURL:
@@ -8,10 +17,11 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use(async (config) => {
-  // Clerk stores the token in SecureStore under '__clerk_client_jwt'
-  const token = await SecureStore.getItemAsync('__clerk_client_jwt');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (tokenGetter) {
+    const token = await tokenGetter();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
   }
   return config;
 });
