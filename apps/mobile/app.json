@@ -23,7 +23,11 @@
         "backgroundColor": "#5E4A78"
       },
       "package": "com.spaceorder.workforce",
-      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION", "FOREGROUND_SERVICE"]
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "FOREGROUND_SERVICE"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -40,10 +44,13 @@
         {
           "color": "#5E4A78"
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
-      "router": { "origin": false }
+      "router": {
+        "origin": false
+      }
     }
   }
 }

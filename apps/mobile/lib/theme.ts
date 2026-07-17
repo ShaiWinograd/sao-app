@@ -26,6 +26,15 @@ export const colors = {
   organizingBg: '#eff6ff',
 } as const;
 
+// Assistant (with Heebo fallback) mirrors the web app's font stack.
+// React Native needs an explicit family per weight, so use these instead of fontWeight.
+export const fonts = {
+  regular: 'Assistant_400Regular',
+  medium: 'Assistant_500Medium',
+  semibold: 'Assistant_600SemiBold',
+  bold: 'Assistant_700Bold',
+} as const;
+
 export function jobTypeColor(type: string): string {
   if (type === 'PACKING') return colors.packing;
   if (type === 'UNPACKING') return colors.unpacking;
