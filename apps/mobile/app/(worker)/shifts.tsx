@@ -1,6 +1,8 @@
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, Modal, TextInput, ActivityIndicator } from 'react-native';
 import { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { HE, formatDate, formatTime, canRequestReplacement, requiresManagerNoteForEndShift } from '@workforce/shared';
@@ -155,8 +157,15 @@ export default function ShiftsScreen() {
               item.joinRequestStatus === 'APPROVED' && canRequestReplacement(item.scheduledStart) && !isActive && !isDone;
 
             return (
-              <View style={styles.card}>
-                <Text style={styles.date}>{formatDate(item.scheduledStart)}</Text>
+              <TouchableOpacity
+                style={styles.card}
+                activeOpacity={0.9}
+                onPress={() => router.push({ pathname: '/(worker)/shift-detail', params: { id: item.id } })}
+              >
+                <View style={styles.cardHead}>
+                  <Text style={styles.date}>{formatDate(item.scheduledStart)}</Text>
+                  <Ionicons name="chevron-back" size={18} color={colors.muted} />
+                </View>
                 <Text style={styles.customer}>
                   {item.job?.customer?.firstName} {item.job?.customer?.lastName}
                 </Text>
@@ -214,7 +223,7 @@ export default function ShiftsScreen() {
                     )}
                   </>
                 )}
-              </View>
+              </TouchableOpacity>
             );
           }}
         />
@@ -280,6 +289,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontFamily: fonts.bold, color: colors.text, marginBottom: 14, textAlign: 'right' },
   muted: { color: colors.muted, textAlign: 'center', marginTop: 40, fontFamily: fonts.regular },
   card: { backgroundColor: colors.card, borderRadius: 14, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   date: { fontSize: 13, color: colors.muted, textAlign: 'right' },
   customer: { fontSize: 17, fontFamily: fonts.semibold, color: colors.text, marginTop: 2, textAlign: 'right' },
   address: { fontSize: 13, color: colors.muted, marginTop: 2, textAlign: 'right' },
