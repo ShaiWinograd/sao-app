@@ -1,12 +1,13 @@
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { colors, fonts } from '../../lib/theme';
+import { SkeletonList } from '../../components/ui';
 
 export default function NotificationsScreen() {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => api.get('/notifications/mine').then((r) => r.data),
   });
@@ -28,13 +29,12 @@ export default function NotificationsScreen() {
       </View>
 
       {isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
+        <SkeletonList />
       ) : (
         <FlatList
           data={data ?? []}
           keyExtractor={(item: any) => item.id}
+          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.primary} />}
           ListEmptyComponent={<Text style={styles.muted}>אין התראות</Text>}
           renderItem={({ item }: any) => (
             <View style={[styles.notif, !item.isRead && styles.notifUnread]}>

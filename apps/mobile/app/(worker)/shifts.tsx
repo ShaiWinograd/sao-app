@@ -1,4 +1,4 @@
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, Modal, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, Modal, TextInput, ActivityIndicator, RefreshControl } from 'react-native';
 import { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -8,6 +8,7 @@ import { api } from '../../lib/api';
 import { HE, formatDate, formatTime, canRequestReplacement, requiresManagerNoteForEndShift } from '@workforce/shared';
 import * as Location from 'expo-location';
 import { colors, fonts } from '../../lib/theme';
+import { SkeletonList } from '../../components/ui';
 
 export default function ShiftsScreen() {
   const qc = useQueryClient();
@@ -16,7 +17,7 @@ export default function ShiftsScreen() {
   const [endFlowStatus, setEndFlowStatus] = useState<'COMPLETED' | 'PARTIALLY_COMPLETED' | 'NOT_COMPLETED'>('COMPLETED');
   const [endFlowNote, setEndFlowNote] = useState('');
 
-  const { data: shifts, isLoading } = useQuery({
+  const { data: shifts, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['my-shifts'],
     queryFn: () => api.get('/shifts/mine').then((r) => r.data),
   });
@@ -140,13 +141,12 @@ export default function ShiftsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <Text style={styles.title}>המשמרות שלי</Text>
       {isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
+        <SkeletonList />
       ) : (
         <FlatList
           data={active}
           keyExtractor={(item: any) => item.id}
+          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.primary} />}
           ListEmptyComponent={<Text style={styles.muted}>אין משמרות פעילות</Text>}
           renderItem={({ item }: any) => {
             const isActive = item.attendanceStatus === 'CLOCKED_IN';

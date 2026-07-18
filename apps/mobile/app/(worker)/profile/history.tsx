@@ -1,18 +1,18 @@
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { HE, formatDate, formatTime } from '@workforce/shared';
 import { api } from '../../../lib/api';
 import { colors, fonts, jobTypeColor } from '../../../lib/theme';
-import { Screen, ScreenHeader } from '../../../components/ui';
+import { Screen, ScreenHeader, SkeletonList } from '../../../components/ui';
 
 function typeLabel(t?: string): string {
   return HE.jobType[t as keyof typeof HE.jobType] ?? t ?? '';
 }
 
 export default function HistoryScreen() {
-  const { data: shifts, isLoading, error } = useQuery<any[]>({
+  const { data: shifts, isLoading, error, refetch, isRefetching } = useQuery<any[]>({
     queryKey: ['my-shifts'],
     queryFn: () => api.get('/shifts/mine').then((r) => r.data),
   });
@@ -25,8 +25,8 @@ export default function HistoryScreen() {
     <Screen>
       <ScreenHeader title="היסטוריית עבודות" onBack={() => router.back()} />
       {isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
+        <View style={styles.list}>
+          <SkeletonList />
         </View>
       ) : error ? (
         <Text style={styles.muted}>לא הצלחנו לטעון את ההיסטוריה.</Text>
@@ -35,6 +35,7 @@ export default function HistoryScreen() {
           data={past}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
+          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.primary} />}
           ListEmptyComponent={<Text style={styles.muted}>אין עדיין עבודות בהיסטוריה.</Text>}
           renderItem={({ item }) => {
             const tColor = jobTypeColor(item.job?.jobType);

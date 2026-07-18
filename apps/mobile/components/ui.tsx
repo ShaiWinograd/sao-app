@@ -1,10 +1,11 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Animated,
   ViewStyle,
   StyleProp,
 } from 'react-native';
@@ -37,6 +38,44 @@ export function ScreenHeader({ title, onBack }: { title: string; onBack?: () => 
 
 export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   return <View style={[styles.card, style]}>{children}</View>;
+}
+
+/** A gently pulsing placeholder used while list data loads. */
+function Shimmer({ style }: { style?: StyleProp<ViewStyle> }) {
+  const opacity = useRef(new Animated.Value(0.4)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.4, duration: 700, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [opacity]);
+  return <Animated.View style={[styles.shimmer, { opacity }, style]} />;
+}
+
+/** Skeleton placeholder card that mirrors the shape of a shift card. */
+export function SkeletonCard() {
+  return (
+    <View style={styles.card}>
+      <Shimmer style={{ width: '40%', height: 12 }} />
+      <Shimmer style={{ width: '70%', height: 18, marginTop: 10 }} />
+      <Shimmer style={{ width: '55%', height: 12, marginTop: 8 }} />
+    </View>
+  );
+}
+
+/** A vertical stack of skeleton cards. */
+export function SkeletonList({ count = 4 }: { count?: number }) {
+  return (
+    <View style={{ gap: 12 }}>
+      {Array.from({ length: count }).map((_, i) => (
+        <SkeletonCard key={i} />
+      ))}
+    </View>
+  );
 }
 
 export function Pill({ label, color, bg }: { label: string; color: string; bg: string }) {
@@ -103,6 +142,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card, borderRadius: 16, padding: 16,
     shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
   },
+  shimmer: { backgroundColor: '#e7e1d6', borderRadius: 6 },
   pill: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   pillText: { fontSize: 12, fontFamily: fonts.semibold },
   btn: { borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
