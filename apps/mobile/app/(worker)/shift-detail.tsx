@@ -78,8 +78,13 @@ export default function ShiftDetailScreen() {
     enabled: swapOpen && !!colleagueId,
   });
 
+  // Photo and signature questions are not filled on mobile (signature comes from
+  // the worker profile; photos aren't used), so they're skipped entirely.
   const questions: FormQuestion[] = useMemo(
-    () => (job?.formTemplate?.questions ?? []) as FormQuestion[],
+    () =>
+      ((job?.formTemplate?.questions ?? []) as FormQuestion[]).filter(
+        (q) => q.type !== 'PHOTO_UPLOAD' && q.type !== 'SIGNATURE',
+      ),
     [job],
   );
 
@@ -484,15 +489,6 @@ function QuestionField({ q, value, onChange }: { q: FormQuestion; value: string;
     );
   }
 
-  if (q.type === 'PHOTO_UPLOAD' || q.type === 'SIGNATURE') {
-    return (
-      <View style={styles.field}>
-        <Text style={styles.fieldLabel}>{label}</Text>
-        <Text style={styles.unsupported}>ניתן למלא שדה זה בגרסת הווב.</Text>
-      </View>
-    );
-  }
-
   // NUMBER / SHORT_TEXT / LONG_TEXT / DATE
   const multiline = q.type === 'LONG_TEXT';
   return (
@@ -549,7 +545,6 @@ const styles = StyleSheet.create({
   choiceTextActive: { color: colors.white },
   input: { borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: colors.text, backgroundColor: '#faf8f4', textAlign: 'right' },
   textArea: { minHeight: 90, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: colors.text, backgroundColor: '#faf8f4', textAlign: 'right' },
-  unsupported: { fontSize: 13, color: colors.muted, fontFamily: fonts.regular, textAlign: 'right' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
   swapModal: { backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 28 },
   swapModalHead: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
