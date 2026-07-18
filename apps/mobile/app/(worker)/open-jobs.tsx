@@ -7,6 +7,7 @@ import { api } from '../../lib/api';
 import { HE, formatDate, formatTime } from '@workforce/shared';
 import { colors, fonts, jobTypeColor, jobTypeBg } from '../../lib/theme';
 import { SkeletonList } from '../../components/ui';
+import { useToast } from '../../components/toast';
 
 type MyStatus = 'NONE' | 'APPROVED' | 'AWAITING_WORKER' | 'PENDING';
 
@@ -53,6 +54,7 @@ function typeLabel(type: string): string {
 
 export default function BoardScreen() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [filter, setFilter] = useState<Filter>('ALL');
   const { data: board, isLoading, error, refetch, isRefetching } = useQuery<BoardShift[]>({
     queryKey: ['board'],
@@ -62,7 +64,7 @@ export default function BoardScreen() {
   const joinMutation = useMutation({
     mutationFn: (jobId: string) => api.post('/shifts/join-request', { jobId }),
     onSuccess: () => {
-      Alert.alert('נשלח!', 'בקשת ההצטרפות נשלחה לאישור בעל/ת העסק.');
+      toast.show('בקשת ההצטרפות נשלחה לאישור בעל/ת העסק.');
       qc.invalidateQueries({ queryKey: ['board'] });
       qc.invalidateQueries({ queryKey: ['my-shifts'] });
     },

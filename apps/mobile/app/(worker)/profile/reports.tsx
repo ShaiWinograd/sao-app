@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../../lib/api';
 import { colors, fonts } from '../../../lib/theme';
 import { Screen, ScreenHeader, Card, Pill, Button } from '../../../components/ui';
+import { useToast } from '../../../components/toast';
 
 const ils = (n: number) => '₪' + (n ?? 0).toLocaleString('he-IL');
 
@@ -19,6 +20,7 @@ function fmtDate(iso: string): string {
 
 export default function ReportsScreen() {
   const qc = useQueryClient();
+  const toast = useToast();
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
@@ -36,7 +38,7 @@ export default function ReportsScreen() {
     onSuccess: (_d, vars) => {
       setDisputeOpen(false);
       setDisputeNote('');
-      Alert.alert('✅', vars.action === 'APPROVE' ? 'הדוח אושר. תודה!' : 'בקשת התיקון נשלחה.');
+      toast.show(vars.action === 'APPROVE' ? 'הדוח אושר. תודה!' : 'בקשת התיקון נשלחה.');
       qc.invalidateQueries({ queryKey: ['payroll', month, year] });
     },
     onError: (err: any) => Alert.alert('שגיאה', err?.response?.data?.error ?? 'הפעולה נכשלה'),
