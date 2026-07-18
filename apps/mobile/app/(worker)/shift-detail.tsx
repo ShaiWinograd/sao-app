@@ -19,6 +19,7 @@ import { HE, formatDate, formatTime, canRequestReplacement, requiresManagerNoteF
 import { api } from '../../lib/api';
 import { colors, fonts, jobTypeColor } from '../../lib/theme';
 import { Screen, ScreenHeader, Card, Pill, Button } from '../../components/ui';
+import { useToast } from '../../components/toast';
 
 type Completion = 'COMPLETED' | 'PARTIALLY_COMPLETED' | 'NOT_COMPLETED';
 
@@ -43,6 +44,7 @@ export default function ShiftDetailScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
   const id = typeof params.id === 'string' ? params.id : '';
   const qc = useQueryClient();
+  const toast = useToast();
 
   const [formOpen, setFormOpen] = useState(false);
   const [completion, setCompletion] = useState<Completion>('COMPLETED');
@@ -100,7 +102,7 @@ export default function ShiftDetailScreen() {
       return api.post('/attendance/clock-in', { shiftId: id, ...pos, timestamp: new Date().toISOString() });
     },
     onSuccess: () => {
-      Alert.alert('✅', 'כניסה למשמרת נרשמה בהצלחה');
+      toast.show('כניסה למשמרת נרשמה בהצלחה');
       invalidate();
     },
     onError: (err: any) => {
@@ -139,7 +141,7 @@ export default function ShiftDetailScreen() {
     },
     onSuccess: () => {
       setFormOpen(false);
-      Alert.alert('✅', 'טופס הסיום נשמר. תודה!');
+      toast.show('טופס הסיום נשמר. תודה!');
       invalidate();
     },
     onError: (err: any) => {
@@ -152,7 +154,7 @@ export default function ShiftDetailScreen() {
   const respond = useMutation({
     mutationFn: (accepted: boolean) => api.post(`/shifts/${id}/respond-assignment`, { accepted }),
     onSuccess: (_d, accepted) => {
-      Alert.alert('✅', accepted ? 'אישרת את השיבוץ.' : 'דחית את השיבוץ.');
+      toast.show(accepted ? 'אישרת את השיבוץ.' : 'דחית את השיבוץ.');
       invalidate();
     },
     onError: (err: any) => Alert.alert('שגיאה', err?.response?.data?.error ?? 'הפעולה נכשלה'),
@@ -161,7 +163,7 @@ export default function ShiftDetailScreen() {
   const replacement = useMutation({
     mutationFn: () => api.post(`/shifts/${id}/replacement`, { reason: 'בקשת החלפה מהאפליקציה' }),
     onSuccess: () => {
-      Alert.alert('נשלח', 'בקשת ההחלפה נשלחה. תישארי משובצת עד לאישור בעל/ת העסק.');
+      toast.show('בקשת ההחלפה נשלחה. תישארי משובצת עד לאישור בעל/ת העסק.');
       invalidate();
     },
     onError: (err: any) => Alert.alert('שגיאה', err?.response?.data?.error ?? 'שליחת הבקשה נכשלה'),

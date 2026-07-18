@@ -15,6 +15,7 @@ import {
 } from '@expo-google-fonts/assistant';
 import { setAuthTokenGetter } from '../lib/api';
 import { colors, fonts } from '../lib/theme';
+import { ToastProvider } from '../components/toast';
 
 // Force RTL
 I18nManager.allowRTL(true);
@@ -81,8 +82,10 @@ export default function RootLayout() {
     >
       <QueryClientProvider client={queryClient}>
         <SafeAreaProvider>
-          <ApiAuthBridge />
-          <Slot />
+          <ToastProvider>
+            <ApiAuthBridge />
+            <Slot />
+          </ToastProvider>
         </SafeAreaProvider>
       </QueryClientProvider>
     </ClerkProvider>

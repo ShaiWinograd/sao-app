@@ -9,9 +9,11 @@ import { HE, formatDate, formatTime, canRequestReplacement, requiresManagerNoteF
 import * as Location from 'expo-location';
 import { colors, fonts } from '../../lib/theme';
 import { SkeletonList } from '../../components/ui';
+import { useToast } from '../../components/toast';
 
 export default function ShiftsScreen() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [endFlowVisible, setEndFlowVisible] = useState(false);
   const [endFlowShiftId, setEndFlowShiftId] = useState<string | null>(null);
   const [endFlowStatus, setEndFlowStatus] = useState<'COMPLETED' | 'PARTIALLY_COMPLETED' | 'NOT_COMPLETED'>('COMPLETED');
@@ -35,7 +37,7 @@ export default function ShiftsScreen() {
       });
     },
     onSuccess: () => {
-      Alert.alert('✅', 'כניסה למשמרת נרשמה בהצלחה');
+      toast.show('כניסה למשמרת נרשמה בהצלחה');
       qc.invalidateQueries({ queryKey: ['my-shifts'] });
     },
     onError: (err: any) => {
@@ -87,7 +89,7 @@ export default function ShiftsScreen() {
       setEndFlowVisible(false);
       setEndFlowShiftId(null);
       setEndFlowNote('');
-      Alert.alert('✅', 'סיום המשמרת והטופס נשמרו בהצלחה.');
+      toast.show('סיום המשמרת והטופס נשמרו בהצלחה.');
       qc.invalidateQueries({ queryKey: ['my-shifts'] });
     },
     onError: (error: unknown) => {
@@ -103,7 +105,7 @@ export default function ShiftsScreen() {
     mutationFn: ({ shiftId, accepted }: { shiftId: string; accepted: boolean }) =>
       api.post(`/shifts/${shiftId}/respond-assignment`, { accepted }),
     onSuccess: (_data, vars) => {
-      Alert.alert('✅', vars.accepted ? 'אישרת את השיבוץ.' : 'דחית את השיבוץ.');
+      toast.show(vars.accepted ? 'אישרת את השיבוץ.' : 'דחית את השיבוץ.');
       qc.invalidateQueries({ queryKey: ['my-shifts'] });
       qc.invalidateQueries({ queryKey: ['board'] });
     },
@@ -113,7 +115,7 @@ export default function ShiftsScreen() {
   const replacementMutation = useMutation({
     mutationFn: (shiftId: string) => api.post(`/shifts/${shiftId}/replacement`, { reason: 'בקשת החלפה מהאפליקציה' }),
     onSuccess: () => {
-      Alert.alert('נשלח', 'בקשת ההחלפה נשלחה. תישארי משובצת עד לאישור בעל/ת העסק.');
+      toast.show('בקשת ההחלפה נשלחה. תישארי משובצת עד לאישור בעל/ת העסק.');
       qc.invalidateQueries({ queryKey: ['my-shifts'] });
     },
     onError: (err: any) => Alert.alert('שגיאה', err.response?.data?.error ?? 'שליחת הבקשה נכשלה'),
