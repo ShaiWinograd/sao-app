@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useRef, useCallback, ReactNode } f
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { colors, fonts } from '../lib/theme';
 
 type Variant = 'success' | 'error' | 'info';
@@ -11,6 +12,17 @@ type ToastContextValue = { show: (message: string, variant?: Variant) => void };
 const ToastContext = createContext<ToastContextValue>({ show: () => {} });
 
 export const useToast = () => useContext(ToastContext);
+
+// Fire a subtle haptic matching the toast variant. No-ops safely if the native
+// module isn't available yet (e.g. before a native rebuild).
+function tapHaptic(variant: Variant) {
+  const map = {
+    success: Haptics.NotificationFeedbackType.Success,
+    error: Haptics.NotificationFeedbackType.Error,
+    info: Haptics.NotificationFeedbackType.Warning,
+  } as const;
+  Haptics.notificationAsync(map[variant]).catch(() => {});
+}
 
 const BG: Record<Variant, string> = {
   success: '#2f7d5b',
@@ -33,6 +45,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const show = useCallback(
     (message: string, variant: Variant = 'success') => {
       setToast({ message, variant });
+      tapHaptic(variant);
       Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }).start();
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => {
