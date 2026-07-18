@@ -1,4 +1,4 @@
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, RefreshControl } from 'react-native';
 import { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { HE, formatDate, formatTime } from '@workforce/shared';
 import { colors, fonts, jobTypeColor, jobTypeBg } from '../../lib/theme';
+import { SkeletonList } from '../../components/ui';
 
 type MyStatus = 'NONE' | 'APPROVED' | 'AWAITING_WORKER' | 'PENDING';
 
@@ -53,7 +54,7 @@ function typeLabel(type: string): string {
 export default function BoardScreen() {
   const qc = useQueryClient();
   const [filter, setFilter] = useState<Filter>('ALL');
-  const { data: board, isLoading, error } = useQuery<BoardShift[]>({
+  const { data: board, isLoading, error, refetch, isRefetching } = useQuery<BoardShift[]>({
     queryKey: ['board'],
     queryFn: () => api.get('/jobs/board').then((r) => r.data),
   });
@@ -111,9 +112,7 @@ export default function BoardScreen() {
       </View>
 
       {isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
+        <SkeletonList />
       ) : error ? (
         <Text style={styles.muted}>
           לא הצלחנו לטעון את המשמרות
@@ -124,6 +123,7 @@ export default function BoardScreen() {
           data={filtered}
           keyExtractor={(item) => item.jobId}
           contentContainerStyle={{ paddingBottom: 24 }}
+          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.primary} />}
           ListEmptyComponent={<Text style={styles.muted}>{emptyText}</Text>}
           renderItem={({ item }) => <BoardCard shift={item} onJoin={() => confirmJoin(item)} joining={joinMutation.isPending} />}
         />
