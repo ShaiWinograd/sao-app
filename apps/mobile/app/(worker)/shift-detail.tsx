@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   Linking,
   Platform,
+  Modal,
   ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -50,6 +51,8 @@ export default function ShiftDetailScreen() {
   const [completion, setCompletion] = useState<Completion>('COMPLETED');
   const [note, setNote] = useState('');
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [swapOpen, setSwapOpen] = useState(false);
+  const [colleagueId, setColleagueId] = useState<string | null>(null);
 
   const { data: shift, isLoading, error } = useQuery<any>({
     queryKey: ['shift', id],
@@ -61,6 +64,18 @@ export default function ShiftDetailScreen() {
     queryKey: ['job', shift?.jobId],
     queryFn: () => api.get(`/jobs/${shift.jobId}`).then((r) => r.data),
     enabled: !!shift?.jobId,
+  });
+
+  const { data: colleagues } = useQuery<any[]>({
+    queryKey: ['colleagues'],
+    queryFn: () => api.get('/workers/colleagues').then((r) => r.data),
+    enabled: swapOpen,
+  });
+
+  const { data: candidates } = useQuery<any[]>({
+    queryKey: ['swap-candidates', colleagueId],
+    queryFn: () => api.get(`/shifts/swaps/candidates/${colleagueId}`).then((r) => r.data),
+    enabled: swapOpen && !!colleagueId,
   });
 
   const questions: FormQuestion[] = useMemo(
@@ -169,6 +184,17 @@ export default function ShiftDetailScreen() {
     onError: (err: any) => Alert.alert('שגיאה', err?.response?.data?.error ?? 'שליחת הבקשה נכשלה'),
   });
 
+  const proposeSwap = useMutation({
+    mutationFn: (toShiftId: string) => api.post(`/shifts/${id}/swap`, { toShiftId }),
+    onSuccess: () => {
+      setSwapOpen(false);
+      setColleagueId(null);
+      toast.show('הצעת ההחלפה נשלחה לאישור העמית/ה.');
+      invalidate();
+    },
+    onError: (err: any) => Alert.alert('שגיאה', err?.response?.data?.error ?? 'שליחת ההצעה נכשלה'),
+  });
+
   if (isLoading) {
     return (
       <Screen>
@@ -198,6 +224,7 @@ export default function ShiftDetailScreen() {
   const isPending = shift.joinRequestStatus === 'PENDING';
   const canReplace =
     shift.joinRequestStatus === 'APPROVED' && canRequestReplacement(shift.scheduledStart) && !isActive && !isDone;
+  const canSwap = shift.joinRequestStatus === 'APPROVED' && !isActive && !isDone;
 
   return (
     <Screen>
@@ -315,6 +342,9 @@ export default function ShiftDetailScreen() {
                   }
                 />
               ) : null}
+              {canSwap ? (
+                <Button title="הצעת החלפה עם עמית/ה" icon="swap-horizontal" variant="outline" style={styles.mt8} onPress={() => setSwapOpen(true)} />
+              ) : null}
             </>
           )}
         </Card>
@@ -346,6 +376,47 @@ export default function ShiftDetailScreen() {
 
         <View style={{ height: 24 }} />
       </ScrollView>
+
+      <Modal visible={swapOpen} transparent animationType="slide" onRequestClose={() => setSwapOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.swapModal}>
+            <View style={styles.swapModalHead}>
+              <TouchableOpacity onPress={() => (colleagueId ? setColleagueId(null) : setSwapOpen(false))} hitSlop={8}>
+                <Ionicons name={colleagueId ? 'chevron-forward' : 'close'} size={22} color={colors.text} />
+              </TouchableOpacity>
+              <Text style={styles.swapModalTitle}>{colleagueId ? 'בחרי משמרת להחלפה' : 'בחרי עמית/ה'}</Text>
+            </View>
+            <ScrollView style={{ maxHeight: 380 }}>
+              {!colleagueId ? (
+                (colleagues ?? []).length === 0 ? (
+                  <Text style={styles.muted}>לא נמצאו עמיתים.</Text>
+                ) : (
+                  (colleagues ?? []).map((c: any) => (
+                    <TouchableOpacity key={c.id} style={styles.pickRow} onPress={() => setColleagueId(c.id)}>
+                      <Ionicons name="chevron-back" size={18} color={colors.muted} />
+                      <Text style={styles.pickName}>{c.name}</Text>
+                    </TouchableOpacity>
+                  ))
+                )
+              ) : (candidates ?? []).length === 0 ? (
+                <Text style={styles.muted}>אין משמרות זמינות להחלפה עם עמית/ה זו.</Text>
+              ) : (
+                (candidates ?? []).map((c: any) => (
+                  <View key={c.shiftId} style={styles.candRow}>
+                    <TouchableOpacity style={styles.candBtn} disabled={proposeSwap.isPending} onPress={() => proposeSwap.mutate(c.shiftId)}>
+                      <Text style={styles.candBtnText}>הצעה</Text>
+                    </TouchableOpacity>
+                    <View style={styles.candInfo}>
+                      <Text style={styles.candCustomer}>{typeLabel(c.jobType)} · {c.customerName}</Text>
+                      <Text style={styles.candMeta}>{formatDate(c.date)} · {formatTime(c.plannedStart)}–{formatTime(c.plannedEnd)}</Text>
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -479,4 +550,16 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: colors.text, backgroundColor: '#faf8f4', textAlign: 'right' },
   textArea: { minHeight: 90, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: colors.text, backgroundColor: '#faf8f4', textAlign: 'right' },
   unsupported: { fontSize: 13, color: colors.muted, fontFamily: fonts.regular, textAlign: 'right' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  swapModal: { backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 28 },
+  swapModalHead: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  swapModalTitle: { flex: 1, fontSize: 16, fontFamily: fonts.bold, color: colors.text, textAlign: 'right' },
+  pickRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
+  pickName: { flex: 1, fontSize: 15, fontFamily: fonts.medium, color: colors.text, textAlign: 'right' },
+  candRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
+  candBtn: { backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 16 },
+  candBtnText: { color: colors.white, fontFamily: fonts.semibold, fontSize: 14 },
+  candInfo: { flex: 1 },
+  candCustomer: { fontSize: 15, fontFamily: fonts.semibold, color: colors.text, textAlign: 'right' },
+  candMeta: { fontSize: 12, color: colors.muted, textAlign: 'right', marginTop: 2 },
 });
