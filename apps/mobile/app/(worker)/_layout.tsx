@@ -53,6 +53,8 @@ export default function WorkerLayout() {
           tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} />,
         }}
       />
+      {/* Pushed full-screen detail — hidden from the tab bar. */}
+      <Tabs.Screen name="shift-detail" options={{ href: null }} />
     </Tabs>
   );
 }

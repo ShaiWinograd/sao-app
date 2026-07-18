@@ -1,6 +1,7 @@
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { HE, formatDate, formatTime } from '@workforce/shared';
@@ -200,7 +201,12 @@ function BoardCard({ shift, onJoin, joining }: { shift: BoardShift; onJoin: () =
         ? { text: 'את/ה משובץ/ת', style: styles.badgePrimary }
         : { text: 'ממתין לאישור בעל/ת העסק', style: styles.badgeAmber };
   return (
-    <View style={[styles.card, styles.myCard, { borderColor: tColor, backgroundColor: jobTypeBg(shift.jobType) }]}>
+    <TouchableOpacity
+      style={[styles.card, styles.myCard, { borderColor: tColor, backgroundColor: jobTypeBg(shift.jobType) }]}
+      activeOpacity={0.9}
+      disabled={!shift.myShiftId}
+      onPress={() => shift.myShiftId && router.push({ pathname: '/(worker)/shift-detail', params: { id: shift.myShiftId } })}
+    >
       <View style={styles.headerRow}>
         <Text style={[styles.type, { color: tColor }]}>{typeLabel(shift.jobType)}</Text>
         <Text style={styles.date}>{formatDate(shift.date)}</Text>
@@ -213,7 +219,7 @@ function BoardCard({ shift, onJoin, joining }: { shift: BoardShift; onJoin: () =
       <View style={[styles.badge, badge.style]}>
         <Text style={styles.badgeText}>{badge.text}</Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
