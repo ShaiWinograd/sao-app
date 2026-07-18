@@ -121,6 +121,30 @@ export default function ShiftsScreen() {
     onError: (err: any) => Alert.alert('שגיאה', err.response?.data?.error ?? 'שליחת הבקשה נכשלה'),
   });
 
+  const { data: swaps } = useQuery<any[]>({
+    queryKey: ['swaps'],
+    queryFn: () => api.get('/shifts/swaps/mine').then((r) => r.data),
+  });
+
+  const respondSwap = useMutation({
+    mutationFn: ({ id, approved }: { id: string; approved: boolean }) => api.post(`/shifts/swaps/${id}/respond`, { approved }),
+    onSuccess: (_d, vars) => {
+      toast.show(vars.approved ? 'אישרת את ההחלפה.' : 'דחית את ההחלפה.');
+      qc.invalidateQueries({ queryKey: ['swaps'] });
+      qc.invalidateQueries({ queryKey: ['my-shifts'] });
+    },
+    onError: (err: any) => Alert.alert('שגיאה', err.response?.data?.error ?? 'הפעולה נכשלה'),
+  });
+
+  const cancelSwap = useMutation({
+    mutationFn: (id: string) => api.delete(`/shifts/swaps/${id}`),
+    onSuccess: () => {
+      toast.show('הצעת ההחלפה בוטלה.');
+      qc.invalidateQueries({ queryKey: ['swaps'] });
+    },
+    onError: (err: any) => Alert.alert('שגיאה', err.response?.data?.error ?? 'הביטול נכשל'),
+  });
+
   function confirmReject(shiftId: string) {
     Alert.alert('דחיית שיבוץ', 'לדחות את השיבוץ למשמרת? המקום ייפתח מחדש.', [
       { text: 'ביטול', style: 'cancel' },
@@ -149,6 +173,19 @@ export default function ShiftsScreen() {
           data={active}
           keyExtractor={(item: any) => item.id}
           refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.primary} />}
+          ListHeaderComponent={
+            <SwapsSection
+              swaps={swaps ?? []}
+              busy={respondSwap.isPending || cancelSwap.isPending}
+              onRespond={(id, approved) => respondSwap.mutate({ id, approved })}
+              onCancel={(id) =>
+                Alert.alert('ביטול הצעה', 'לבטל את הצעת ההחלפה?', [
+                  { text: 'לא', style: 'cancel' },
+                  { text: 'ביטול', style: 'destructive', onPress: () => cancelSwap.mutate(id) },
+                ])
+              }
+            />
+          }
           ListEmptyComponent={<Text style={styles.muted}>אין משמרות פעילות</Text>}
           renderItem={({ item }: any) => {
             const isActive = item.attendanceStatus === 'CLOCKED_IN';
@@ -285,11 +322,77 @@ export default function ShiftsScreen() {
   );
 }
 
+function swapTypeLabel(t?: string): string {
+  return HE.jobType[t as keyof typeof HE.jobType] ?? t ?? '';
+}
+
+function SwapsSection({
+  swaps,
+  busy,
+  onRespond,
+  onCancel,
+}: {
+  swaps: any[];
+  busy: boolean;
+  onRespond: (id: string, approved: boolean) => void;
+  onCancel: (id: string) => void;
+}) {
+  const relevant = swaps.filter((s) => s.awaitingMe || s.direction === 'OUTGOING');
+  if (relevant.length === 0) return null;
+  return (
+    <View style={styles.swapsSection}>
+      <Text style={styles.swapsTitle}>בקשות החלפה</Text>
+      {relevant.map((s) => (
+        <View key={s.id} style={styles.swapCard}>
+          <Text style={styles.swapHeading}>
+            {s.awaitingMe ? `${s.counterpartName} מבקש/ת להחליף איתך` : `הצעת החלפה ל${s.counterpartName}`}
+          </Text>
+          <Text style={styles.swapLine}>
+            המשמרת שלך: {formatDate(s.myShift.date)} · {swapTypeLabel(s.myShift.jobType)} · {s.myShift.customerName}
+          </Text>
+          <Text style={styles.swapLine}>
+            בתמורה: {formatDate(s.theirShift.date)} · {swapTypeLabel(s.theirShift.jobType)} · {s.theirShift.customerName}
+          </Text>
+          {s.awaitingMe ? (
+            <View style={styles.swapActions}>
+              <TouchableOpacity style={styles.swapApprove} disabled={busy} onPress={() => onRespond(s.id, true)}>
+                <Text style={styles.swapApproveText}>אישור</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.swapReject} disabled={busy} onPress={() => onRespond(s.id, false)}>
+                <Text style={styles.swapRejectText}>דחייה</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.swapActions}>
+              <Text style={styles.swapPending}>ממתין לאישור</Text>
+              <TouchableOpacity disabled={busy} onPress={() => onCancel(s.id)}>
+                <Text style={styles.swapCancel}>ביטול</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, padding: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40 },
   title: { fontSize: 20, fontFamily: fonts.bold, color: colors.text, marginBottom: 14, textAlign: 'right' },
   muted: { color: colors.muted, textAlign: 'center', marginTop: 40, fontFamily: fonts.regular },
+  swapsSection: { marginBottom: 8 },
+  swapsTitle: { fontSize: 15, fontFamily: fonts.bold, color: colors.text, textAlign: 'right', marginBottom: 8 },
+  swapCard: { backgroundColor: colors.card, borderRadius: 14, padding: 14, marginBottom: 10, borderRightWidth: 4, borderRightColor: colors.primary, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  swapHeading: { fontSize: 14, fontFamily: fonts.semibold, color: colors.text, textAlign: 'right', marginBottom: 6 },
+  swapLine: { fontSize: 13, color: colors.muted, textAlign: 'right', marginTop: 2 },
+  swapActions: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
+  swapApprove: { flex: 1, backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  swapApproveText: { color: colors.white, fontFamily: fonts.semibold, fontSize: 14 },
+  swapReject: { flex: 1, borderWidth: 1.5, borderColor: colors.danger, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  swapRejectText: { color: colors.danger, fontFamily: fonts.semibold, fontSize: 14 },
+  swapPending: { flex: 1, fontSize: 13, color: '#b45309', fontFamily: fonts.semibold, textAlign: 'right' },
+  swapCancel: { fontSize: 14, color: colors.danger, fontFamily: fonts.semibold },
   card: { backgroundColor: colors.card, borderRadius: 14, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
   cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   date: { fontSize: 13, color: colors.muted, textAlign: 'right' },
