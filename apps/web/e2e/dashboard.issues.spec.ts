@@ -53,7 +53,7 @@ test.describe('Dashboard urgent and workflow sections', () => {
             customerId: 'customer-1',
             caseId: 'case-active',
             date: soonIso,
-            status: 'PUBLISHED',
+            status: 'RESERVATION',
             jobType: 'PACKING',
             requiredWorkerCount: 4,
             customer: { firstName: 'יעל', lastName: 'כהן' },

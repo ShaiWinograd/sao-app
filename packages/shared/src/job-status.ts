@@ -1,9 +1,9 @@
 import type { StatusTone } from './status-tone';
 
 // Job status badge vocabulary from the UX spec (§11 Status badges → Job).
-// The base persisted status (DRAFT/PUBLISHED/IN_PROGRESS/COMPLETED/CANCELLED)
-// is refined into a staffing-aware badge so the admin can see at a glance
-// whether a published job is fully staffed, missing workers, or missing a
+// The base persisted status (RESERVATION/APPROVED/COMPLETED/ARCHIVED) is
+// refined into a staffing-aware badge so the admin can see at a glance
+// whether an active job is fully staffed, missing workers, or missing a
 // manager.
 export type JobStatusBadge = { label: string; tone: StatusTone };
 
@@ -19,15 +19,12 @@ export type JobStatusInput = {
 
 export function deriveJobStatusBadge(input: JobStatusInput): JobStatusBadge {
   switch (input.status) {
-    case 'CANCELLED':
-      return { label: 'בוטלה', tone: 'neutral' };
+    case 'ARCHIVED':
+      return { label: 'בארכיון', tone: 'neutral' };
     case 'COMPLETED':
-      return { label: 'הושלמה', tone: 'success' };
-    case 'IN_PROGRESS':
-      return { label: 'בביצוע', tone: 'info' };
-    case 'DRAFT':
-      return { label: 'טיוטה', tone: 'neutral' };
-    case 'PUBLISHED': {
+      return { label: 'בוצע', tone: 'success' };
+    case 'RESERVATION':
+    case 'APPROVED': {
       if (input.attendanceReviewPending) {
         return { label: 'מחכה לבדיקת נוכחות', tone: 'warning' };
       }
@@ -37,7 +34,9 @@ export function deriveJobStatusBadge(input: JobStatusInput): JobStatusBadge {
       if (input.requiresManager && !input.hasManager) {
         return { label: 'חסר ראש צוות', tone: 'warning' };
       }
-      return { label: 'מאוישת', tone: 'success' };
+      return input.status === 'APPROVED'
+        ? { label: 'אושר', tone: 'success' }
+        : { label: 'שריון', tone: 'info' };
     }
     default:
       return { label: input.status, tone: 'neutral' };

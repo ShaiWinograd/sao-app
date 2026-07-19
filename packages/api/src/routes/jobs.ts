@@ -6,6 +6,7 @@ import { CreateJobSchema, UpdateJobSchema } from '@workforce/shared';
 import { UserRole, MANAGER_SKILL } from '@workforce/shared';
 import { validateServiceAddition } from '@workforce/shared';
 import { evaluateJobPublishReadiness } from '@workforce/shared';
+import { requiresReapproval } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
 import { z } from 'zod';
 
@@ -55,7 +56,7 @@ async function notifyAssignedWorkers(jobId: string, title: string, body: string,
 }
 
 const JobsListQuerySchema = z.object({
-  status: z.enum(['DRAFT', 'PUBLISHED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']).optional(),
+  status: z.enum(['RESERVATION', 'APPROVED', 'COMPLETED', 'ARCHIVED']).optional(),
   date: z.string().datetime().optional(),
   caseId: z.string().optional(),
   customerId: z.string().optional(),
@@ -136,7 +137,9 @@ export async function jobsRoutes(app: FastifyInstance) {
 
       const jobs = await prisma.job.findMany({
         where: {
-          status: 'PUBLISHED',
+          // Workers see active (reservation/approved) jobs; they never see the
+          // reservation-vs-approved distinction itself (spec §7).
+          status: { in: ['RESERVATION', 'APPROVED'] },
           ...(date ? { date: new Date(date) } : {}),
           // Eligible: job has open slots matching worker skills or any-skill slots
           slots: {
@@ -193,7 +196,7 @@ export async function jobsRoutes(app: FastifyInstance) {
     const me = await prisma.worker.findUnique({ where: { userId: user.id }, select: { id: true } });
 
     const jobs = await prisma.job.findMany({
-      where: { status: { in: ['PUBLISHED', 'IN_PROGRESS'] }, date: { gte: today } },
+      where: { status: { in: ['RESERVATION', 'APPROVED'] }, date: { gte: today } },
       include: {
         customer: { select: { firstName: true, lastName: true } },
         address: { select: { fullAddress: true } },
@@ -203,6 +206,22 @@ export async function jobsRoutes(app: FastifyInstance) {
       orderBy: [{ date: 'asc' }, { plannedStart: 'asc' }],
     });
 
+    // Dates the viewer is already occupied on (pending/awaiting/approved) — used
+    // to mark same-day jobs as unavailable to join (spec §8.1).
+    const occupiedDates = new Set<string>();
+    if (me) {
+      for (const j of jobs) {
+        const mine = j.shifts.find(
+          (s) =>
+            s.workerId === me.id &&
+            (s.joinRequestStatus === 'PENDING' ||
+              s.joinRequestStatus === 'AWAITING_WORKER' ||
+              s.joinRequestStatus === 'APPROVED'),
+        );
+        if (mine) occupiedDates.add(j.date.toISOString().slice(0, 10));
+      }
+    }
+
     return jobs.map((job) => {
       const leaderShiftIds = new Set(
         job.slots.filter((s) => s.requiredSkill === MANAGER_SKILL && s.filledByShiftId).map((s) => s.filledByShiftId),
@@ -211,15 +230,24 @@ export async function jobsRoutes(app: FastifyInstance) {
       const assignedWorkers = approved
         .map((s) => ({
           name: `${s.worker.firstName} ${s.worker.lastName}`.trim(),
-          isTeamLeader: leaderShiftIds.has(s.id) || (s.worker.skills as string[]).includes(MANAGER_SKILL),
+          isTeamLeader:
+            s.assignmentRole === 'TEAM_LEADER' ||
+            leaderShiftIds.has(s.id) ||
+            (s.worker.skills as string[]).includes(MANAGER_SKILL),
+          isBackup: s.assignmentRole === 'BACKUP',
         }))
         .sort((a, b) => Number(b.isTeamLeader) - Number(a.isTeamLeader));
-      const openSpots = Math.max(0, job.requiredWorkerCount - approved.length);
+      // Backups are extras beyond the requirement (spec §11) — they don't fill
+      // a required position, so they don't reduce the open-spot count.
+      const filledCount = approved.filter((s) => s.assignmentRole !== 'BACKUP').length;
+      const openSpots = Math.max(0, job.requiredWorkerCount - filledCount);
       const myShift = me
         ? job.shifts.find(
             (s) => s.workerId === me.id && s.joinRequestStatus !== 'REJECTED' && s.joinRequestStatus !== 'CANCELLED',
           )
         : undefined;
+      // Occupied elsewhere on this date and not on this job → cannot join (§8.1).
+      const blockedSameDay = !myShift && occupiedDates.has(job.date.toISOString().slice(0, 10));
       return {
         jobId: job.id,
         jobType: job.jobType,
@@ -233,6 +261,7 @@ export async function jobsRoutes(app: FastifyInstance) {
         openSpots,
         myStatus: myShift ? myShift.joinRequestStatus : 'NONE',
         myShiftId: myShift?.id ?? null,
+        blockedSameDay,
       };
     });
   });
@@ -297,12 +326,13 @@ export async function jobsRoutes(app: FastifyInstance) {
   app.post('/', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const payload = z
       .object({
-        publishNow: z.boolean().optional(),
+        // Spec §6.1: owner may create a job directly as APPROVED; default RESERVATION.
+        initialStatus: z.enum(['RESERVATION', 'APPROVED']).optional(),
       })
       .passthrough()
       .parse(req.body);
     const body = CreateJobSchema.parse(payload);
-    const publishNow = payload.publishNow ?? false;
+    const initialStatus = payload.initialStatus ?? 'RESERVATION';
     const { workerSlots, ...jobData } = body;
     let formTemplateId = jobData.formTemplateId ?? null;
 
@@ -331,7 +361,7 @@ export async function jobsRoutes(app: FastifyInstance) {
         plannedStart: new Date(jobData.plannedStart),
         plannedEnd: new Date(jobData.plannedEnd),
         formTemplateId,
-        status: publishNow ? 'PUBLISHED' : 'DRAFT',
+        status: initialStatus,
         slots: workerSlots
           ? { create: workerSlots.map((s) => ({ requiredSkill: s.requiredSkill ?? null, label: s.label })) }
           : {
@@ -343,8 +373,9 @@ export async function jobsRoutes(app: FastifyInstance) {
 
     await refreshScheduleStatus(prisma, job.caseId);
 
-    await logAudit((req as any).user, 'CREATE', 'Job', job.id, null, { status: job.status }, publishNow ? 'created+published' : 'created');
-    if (publishNow) await notifyJobPublished(job.id);
+    // Spec §6.3: every new job is published to workers immediately (no draft).
+    await logAudit((req as any).user, 'CREATE', 'Job', job.id, null, { status: job.status }, 'created+published');
+    await notifyJobPublished(job.id);
 
     reply.status(201);
     return job;
@@ -356,7 +387,7 @@ export async function jobsRoutes(app: FastifyInstance) {
 
     const existingJob = await prisma.job.findUnique({
       where: { id },
-      select: { id: true, caseId: true, jobType: true, date: true, plannedStart: true, addressId: true, status: true },
+      select: { id: true, caseId: true, jobType: true, date: true, plannedStart: true, plannedEnd: true, addressId: true, status: true },
     });
     if (!existingJob) {
       return reply.status(404).send({ error: 'Job not found' });
@@ -377,20 +408,58 @@ export async function jobsRoutes(app: FastifyInstance) {
 
     const updated = await prisma.job.update({ where: { id }, data: body as any });
 
-    // Notify assigned workers of the change; flag material changes (spec §12).
-    const dateChanged = body.date != null && new Date(body.date).toISOString().slice(0, 10) !== existingJob.date.toISOString().slice(0, 10);
-    const startShiftMinutes = body.plannedStart != null
-      ? Math.abs(new Date(body.plannedStart).getTime() - existingJob.plannedStart.getTime()) / 60000
-      : 0;
-    const addressChanged = body.addressId != null && body.addressId !== existingJob.addressId;
-    const isMaterial = dateChanged || startShiftMinutes > 60 || addressChanged;
-    if (existingJob.status === 'PUBLISHED' || existingJob.status === 'IN_PROGRESS') {
-      const body_ = isMaterial
-        ? `פרטי העבודה עודכנו (${heDate(nextDate)}). מומלץ לבדוק את המשמרת שלך.`
-        : `בוצע עדכון קטן בפרטי העבודה בתאריך ${heDate(nextDate)}.`;
-      await notifyAssignedWorkers(id, 'עדכון בפרטי העבודה', body_, 'JOB_CHANGED');
+    // Determine whether the change requires worker reapproval (spec §13):
+    // a city/street change or a schedule shift of at least 3 hours.
+    const nextStart = body.plannedStart ? new Date(body.plannedStart) : existingJob.plannedStart;
+    const nextEnd = body.plannedEnd ? new Date(body.plannedEnd) : existingJob.plannedEnd;
+    const nextAddressId = body.addressId ?? existingJob.addressId;
+    let oldAddress: string | null = null;
+    if (existingJob.addressId) {
+      const a = await prisma.address.findUnique({ where: { id: existingJob.addressId }, select: { fullAddress: true } });
+      oldAddress = a?.fullAddress ?? null;
     }
-    await logAudit((req as any).user, 'UPDATE', 'Job', id, { date: existingJob.date, plannedStart: existingJob.plannedStart, addressId: existingJob.addressId }, body, isMaterial ? 'material-change' : 'update');
+    let newAddress: string | null = oldAddress;
+    if (nextAddressId !== existingJob.addressId && nextAddressId) {
+      const a = await prisma.address.findUnique({ where: { id: nextAddressId }, select: { fullAddress: true } });
+      newAddress = a?.fullAddress ?? null;
+    }
+    const needsReapproval = requiresReapproval({
+      oldAddress,
+      newAddress,
+      oldStart: existingJob.plannedStart,
+      oldEnd: existingJob.plannedEnd,
+      newStart: nextStart,
+      newEnd: nextEnd,
+    });
+
+    if (existingJob.status === 'RESERVATION' || existingJob.status === 'APPROVED') {
+      if (needsReapproval) {
+        // Approved workers must re-approve the changed job (spec §12.3). Capture
+        // them, flip to awaiting-worker (they stay occupied), and ask them to
+        // review each job individually.
+        const approvedShifts = await prisma.shift.findMany({
+          where: { jobId: id, joinRequestStatus: 'APPROVED' },
+          include: { worker: { select: { userId: true } } },
+        });
+        if (approvedShifts.length) {
+          await prisma.shift.updateMany({
+            where: { jobId: id, joinRequestStatus: 'APPROVED' },
+            data: { joinRequestStatus: 'AWAITING_WORKER' },
+          });
+          await prisma.notification.createMany({
+            data: approvedShifts.map((s) => ({
+              userId: s.worker.userId,
+              title: 'העבודה עודכנה – נדרש אישור מחדש',
+              body: `פרטי העבודה בתאריך ${heDate(nextDate)} השתנו (כתובת או שעות). יש לאשר או לדחות מ"היומן שלי".`,
+              data: { type: 'CHANGE_APPROVAL_REQUIRED', jobId: id, shiftId: s.id } as any,
+            })),
+          });
+        }
+      } else {
+        await notifyAssignedWorkers(id, 'עדכון בפרטי העבודה', `בוצע עדכון בפרטי העבודה בתאריך ${heDate(nextDate)}.`, 'JOB_CHANGED');
+      }
+    }
+    await logAudit((req as any).user, 'UPDATE', 'Job', id, { date: existingJob.date, plannedStart: existingJob.plannedStart, addressId: existingJob.addressId }, body, needsReapproval ? 'material-change' : 'update');
 
     return updated;
   });
@@ -433,20 +502,189 @@ export async function jobsRoutes(app: FastifyInstance) {
       });
     }
 
-    const published = await prisma.job.update({ where: { id }, data: { status: 'PUBLISHED' } });
-    await logAudit((req as any).user, 'UPDATE', 'Job', id, { status: job.status }, { status: 'PUBLISHED' }, 'publish');
+    // Jobs are published to workers on creation (spec §6.3); this endpoint
+    // re-broadcasts the job to workers after a readiness check.
+    await logAudit((req as any).user, 'UPDATE', 'Job', id, { status: job.status }, { republished: true }, 'republish');
     await notifyJobPublished(id);
-    return published;
+    return prisma.job.findUnique({ where: { id } });
   });
 
-  // Cancel a job
+  // Archive a job (spec §15). Keeps records; does not permanently delete.
   app.post('/:id/cancel', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const before = await prisma.job.findUnique({ where: { id }, select: { status: true, date: true } });
-    const cancelled = await prisma.job.update({ where: { id }, data: { status: 'CANCELLED' } });
-    await refreshScheduleStatus(prisma, cancelled.caseId);
-    await notifyAssignedWorkers(id, 'עבודה בוטלה', `העבודה בתאריך ${heDate(cancelled.date)} בוטלה. אינך משובץ/ת אליה יותר.`, 'JOB_CANCELLED');
-    await logAudit((req as any).user, 'UPDATE', 'Job', id, { status: before?.status ?? null }, { status: 'CANCELLED' }, 'cancel');
-    return cancelled;
+    const archived = await prisma.job.update({ where: { id }, data: { status: 'ARCHIVED' } });
+    await refreshScheduleStatus(prisma, archived.caseId);
+    await notifyAssignedWorkers(id, 'עבודה הוסרה', `העבודה בתאריך ${heDate(archived.date)} הוסרה. אינך משובץ/ת אליה יותר.`, 'JOB_CANCELLED');
+    await logAudit((req as any).user, 'UPDATE', 'Job', id, { status: before?.status ?? null }, { status: 'ARCHIVED' }, 'archive');
+    return archived;
+  });
+
+  // Owner approves a job (spec §4.2). Requires a real customer (not General
+  // Reservation); workers remain assigned and are not notified of the internal
+  // status change.
+  app.post('/:id/approve', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const job = await prisma.job.findUnique({
+      where: { id },
+      include: { customer: { select: { isSystem: true } } },
+    });
+    if (!job) return reply.status(404).send({ error: 'Job not found' });
+    if (job.customer.isSystem) {
+      return reply.status(409).send({ error: 'לא ניתן לאשר עבודה המשויכת לשריון כללי. יש לשייך ללקוח אמיתי תחילה.' });
+    }
+    if (job.status === 'ARCHIVED' || job.status === 'COMPLETED') {
+      return reply.status(409).send({ error: 'לא ניתן לאשר עבודה שהושלמה או הוסרה.' });
+    }
+    const updated = await prisma.job.update({ where: { id }, data: { status: 'APPROVED' } });
+    await logAudit((req as any).user, 'APPROVE', 'Job', id, { status: job.status }, { status: 'APPROVED' }, 'approve');
+    return updated;
+  });
+
+  // Owner returns a job to reservation (spec §14–15). Workers remain assigned.
+  app.post('/:id/return-to-reservation', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const job = await prisma.job.findUnique({ where: { id }, select: { status: true } });
+    if (!job) return reply.status(404).send({ error: 'Job not found' });
+    if (job.status === 'ARCHIVED' || job.status === 'COMPLETED') {
+      return reply.status(409).send({ error: 'לא ניתן להחזיר לשריון עבודה שהושלמה או הוסרה.' });
+    }
+    const updated = await prisma.job.update({ where: { id }, data: { status: 'RESERVATION' } });
+    await logAudit((req as any).user, 'UPDATE', 'Job', id, { status: job.status }, { status: 'RESERVATION' }, 'return-to-reservation');
+    return updated;
+  });
+
+  // Owner activity log for a job — its own events plus its workers' events
+  // (spec §16). Workers never see this.
+  app.get('/:id/activity', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const shifts = await prisma.shift.findMany({ where: { jobId: id }, select: { id: true } });
+    const shiftIds = shifts.map((s) => s.id);
+    return prisma.auditLog.findMany({
+      where: {
+        OR: [
+          { entityType: 'Job', entityId: id },
+          ...(shiftIds.length ? [{ entityType: 'Shift', entityId: { in: shiftIds } }] : []),
+        ],
+      },
+      include: { performedBy: { select: { firstName: true, lastName: true, role: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+  });
+
+  // Move workers between two jobs on the same date (spec §12). Recalculates the
+  // team-leader role, flags reapproval for material city/street/≥3h changes, and
+  // notifies each moved worker.
+  app.post('/move-workers', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const body = z
+      .object({
+        sourceJobId: z.string(),
+        targetJobId: z.string(),
+        shiftIds: z.array(z.string()).min(1),
+        roleChanges: z.record(z.enum(['REGULAR', 'TEAM_LEADER', 'BACKUP'])).optional(),
+      })
+      .parse(req.body);
+
+    if (body.sourceJobId === body.targetJobId) {
+      return reply.status(400).send({ error: 'Source and target jobs must differ' });
+    }
+
+    const [source, target] = await Promise.all([
+      prisma.job.findUnique({ where: { id: body.sourceJobId }, include: { address: { select: { fullAddress: true } } } }),
+      prisma.job.findUnique({ where: { id: body.targetJobId }, include: { address: { select: { fullAddress: true } } } }),
+    ]);
+    if (!source || !target) return reply.status(404).send({ error: 'Job not found' });
+
+    // Workers may only be moved between jobs on the same calendar date (spec §12).
+    if (source.date.toISOString().slice(0, 10) !== target.date.toISOString().slice(0, 10)) {
+      return reply.status(409).send({ error: 'ניתן להעביר עובדים רק בין עבודות באותו תאריך.' });
+    }
+
+    const shifts = await prisma.shift.findMany({
+      where: { id: { in: body.shiftIds }, jobId: body.sourceJobId },
+      include: { worker: { select: { userId: true, firstName: true, lastName: true } } },
+    });
+    if (!shifts.length) return reply.status(404).send({ error: 'No matching workers on the source job' });
+
+    // Preserve a moved worker's team-leader role only if the target has no leader
+    // already (spec §10); otherwise they become a regular worker.
+    const existingTargetLeader = await prisma.shift.findFirst({
+      where: {
+        jobId: body.targetJobId,
+        assignmentRole: 'TEAM_LEADER',
+        joinRequestStatus: { in: ['APPROVED', 'AWAITING_WORKER'] },
+      },
+    });
+    let targetHasLeader = Boolean(existingTargetLeader);
+
+    const needsReapproval = requiresReapproval({
+      oldAddress: source.address?.fullAddress ?? null,
+      newAddress: target.address?.fullAddress ?? null,
+      oldStart: source.plannedStart,
+      oldEnd: source.plannedEnd,
+      newStart: target.plannedStart,
+      newEnd: target.plannedEnd,
+    });
+
+    const dk = heDate(target.date);
+    const moved: string[] = [];
+    for (const shift of shifts) {
+      // Skip if this worker is already on the target job.
+      const already = await prisma.shift.findFirst({
+        where: {
+          jobId: body.targetJobId,
+          workerId: shift.workerId,
+          joinRequestStatus: { in: ['APPROVED', 'AWAITING_WORKER', 'PENDING'] },
+        },
+      });
+      if (already) continue;
+
+      let role = (body.roleChanges?.[shift.id] ?? shift.assignmentRole) as 'REGULAR' | 'TEAM_LEADER' | 'BACKUP';
+      if (role === 'TEAM_LEADER') {
+        if (targetHasLeader) role = 'REGULAR';
+        else targetHasLeader = true;
+      }
+
+      await prisma.shift.update({
+        where: { id: shift.id },
+        data: {
+          jobId: body.targetJobId,
+          slotId: null,
+          scheduledStart: target.plannedStart,
+          scheduledEnd: target.plannedEnd,
+          assignmentRole: role,
+          // Material city/street or ≥3h changes require the worker to re-approve
+          // (spec §12.2); otherwise the assignment carries over unchanged.
+          joinRequestStatus: needsReapproval ? 'AWAITING_WORKER' : shift.joinRequestStatus,
+        },
+      });
+
+      await prisma.notification.create({
+        data: {
+          userId: shift.worker.userId,
+          title: needsReapproval ? 'הועברת לעבודה אחרת – נדרש אישור' : 'הועברת לעבודה אחרת',
+          body: needsReapproval
+            ? `הועברת לעבודה בתאריך ${dk}. הכתובת או השעות שונות – יש לאשר או לדחות מ"היומן שלי".`
+            : `הועברת לעבודה בתאריך ${dk}. הפרטים עודכנו ביומן שלך.`,
+          data: { type: needsReapproval ? 'CHANGE_APPROVAL_REQUIRED' : 'JOB_MOVED', jobId: body.targetJobId, shiftId: shift.id } as any,
+        },
+      });
+      await logAudit(
+        (req as any).user,
+        'UPDATE',
+        'Shift',
+        shift.id,
+        { jobId: body.sourceJobId },
+        { jobId: body.targetJobId, assignmentRole: role, reapproval: needsReapproval },
+        'move-worker',
+      );
+      moved.push(shift.id);
+    }
+
+    await refreshScheduleStatus(prisma, source.caseId);
+    if (target.caseId !== source.caseId) await refreshScheduleStatus(prisma, target.caseId);
+
+    return { movedCount: moved.length, movedShiftIds: moved, reapprovalRequired: needsReapproval };
   });
 }

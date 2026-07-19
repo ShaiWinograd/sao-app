@@ -165,7 +165,7 @@ export async function casesRoutes(app: FastifyInstance) {
       0,
     );
     const completedOrCancelledJobs = kase.jobs.filter(
-      (job: (typeof kase.jobs)[number]) => job.status === 'COMPLETED' || job.status === 'CANCELLED',
+      (job: (typeof kase.jobs)[number]) => job.status === 'COMPLETED' || job.status === 'ARCHIVED',
     ).length;
     const readyForFinalReport =
       kase.jobs.length > 0 &&
@@ -310,13 +310,13 @@ export async function casesRoutes(app: FastifyInstance) {
         });
       }
 
-      // Cancelling a project also cancels its still-open jobs.
+      // Cancelling a project also archives its still-open jobs.
       if (to === 'CANCELLED') {
         const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
           const updatedCase = await tx.customerCase.update({ where: { id }, data: body });
           await tx.job.updateMany({
-            where: { caseId: id, status: { notIn: ['COMPLETED', 'CANCELLED'] } },
-            data: { status: 'CANCELLED' },
+            where: { caseId: id, status: { notIn: ['COMPLETED', 'ARCHIVED'] } },
+            data: { status: 'ARCHIVED' },
           });
           return updatedCase;
         });
@@ -385,11 +385,11 @@ export async function casesRoutes(app: FastifyInstance) {
         },
       });
 
-      // Cancelling a project cancels its still-open jobs so they stop appearing
+      // Cancelling a project archives its still-open jobs so they stop appearing
       // as active work / needing attention.
       await tx.job.updateMany({
-        where: { caseId: id, status: { notIn: ['COMPLETED', 'CANCELLED'] } },
-        data: { status: 'CANCELLED' },
+        where: { caseId: id, status: { notIn: ['COMPLETED', 'ARCHIVED'] } },
+        data: { status: 'ARCHIVED' },
       });
 
       // Attribute the audit entry when a user is available; never block the

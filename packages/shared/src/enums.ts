@@ -42,12 +42,13 @@ export enum JobType {
   HOME_ORGANIZATION = 'HOME_ORGANIZATION',
 }
 
+// Owner-visible job lifecycle (spec §4). RESERVATION → APPROVED → COMPLETED,
+// with ARCHIVED for retired jobs. Workers never see this status.
 export enum JobStatus {
-  DRAFT = 'DRAFT',
-  PUBLISHED = 'PUBLISHED',
-  IN_PROGRESS = 'IN_PROGRESS',
+  RESERVATION = 'RESERVATION',
+  APPROVED = 'APPROVED',
   COMPLETED = 'COMPLETED',
-  CANCELLED = 'CANCELLED',
+  ARCHIVED = 'ARCHIVED',
 }
 
 export enum StaffingMode {
@@ -74,6 +75,14 @@ export enum JoinRequestStatus {
   REJECTED = 'REJECTED',
   WAITLISTED = 'WAITLISTED',
   CANCELLED = 'CANCELLED',
+}
+
+// A worker's role on a job (spec §3.5). TEAM_LEADER counts toward the required
+// worker count (§10); BACKUP is an extra worker beyond the requirement (§11).
+export enum AssignmentRole {
+  REGULAR = 'REGULAR',
+  TEAM_LEADER = 'TEAM_LEADER',
+  BACKUP = 'BACKUP',
 }
 
 export enum AttendanceStatus {

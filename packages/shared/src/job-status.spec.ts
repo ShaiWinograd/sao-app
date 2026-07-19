@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { deriveJobStatusBadge } from './job-status';
 
 const base = {
-  status: 'PUBLISHED',
+  status: 'RESERVATION',
   requiredWorkerCount: 3,
   assignedWorkerCount: 3,
   requiresManager: true,
@@ -10,8 +10,8 @@ const base = {
 };
 
 describe('deriveJobStatusBadge', () => {
-  it('returns draft for unpublished jobs', () => {
-    expect(deriveJobStatusBadge({ ...base, status: 'DRAFT' })).toEqual({ label: 'טיוטה', tone: 'neutral' });
+  it('shows reservation label for a fully staffed reservation', () => {
+    expect(deriveJobStatusBadge(base)).toEqual({ label: 'שריון', tone: 'info' });
   });
 
   it('flags missing workers first', () => {
@@ -29,13 +29,13 @@ describe('deriveJobStatusBadge', () => {
   });
 
   it('shows fully staffed', () => {
-    expect(deriveJobStatusBadge(base)).toEqual({ label: 'מאוישת', tone: 'success' });
+    expect(deriveJobStatusBadge(base)).toEqual({ label: 'שריון', tone: 'info' });
   });
 
   it('ignores manager when not required', () => {
     expect(deriveJobStatusBadge({ ...base, requiresManager: false, hasManager: false })).toEqual({
-      label: 'מאוישת',
-      tone: 'success',
+      label: 'שריון',
+      tone: 'info',
     });
   });
 
@@ -46,9 +46,9 @@ describe('deriveJobStatusBadge', () => {
     });
   });
 
-  it('maps in-progress, completed and cancelled', () => {
-    expect(deriveJobStatusBadge({ ...base, status: 'IN_PROGRESS' }).label).toBe('בביצוע');
-    expect(deriveJobStatusBadge({ ...base, status: 'COMPLETED' }).label).toBe('הושלמה');
-    expect(deriveJobStatusBadge({ ...base, status: 'CANCELLED' }).label).toBe('בוטלה');
+  it('maps approved, completed and archived', () => {
+    expect(deriveJobStatusBadge({ ...base, status: 'APPROVED' }).label).toBe('אושר');
+    expect(deriveJobStatusBadge({ ...base, status: 'COMPLETED' }).label).toBe('בוצע');
+    expect(deriveJobStatusBadge({ ...base, status: 'ARCHIVED' }).label).toBe('בארכיון');
   });
 });

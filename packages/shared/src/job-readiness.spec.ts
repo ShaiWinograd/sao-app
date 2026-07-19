@@ -3,7 +3,7 @@ import { evaluateJobPublishReadiness, type JobReadinessInput } from './job-readi
 
 function baseInput(overrides: Partial<JobReadinessInput> = {}): JobReadinessInput {
   return {
-    status: 'DRAFT',
+    status: 'RESERVATION',
     requiredWorkerCount: 2,
     slotCount: 2,
     plannedStart: '2026-08-01T08:00:00.000Z',
@@ -21,10 +21,10 @@ describe('evaluateJobPublishReadiness', () => {
     expect(result.checks.every((check) => check.passed)).toBe(true);
   });
 
-  it('fails when the job is cancelled', () => {
-    const result = evaluateJobPublishReadiness(baseInput({ status: 'CANCELLED' }));
+  it('fails when the job is archived', () => {
+    const result = evaluateJobPublishReadiness(baseInput({ status: 'ARCHIVED' }));
     expect(result.ready).toBe(false);
-    expect(result.checks.find((c) => c.key === 'notCancelled')?.passed).toBe(false);
+    expect(result.checks.find((c) => c.key === 'notArchived')?.passed).toBe(false);
   });
 
   it('fails when no workers are required', () => {

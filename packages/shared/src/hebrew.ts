@@ -80,11 +80,10 @@ export const HE = {
 
   // ─── Job status labels ────────────────────────────────────────────
   jobStatus: {
-    DRAFT: 'טיוטה',
-    PUBLISHED: 'פורסם',
-    IN_PROGRESS: 'בביצוע',
-    COMPLETED: 'הושלם',
-    CANCELLED: 'בוטל',
+    RESERVATION: 'שריון',
+    APPROVED: 'אושר',
+    COMPLETED: 'בוצע',
+    ARCHIVED: 'בארכיון',
   },
 
   // ─── Case status labels ───────────────────────────────────────────
@@ -108,6 +107,13 @@ export const HE = {
     REJECTED: 'נדחה',
     WAITLISTED: 'ברשימת המתנה',
     CANCELLED: 'בוטל',
+  },
+
+  // ─── Assignment role ──────────────────────────────────────────────
+  assignmentRole: {
+    REGULAR: 'עובד',
+    TEAM_LEADER: 'ראש צוות',
+    BACKUP: 'מחליף',
   },
 
   // ─── Worker skills ────────────────────────────────────────────────

@@ -61,17 +61,19 @@ export async function shiftsRoutes(app: FastifyInstance) {
 
     const job = await prisma.job.findUnique({ where: { id: body.jobId }, include: { slots: true } });
     if (!job) return reply.status(404).send({ error: 'Job not found' });
-    if (job.status !== 'PUBLISHED') return reply.status(400).send({ error: 'Job is not open for applications' });
+    if (job.status === 'ARCHIVED' || job.status === 'COMPLETED') return reply.status(400).send({ error: 'Job is not open for applications' });
 
-    // Check for overlapping confirmed shift
+    // Same-day blocking at request time (spec §8.1): a pending request already
+    // occupies the worker for that date, so they cannot request another job on
+    // the same calendar date until it is rejected/cancelled/removed.
     const overlap = await prisma.shift.findFirst({
       where: {
         workerId: worker.id,
-        joinRequestStatus: 'APPROVED',
+        joinRequestStatus: { in: ['PENDING', 'AWAITING_WORKER', 'APPROVED'] },
         job: { date: job.date },
       },
     });
-    if (overlap) return reply.status(409).send({ error: 'You already have a confirmed shift on this date' });
+    if (overlap) return reply.status(409).send({ error: 'כבר יש לך בקשה או שיבוץ לעבודה בתאריך זה' });
 
     // Block joining on a date the worker marked as unavailable.
     const jobDateKey = job.date.toISOString().slice(0, 10);
@@ -128,16 +130,36 @@ export async function shiftsRoutes(app: FastifyInstance) {
   // Admin: approve or reject a pending join request
   app.post('/:shiftId/approve', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { shiftId } = req.params as { shiftId: string };
-    const { approved, reason } = req.body as { approved: boolean; reason?: string };
+    const { approved, reason, role } = req.body as {
+      approved: boolean;
+      reason?: string;
+      role?: 'REGULAR' | 'TEAM_LEADER' | 'BACKUP';
+    };
     const shift = await prisma.shift.findUnique({
       where: { id: shiftId },
       include: { worker: { select: { userId: true } }, job: { select: { date: true } } },
     });
     if (!shift) return reply.status(404).send({ error: 'Shift not found' });
 
+    // Only one team leader per job (spec §10).
+    if (approved && role === 'TEAM_LEADER') {
+      const existingLeader = await prisma.shift.findFirst({
+        where: {
+          jobId: shift.jobId,
+          id: { not: shiftId },
+          assignmentRole: 'TEAM_LEADER',
+          joinRequestStatus: { in: ['APPROVED', 'AWAITING_WORKER'] },
+        },
+      });
+      if (existingLeader) return reply.status(409).send({ error: 'כבר קיים ראש צוות לעבודה זו' });
+    }
+
     const updated = await prisma.shift.update({
       where: { id: shiftId },
-      data: { joinRequestStatus: approved ? 'APPROVED' : 'REJECTED' },
+      data: {
+        joinRequestStatus: approved ? 'APPROVED' : 'REJECTED',
+        ...(approved ? { assignmentRole: role ?? 'REGULAR' } : {}),
+      },
     });
 
     const dk = shift.job.date.toISOString().slice(0, 10);
@@ -165,7 +187,12 @@ export async function shiftsRoutes(app: FastifyInstance) {
 
   // Admin: directly assign a worker to a job slot (creates an approved shift)
   app.post('/admin-assign', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
-    const { jobId, workerId, slotId } = req.body as { jobId: string; workerId: string; slotId?: string };
+    const { jobId, workerId, slotId, role } = req.body as {
+      jobId: string;
+      workerId: string;
+      slotId?: string;
+      role?: 'REGULAR' | 'TEAM_LEADER' | 'BACKUP';
+    };
     if (!jobId || !workerId) {
       return reply.status(400).send({ error: 'jobId and workerId are required' });
     }
@@ -175,6 +202,18 @@ export async function shiftsRoutes(app: FastifyInstance) {
 
     const worker = await prisma.worker.findUnique({ where: { id: workerId } });
     if (!worker) return reply.status(404).send({ error: 'Worker not found' });
+
+    // Only one team leader per job (spec §10).
+    if (role === 'TEAM_LEADER') {
+      const existingLeader = await prisma.shift.findFirst({
+        where: {
+          jobId,
+          assignmentRole: 'TEAM_LEADER',
+          joinRequestStatus: { in: ['APPROVED', 'AWAITING_WORKER'] },
+        },
+      });
+      if (existingLeader) return reply.status(409).send({ error: 'כבר קיים ראש צוות לעבודה זו' });
+    }
 
     // Prevent double-booking on the same date
     const overlap = await prisma.shift.findFirst({
@@ -218,6 +257,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
         scheduledEnd: job.plannedEnd,
         // Direct assignment waits for the worker to accept (integration spec §7).
         joinRequestStatus: 'AWAITING_WORKER',
+        assignmentRole: role ?? 'REGULAR',
         attendanceStatus: 'SCHEDULED',
         hourlyWageSnapshot: worker.hourlyWage,
         dailyPaymentSnapshot: worker.dailyPaymentAmount,
@@ -304,6 +344,40 @@ export async function shiftsRoutes(app: FastifyInstance) {
     return { success: true, accepted: true, shift: updated };
   });
 
+  // Worker: cancel their own pending join request (spec §8.3). Frees the
+  // same-day block, reopens the position, and notifies the owner.
+  app.post('/:id/cancel-request', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const { id } = req.params as { id: string };
+    const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!worker) return reply.status(403).send({ error: 'Worker profile not found' });
+
+    const shift = await prisma.shift.findUnique({ where: { id }, include: { job: { select: { date: true } } } });
+    if (!shift || shift.workerId !== worker.id) return reply.status(404).send({ error: 'Request not found' });
+    if (shift.joinRequestStatus !== 'PENDING') {
+      return reply.status(409).send({ error: 'ניתן לבטל רק בקשה שממתינה לאישור' });
+    }
+
+    const updated = await prisma.shift.update({ where: { id }, data: { joinRequestStatus: 'CANCELLED' } });
+    const dk = shift.job.date.toISOString().slice(0, 10);
+    const owners = await prisma.user.findMany({
+      where: { role: { in: [UserRole.OWNER, UserRole.ADMIN] }, isActive: true },
+      select: { id: true },
+    });
+    if (owners.length) {
+      await prisma.notification.createMany({
+        data: owners.map((o) => ({
+          userId: o.id,
+          title: 'בקשת הצטרפות בוטלה',
+          body: `${worker.firstName} ${worker.lastName} ביטל/ה את בקשת ההצטרפות לעבודה בתאריך ${dk}.`,
+          data: { type: 'JOIN_REQUEST_CANCELLED', shiftId: id, jobId: shift.jobId } as any,
+        })),
+      });
+    }
+    await logAudit(user, 'UPDATE', 'Shift', id, { joinRequestStatus: 'PENDING' }, { joinRequestStatus: 'CANCELLED' }, 'join-request-cancelled');
+    return { success: true, shift: updated };
+  });
+
   // Admin: remove a worker from a job (deletes the shift / frees the slot)
   app.delete('/:id', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -315,6 +389,35 @@ export async function shiftsRoutes(app: FastifyInstance) {
     await prisma.shift.delete({ where: { id } });
     await logAudit((req as any).user, 'DELETE', 'Shift', id, { workerId: shift.workerId, jobId: shift.jobId }, null, 'admin-remove');
     return { success: true };
+  });
+
+  // Admin: change a worker's role on a job — regular / team leader / backup
+  // (spec §10–§11: owner may change backup to regular at any time).
+  app.post('/:id/role', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { role } = req.body as { role?: 'REGULAR' | 'TEAM_LEADER' | 'BACKUP' };
+    if (!role || !['REGULAR', 'TEAM_LEADER', 'BACKUP'].includes(role)) {
+      return reply.status(400).send({ error: 'Invalid role' });
+    }
+    const shift = await prisma.shift.findUnique({ where: { id } });
+    if (!shift) return reply.status(404).send({ error: 'Shift not found' });
+
+    // Only one team leader per job (spec §10).
+    if (role === 'TEAM_LEADER') {
+      const existingLeader = await prisma.shift.findFirst({
+        where: {
+          jobId: shift.jobId,
+          id: { not: id },
+          assignmentRole: 'TEAM_LEADER',
+          joinRequestStatus: { in: ['APPROVED', 'AWAITING_WORKER'] },
+        },
+      });
+      if (existingLeader) return reply.status(409).send({ error: 'כבר קיים ראש צוות לעבודה זו' });
+    }
+
+    const updated = await prisma.shift.update({ where: { id }, data: { assignmentRole: role } });
+    await logAudit((req as any).user, 'UPDATE', 'Shift', id, { assignmentRole: shift.assignmentRole }, { assignmentRole: role }, 'role-change');
+    return updated;
   });
 
   // Get single shift detail

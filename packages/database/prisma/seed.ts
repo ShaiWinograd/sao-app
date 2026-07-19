@@ -102,9 +102,25 @@ async function main() {
     });
   }
 
+  // Permanent "General Reservation" (שריון כללי) system customer (spec §3.2).
+  // Used to reserve workforce before a real customer exists. Cannot be deleted.
+  await prisma.customer.upsert({
+    where: { id: 'general-reservation' },
+    update: { isSystem: true, isActive: true },
+    create: {
+      id: 'general-reservation',
+      firstName: 'שריון',
+      lastName: 'כללי',
+      phone: '-',
+      email: 'general-reservation@system.local',
+      isSystem: true,
+    },
+  });
+
   console.log('✅ Seed complete');
   console.log(`   Form templates: packing, unpacking, home-organization`);
   console.log(`   App settings: ${defaultSettings.length} defaults`);
+  console.log(`   System customer: General Reservation (שריון כללי)`);
 }
 
 main()

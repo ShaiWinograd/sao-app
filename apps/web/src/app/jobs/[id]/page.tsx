@@ -22,6 +22,7 @@ type ApiJobShift = {
   workerNameSnapshot: string;
   attendanceStatus: string;
   joinRequestStatus: string;
+  assignmentRole?: string;
   formStatus: string;
   worker?: { firstName: string; lastName: string } | null;
   replacementRequests?: {
@@ -45,12 +46,12 @@ type ApiJobDetail = {
   jobNotes: string | null;
   workerVisibleNotes: string | null;
   address?: { fullAddress: string } | null;
-  customer: { firstName: string; lastName: string; phone: string };
+  customer: { firstName: string; lastName: string; phone: string; isSystem?: boolean };
   slots: ApiJobSlot[];
   shifts: ApiJobShift[];
 };
 
-type JobTab = 'details' | 'staffing' | 'attendance' | 'forms' | 'notes';
+type JobTab = 'details' | 'staffing' | 'attendance' | 'forms' | 'notes' | 'activity';
 
 const JOB_TYPE_LABELS: Record<ApiJobDetail['jobType'], string> = {
   PACKING: 'אריזה',
@@ -59,11 +60,30 @@ const JOB_TYPE_LABELS: Record<ApiJobDetail['jobType'], string> = {
 };
 
 const JOB_STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'טיוטה',
-  PUBLISHED: 'פורסמה',
-  IN_PROGRESS: 'בביצוע',
-  COMPLETED: 'הושלמה',
-  CANCELLED: 'בוטלה',
+  RESERVATION: 'שריון',
+  APPROVED: 'אושר',
+  COMPLETED: 'בוצע',
+  ARCHIVED: 'בארכיון',
+};
+
+// Friendly Hebrew labels for the audit-log `reason` values (spec §16).
+const ACTIVITY_LABELS: Record<string, string> = {
+  'created+published': 'העבודה נוצרה ופורסמה',
+  approve: 'העבודה אושרה',
+  'return-to-reservation': 'הוחזרה לשריון',
+  archive: 'הועברה לארכיון',
+  republish: 'נשלחה שוב לעובדים',
+  update: 'עודכנו פרטים',
+  'material-change': 'שינוי מהותי – נדרש אישור עובדים מחדש',
+  'move-worker': 'עובד הועבר לעבודה זו',
+  'role-change': 'שינוי תפקיד עובד',
+  'join-request': 'עובד ביקש להצטרף',
+  'join-decision': 'הוכרעה בקשת הצטרפות',
+  'join-request-cancelled': 'עובד ביטל בקשת הצטרפות',
+  'direct-assign': 'שיבוץ ישיר של עובד',
+  'assignment-accepted': 'עובד אישר שיבוץ',
+  'assignment-declined': 'עובד דחה שיבוץ',
+  'admin-remove': 'עובד הוסר מהעבודה',
 };
 
 const JOIN_STATUS_LABELS: Record<string, string> = {
@@ -110,6 +130,13 @@ export default function JobDetailPage() {
   const [assignSlotId, setAssignSlotId] = useState<string | null>(null);
   const [assignCandidates, setAssignCandidates] = useState<Array<{ id: string; name: string; available: boolean }>>([]);
   const [assignWorkerId, setAssignWorkerId] = useState('');
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moveTargets, setMoveTargets] = useState<Array<{ id: string; label: string }>>([]);
+  const [moveTargetId, setMoveTargetId] = useState('');
+  const [moveSelected, setMoveSelected] = useState<Record<string, boolean>>({});
+  const [activity, setActivity] = useState<
+    Array<{ id: string; action: string; entityType: string; reason: string | null; createdAt: string; performedBy?: { firstName: string; lastName: string } | null }>
+  >([]);
 
   const load = useCallback(async () => {
     if (!jobId) return;
@@ -156,6 +183,53 @@ export default function JobDetailPage() {
     }
   }, [jobId, getToken, load]);
 
+  const approveJob = useCallback(async () => {
+    if (!jobId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const auth = await authHeaders(getToken);
+      await api.post(`/jobs/${jobId}/approve`, {}, auth);
+      await load();
+    } catch (err) {
+      const res = (err as { response?: { data?: { error?: string } } })?.response;
+      setError(res?.data?.error ?? 'אישור העבודה נכשל');
+    } finally {
+      setBusy(false);
+    }
+  }, [jobId, getToken, load]);
+
+  const returnToReservation = useCallback(async () => {
+    if (!jobId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const auth = await authHeaders(getToken);
+      await api.post(`/jobs/${jobId}/return-to-reservation`, {}, auth);
+      await load();
+    } catch (err) {
+      const res = (err as { response?: { data?: { error?: string } } })?.response;
+      setError(res?.data?.error ?? 'החזרה לשריון נכשלה');
+    } finally {
+      setBusy(false);
+    }
+  }, [jobId, getToken, load]);
+
+  const loadActivity = useCallback(async () => {
+    if (!jobId) return;
+    try {
+      const auth = await authHeaders(getToken);
+      const res = await api.get<typeof activity>(`/jobs/${jobId}/activity`, auth);
+      setActivity(res.data);
+    } catch {
+      /* non-critical */
+    }
+  }, [jobId, getToken]);
+
+  useEffect(() => {
+    if (tab === 'activity') void loadActivity();
+  }, [tab, loadActivity]);
+
   const decideJoinRequest = useCallback(
     async (shiftId: string, approved: boolean) => {
       setBusy(true);
@@ -172,6 +246,70 @@ export default function JobDetailPage() {
     },
     [getToken, load],
   );
+
+  const changeRole = useCallback(
+    async (shiftId: string, role: string) => {
+      setBusy(true);
+      setError(null);
+      try {
+        const auth = await authHeaders(getToken);
+        await api.post(`/shifts/${shiftId}/role`, { role }, auth);
+        await load();
+      } catch (err) {
+        const res = (err as { response?: { data?: { error?: string } } })?.response;
+        setError(res?.data?.error ?? 'עדכון תפקיד העובד/ת נכשל');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [getToken, load],
+  );
+
+  const openMove = useCallback(async () => {
+    if (!job) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const auth = await authHeaders(getToken);
+      const res = await api.get<Array<{ id: string; jobType: string; customer: { firstName: string; lastName: string } }>>(
+        `/jobs?date=${encodeURIComponent(job.date)}`,
+        auth,
+      );
+      const targets = res.data
+        .filter((j) => j.id !== job.id)
+        .map((j) => ({
+          id: j.id,
+          label: `${JOB_TYPE_LABELS[j.jobType as ApiJobDetail['jobType']] ?? j.jobType} · ${j.customer.firstName} ${j.customer.lastName}`,
+        }));
+      setMoveTargets(targets);
+      setMoveTargetId(targets[0]?.id ?? '');
+      setMoveSelected({});
+      setMoveOpen(true);
+    } catch {
+      setError('טעינת עבודות היעד נכשלה');
+    } finally {
+      setBusy(false);
+    }
+  }, [job, getToken]);
+
+  const submitMove = useCallback(async () => {
+    if (!job || !moveTargetId) return;
+    const shiftIds = Object.keys(moveSelected).filter((k) => moveSelected[k]);
+    if (!shiftIds.length) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const auth = await authHeaders(getToken);
+      await api.post('/jobs/move-workers', { sourceJobId: job.id, targetJobId: moveTargetId, shiftIds }, auth);
+      setMoveOpen(false);
+      await load();
+    } catch (err) {
+      const res = (err as { response?: { data?: { error?: string } } })?.response;
+      setError(res?.data?.error ?? 'העברת העובדים נכשלה');
+    } finally {
+      setBusy(false);
+    }
+  }, [job, moveTargetId, moveSelected, getToken, load]);
 
   const resolveReplacement = useCallback(
     async (requestId: string, approved: boolean, approvedWorkerId?: string) => {
@@ -314,10 +452,25 @@ export default function JobDetailPage() {
             </button>
           </div>
         ) : (
-          <StatusBadge
-            tone={shift.joinRequestStatus === 'REJECTED' ? 'error' : shift.joinRequestStatus === 'AWAITING_WORKER' ? 'warning' : 'success'}
-            label={JOIN_STATUS_LABELS[shift.joinRequestStatus] ?? shift.joinRequestStatus}
-          />
+          <div className="flex items-center gap-1.5">
+            {(shift.joinRequestStatus === 'APPROVED' || shift.joinRequestStatus === 'AWAITING_WORKER') && (
+              <select
+                value={shift.assignmentRole ?? 'REGULAR'}
+                onChange={(e) => void changeRole(shift.id, e.target.value)}
+                disabled={busy}
+                title="תפקיד בעבודה"
+                className="text-[11px] rounded-lg border border-gray-200 bg-white px-1.5 py-1 text-gray-700 disabled:opacity-50"
+              >
+                <option value="REGULAR">עובד</option>
+                <option value="TEAM_LEADER">ראש צוות</option>
+                <option value="BACKUP">מחליף</option>
+              </select>
+            )}
+            <StatusBadge
+              tone={shift.joinRequestStatus === 'REJECTED' ? 'error' : shift.joinRequestStatus === 'AWAITING_WORKER' ? 'warning' : 'success'}
+              label={JOIN_STATUS_LABELS[shift.joinRequestStatus] ?? shift.joinRequestStatus}
+            />
+          </div>
         )}
         {pendingReplacement && (
           <div className="flex flex-col items-end gap-1.5">
@@ -404,7 +557,27 @@ export default function JobDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           {jobBadge && <StatusBadge tone={jobBadge.tone} label={jobBadge.label} />}
-          {job.status === 'DRAFT' && (
+          {job.status === 'RESERVATION' && (
+            <button
+              onClick={() => void approveJob()}
+              disabled={busy || job.customer.isSystem}
+              title={job.customer.isSystem ? 'יש לשייך ללקוח אמיתי לפני אישור' : ''}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              אישור העבודה
+            </button>
+          )}
+          {job.status === 'APPROVED' && (
+            <button
+              onClick={() => void returnToReservation()}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              החזרה לשריון
+            </button>
+          )}
+          {(job.status === 'RESERVATION' || job.status === 'APPROVED') && (
             <button
               onClick={() => void publish()}
               disabled={busy || !readiness?.ready}
@@ -412,7 +585,7 @@ export default function JobDetailPage() {
               className="inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
             >
               <Send className="w-4 h-4" />
-              פרסום העבודה
+              שליחה שוב לעובדים
             </button>
           )}
           <button
@@ -437,6 +610,7 @@ export default function JobDetailPage() {
             { key: 'attendance', label: 'נוכחות' },
             { key: 'forms', label: 'טפסים' },
             { key: 'notes', label: 'הערות' },
+            { key: 'activity', label: 'יומן פעילות' },
           ] as Array<{ key: JobTab; label: string }>
         ).map((t) => (
           <button
@@ -490,6 +664,16 @@ export default function JobDetailPage() {
 
       {tab === 'staffing' && (
         <div className="space-y-5">
+          <div className="flex justify-end">
+            <button
+              onClick={() => void openMove()}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <Repeat className="w-4 h-4" />
+              העברת עובדים לעבודה אחרת
+            </button>
+          </div>
           <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-gray-900 mb-3">ראש צוות</h2>
             {managerSlots.length === 0 ? (
@@ -695,6 +879,97 @@ export default function JobDetailPage() {
             <p className="text-sm text-gray-600">{job.workerVisibleNotes || '—'}</p>
           </div>
         </section>
+      )}
+
+      {tab === 'activity' && (
+        <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-gray-900 mb-3">יומן פעילות</h2>
+          {activity.length === 0 ? (
+            <p className="text-sm text-gray-400">אין פעילות מתועדת עדיין</p>
+          ) : (
+            <ul className="space-y-2">
+              {activity.map((entry) => (
+                <li key={entry.id} className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2">
+                  <div>
+                    <p className="text-sm text-gray-800">{ACTIVITY_LABELS[entry.reason ?? ''] ?? entry.reason ?? entry.action}</p>
+                    <p className="text-[11px] text-gray-400">
+                      {entry.performedBy ? `${entry.performedBy.firstName} ${entry.performedBy.lastName}` : 'מערכת'}
+                      {' · '}
+                      {entry.entityType === 'Shift' ? 'עובד' : 'עבודה'}
+                    </p>
+                  </div>
+                  <span className="text-[11px] text-gray-500 whitespace-nowrap">
+                    {new Date(entry.createdAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {moveOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" dir="rtl">
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+            <h2 className="text-base font-bold text-gray-900 mb-1">העברת עובדים לעבודה אחרת</h2>
+            <p className="text-xs text-gray-500 mb-4">ניתן להעביר עובדים רק בין עבודות באותו תאריך.</p>
+
+            {moveTargets.length === 0 ? (
+              <p className="text-sm text-gray-500">אין עבודה אחרת בתאריך זה.</p>
+            ) : (
+              <>
+                <label className="block text-sm text-gray-700 mb-1">עבודת יעד</label>
+                <select
+                  value={moveTargetId}
+                  onChange={(e) => setMoveTargetId(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-2.5 py-2 text-sm bg-white mb-4"
+                >
+                  {moveTargets.map((t) => (
+                    <option key={t.id} value={t.id}>{t.label}</option>
+                  ))}
+                </select>
+
+                <p className="text-sm text-gray-700 mb-2">בחירת עובדים להעברה</p>
+                <div className="max-h-56 overflow-auto space-y-1.5 mb-4">
+                  {job.shifts.filter((s) => s.joinRequestStatus === 'APPROVED' || s.joinRequestStatus === 'AWAITING_WORKER').length === 0 ? (
+                    <p className="text-sm text-gray-400">אין עובדים משובצים להעברה.</p>
+                  ) : (
+                    job.shifts
+                      .filter((s) => s.joinRequestStatus === 'APPROVED' || s.joinRequestStatus === 'AWAITING_WORKER')
+                      .map((s) => (
+                        <label key={s.id} className="flex items-center gap-2 rounded-lg border border-gray-100 px-3 py-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={!!moveSelected[s.id]}
+                            onChange={(e) => setMoveSelected((prev) => ({ ...prev, [s.id]: e.target.checked }))}
+                          />
+                          <span className="text-gray-800">{s.workerNameSnapshot}</span>
+                          {s.assignmentRole === 'TEAM_LEADER' && <span className="text-[11px] text-emerald-700">· ראש צוות</span>}
+                          {s.assignmentRole === 'BACKUP' && <span className="text-[11px] text-amber-700">· מחליף</span>}
+                        </label>
+                      ))
+                  )}
+                </div>
+              </>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setMoveOpen(false)}
+                className="px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+              >
+                ביטול
+              </button>
+              <button
+                onClick={() => void submitMove()}
+                disabled={busy || !moveTargetId || !Object.values(moveSelected).some(Boolean)}
+                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                העברה
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

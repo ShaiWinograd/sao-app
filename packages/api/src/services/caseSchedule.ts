@@ -22,7 +22,7 @@ const SCHEDULE_FAMILY = new Set([
 async function deriveScheduleStatus(tx: Prisma.TransactionClient, caseId: string) {
   const [planned, jobs] = await Promise.all([
     tx.plannedServiceComponent.findMany({ where: { caseId }, select: { serviceType: true } }),
-    tx.job.findMany({ where: { caseId, status: { not: 'CANCELLED' } }, select: { jobType: true } }),
+    tx.job.findMany({ where: { caseId, status: { not: 'ARCHIVED' } }, select: { jobType: true } }),
   ]);
   return computeApprovedScheduleStatus(
     planned.map((p) => p.serviceType),

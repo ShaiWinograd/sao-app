@@ -89,7 +89,7 @@ type ApiCaseListItem = {
   jobs: Array<{
     id: string;
     date: string;
-    status: 'DRAFT' | 'PUBLISHED' | 'IN_PROGRESS' | 'COMPLETED';
+    status: 'RESERVATION' | 'APPROVED' | 'COMPLETED' | 'ARCHIVED';
     jobType: 'PACKING' | 'UNPACKING' | 'HOME_ORGANIZATION';
     requiredWorkerCount: number;
     address: { fullAddress: string };
@@ -248,8 +248,8 @@ function mapApiCaseStatus(status: ApiCaseListItem['status']): CaseStatus {
 }
 
 function mapApiJobStatus(status: ApiCaseListItem['jobs'][number]['status']): CaseJobStatus {
-  if (status === 'COMPLETED') return 'בוצע';
-  if (status === 'IN_PROGRESS') return 'בביצוע';
+  if (status === 'COMPLETED' || status === 'ARCHIVED') return 'בוצע';
+  if (status === 'APPROVED') return 'בביצוע';
   return 'מתוכנן';
 }
 

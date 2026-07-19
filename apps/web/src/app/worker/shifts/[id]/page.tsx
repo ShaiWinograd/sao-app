@@ -337,7 +337,7 @@ export default function WorkerShiftDetailPage() {
   const att = attendanceBadge(shift.attendanceStatus);
   const missingForm = missingFormBadge(shift);
   const address = shift.job.address?.fullAddress ?? '';
-  const isCancelled = shift.job.status === 'CANCELLED';
+  const isCancelled = shift.job.status === 'ARCHIVED';
   const isAwaitingAcceptance = shift.joinRequestStatus === 'AWAITING_WORKER';
   const mapsHref = address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : null;
   const phone = shift.job.customer?.phone;
