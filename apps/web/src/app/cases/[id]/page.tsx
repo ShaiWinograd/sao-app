@@ -19,6 +19,7 @@ import {
   getCaseStepState,
   computeFinalAmount,
   evaluateFinalReview,
+  PROJECT_STATUS_HE,
   FINAL_REVIEW_REASON_LABELS,
   type FinalReviewReason,
   type CaseStatusValue,
@@ -79,6 +80,7 @@ type ApiCaseDetail = {
   id: string;
   name: string;
   status: CaseStatusValue;
+  derivedStatus?: 'EMPTY' | 'RESERVATION' | 'PARTIALLY_APPROVED' | 'APPROVED' | 'IN_PROGRESS' | 'COMPLETED';
   internalNotes: string | null;
   customer: {
     id: string;
@@ -763,6 +765,11 @@ export default function ProjectDetailPage() {
             <FileText className="w-4 h-4" />
             דוח לקוח
           </Link>
+          {kase.derivedStatus && kase.derivedStatus !== 'EMPTY' && (
+            <span className="inline-flex items-center rounded-full border border-primary-200 bg-primary-50 px-2.5 py-0.5 text-[11px] font-medium text-primary-700">
+              {PROJECT_STATUS_HE[kase.derivedStatus]}
+            </span>
+          )}
           <StatusBadge tone={caseStatusTone(kase.status)} label={CASE_STATUS_LABELS[kase.status]} />
         </div>
       </div>

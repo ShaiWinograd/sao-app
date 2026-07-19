@@ -81,6 +81,7 @@ type ApiCaseListItem = {
   id: string;
   name: string;
   status: 'DRAFT' | 'ACTIVE' | 'READY_FOR_REVIEW' | 'COMPLETED' | 'CANCELLED';
+  derivedStatus?: 'EMPTY' | 'RESERVATION' | 'PARTIALLY_APPROVED' | 'APPROVED' | 'IN_PROGRESS' | 'COMPLETED';
   startDate: string | null;
   latestActivityDate: string | null;
   updatedAt: string;

@@ -672,6 +672,73 @@ export async function jobsRoutes(app: FastifyInstance) {
     return updated;
   });
 
+  // Permanently delete a job (spec §15.1). Blocked when the job has any
+  // attendance data — such jobs may only be archived (spec §15.2).
+  app.delete('/:id', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { reason } = (req.body ?? {}) as { reason?: string };
+
+    const job = await prisma.job.findUnique({
+      where: { id },
+      include: {
+        shifts: {
+          select: {
+            id: true,
+            actualStart: true,
+            actualEnd: true,
+            approvedHours: true,
+            attendanceStatus: true,
+            worker: { select: { userId: true } },
+          },
+        },
+      },
+    });
+    if (!job) return reply.status(404).send({ error: 'Job not found' });
+
+    // §15.2 attendance protection.
+    const hasAttendance = job.shifts.some(
+      (s) => s.actualStart || s.actualEnd || s.approvedHours != null || (s.attendanceStatus && s.attendanceStatus !== 'SCHEDULED'),
+    );
+    const correctionCount = await prisma.attendanceCorrection.count({ where: { shift: { jobId: id } } });
+    if (hasAttendance || correctionCount > 0) {
+      return reply.status(409).send({
+        error: 'attendance_exists',
+        message: 'לא ניתן למחוק עבודה עם נתוני נוכחות. ניתן להעביר לארכיון בלבד.',
+      });
+    }
+
+    // Notify assigned workers before removal (spec §15.1); deleting the shifts
+    // releases their same-day blocking.
+    const userIds = Array.from(new Set(job.shifts.map((s) => s.worker.userId)));
+    if (userIds.length) {
+      await prisma.notification.createMany({
+        data: userIds.map((userId) => ({
+          userId,
+          title: 'עבודה נמחקה',
+          body: `העבודה בתאריך ${heDate(job.date)} נמחקה. אינך משובץ/ת אליה יותר.`,
+          data: { type: 'JOB_DELETED', jobId: id } as any,
+        })),
+      });
+    }
+
+    const shiftIds = job.shifts.map((s) => s.id);
+    await prisma.$transaction([
+      prisma.replacementVolunteer.deleteMany({ where: { request: { shiftId: { in: shiftIds } } } }),
+      prisma.replacementRequest.deleteMany({ where: { shiftId: { in: shiftIds } } }),
+      prisma.shiftSwap.deleteMany({ where: { OR: [{ fromShiftId: { in: shiftIds } }, { toShiftId: { in: shiftIds } }] } }),
+      prisma.locationCheck.deleteMany({ where: { shiftId: { in: shiftIds } } }),
+      prisma.shift.deleteMany({ where: { jobId: id } }),
+      prisma.jobExpense.deleteMany({ where: { jobId: id } }),
+      prisma.jobSlot.deleteMany({ where: { jobId: id } }),
+      prisma.job.delete({ where: { id } }),
+    ]);
+
+    // Preserve deletion history in the audit log (spec §15.1).
+    await logAudit((req as any).user, 'DELETE', 'Job', id, { status: job.status, date: job.date }, null, reason ? `deleted: ${reason}` : 'deleted');
+    await refreshScheduleStatus(prisma, job.caseId);
+    return { success: true };
+  });
+
   // Owner activity log for a job — its own events plus its workers' events
   // (spec §16). Workers never see this.
   app.get('/:id/activity', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
