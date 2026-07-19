@@ -52,6 +52,7 @@ export type WorkerShift = {
   scheduledEnd: string;
   attendanceStatus: string;
   joinRequestStatus: string;
+  assignmentRole?: string;
   formStatus: string;
   actualStart?: string | null;
   actualEnd?: string | null;
@@ -151,6 +152,12 @@ export function formatDuration(hours?: number | string | null): string {
   if (hh && mm) return `${hh} שעות ו-${mm} דקות`;
   if (hh) return `${hh} שעות`;
   return `${mm} דקות`;
+}
+
+export function assignmentRoleLabel(role?: string): string | null {
+  if (role === 'TEAM_LEADER') return 'ראש צוות';
+  if (role === 'BACKUP') return 'מחליף';
+  return null;
 }
 
 export function formStatusLabel(status: string): string {

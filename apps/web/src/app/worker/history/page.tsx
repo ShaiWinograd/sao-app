@@ -9,6 +9,7 @@ import {
   type WorkerShift,
   jobTypeLabel,
   jobTypeClasses,
+  assignmentRoleLabel,
   formatFullDate,
   formatTime,
   formatDuration,
@@ -143,8 +144,15 @@ export default function WorkerHistoryPage() {
                     className="block rounded-xl border border-gray-200 bg-white p-3.5 hover:border-primary-300 transition-colors"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${jobTypeClasses(s.job.jobType)}`}>
-                        {jobTypeLabel(s.job.jobType)}
+                      <span className="flex items-center gap-1.5">
+                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${jobTypeClasses(s.job.jobType)}`}>
+                          {jobTypeLabel(s.job.jobType)}
+                        </span>
+                        {assignmentRoleLabel(s.assignmentRole) && (
+                          <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                            {assignmentRoleLabel(s.assignmentRole)}
+                          </span>
+                        )}
                       </span>
                       <span className="text-xs font-semibold text-gray-900">{formatFullDate(s.scheduledStart)}</span>
                     </div>
