@@ -3,7 +3,34 @@ import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
 import { ClockInSchema, ClockOutSchema, AttendanceCorrectionSchema } from '@workforce/shared';
 import { distanceInMeters } from '@workforce/shared';
+import { evaluateJobCompletion } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
+
+// Auto-complete a job once all regular workers have clocked out with no
+// unresolved attendance issues (spec §4.3). No-op unless the job is currently a
+// reservation or approved.
+async function maybeAutoCompleteJob(jobId: string, actor: unknown): Promise<void> {
+  const job = await prisma.job.findUnique({ where: { id: jobId }, select: { id: true, status: true } });
+  if (!job || (job.status !== 'RESERVATION' && job.status !== 'APPROVED')) return;
+
+  const shifts = await prisma.shift.findMany({
+    where: { jobId },
+    select: {
+      joinRequestStatus: true,
+      assignmentRole: true,
+      attendanceStatus: true,
+      actualStart: true,
+      actualEnd: true,
+      requiresReview: true,
+    },
+  });
+
+  const { complete } = evaluateJobCompletion(shifts);
+  if (complete) {
+    await prisma.job.update({ where: { id: jobId }, data: { status: 'COMPLETED' } });
+    await logAudit(actor as any, 'UPDATE', 'Job', jobId, { status: job.status }, { status: 'COMPLETED' }, 'auto-complete');
+  }
+}
 
 export async function attendanceRoutes(app: FastifyInstance) {
   // Clock in
@@ -15,6 +42,16 @@ export async function attendanceRoutes(app: FastifyInstance) {
     });
     if (!shift) return reply.status(404).send({ error: 'Shift not found' });
     if (shift.actualStart) return reply.status(400).send({ error: 'Already clocked in' });
+
+    // Workers may clock in at most 10 minutes early (spec §20.1).
+    const EARLY_CLOCK_IN_MINUTES = 10;
+    const clockInTime = new Date(body.timestamp).getTime();
+    if (clockInTime < shift.scheduledStart.getTime() - EARLY_CLOCK_IN_MINUTES * 60_000) {
+      return reply.status(400).send({
+        error: 'too_early',
+        message: 'ניתן להתחיל משמרת עד 10 דקות לפני שעת ההתחלה.',
+      });
+    }
 
     // Geocode job address to lat/lon (in production, use Google Maps Geocoding API)
     // For now we assume job address lat/lon is stored or passed in
@@ -83,6 +120,7 @@ export async function attendanceRoutes(app: FastifyInstance) {
       },
     });
     await logAudit((req as any).user, 'CLOCK_OUT', 'Shift', body.shiftId, null, { actualEnd: updated.actualEnd, approvedHours: updated.approvedHours }, 'clock-out');
+    await maybeAutoCompleteJob(shift.jobId, (req as any).user);
     return updated;
   });
 
@@ -115,7 +153,9 @@ export async function attendanceRoutes(app: FastifyInstance) {
   app.post('/correct', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const user = (req as any).user;
     const body = AttendanceCorrectionSchema.parse(req.body);
-    const update: any = { attendanceStatus: 'CORRECTED', clockInMethod: 'ADMIN_CORRECTED' };
+    // Correcting attendance also resolves any owner-review flag (e.g. an auto
+    // clock-out awaiting review), which can unblock job completion (spec §4.3).
+    const update: any = { attendanceStatus: 'CORRECTED', clockInMethod: 'ADMIN_CORRECTED', requiresReview: false };
     if (body.clockIn) update.actualStart = new Date(body.clockIn);
     if (body.clockOut) {
       update.actualEnd = new Date(body.clockOut);
@@ -140,6 +180,7 @@ export async function attendanceRoutes(app: FastifyInstance) {
       }),
     ]);
     await logAudit(user, 'CORRECTION', 'Shift', body.shiftId, null, { clockIn: body.clockIn ?? null, clockOut: body.clockOut ?? null }, body.reason);
+    await maybeAutoCompleteJob(shift.jobId, user);
 
     // If this shift's month was already signed off, the report is now stale and
     // must be re-approved (integration spec §24).
