@@ -82,6 +82,7 @@ type ApiCaseDetail = {
   status: CaseStatusValue;
   derivedStatus?: 'EMPTY' | 'RESERVATION' | 'PARTIALLY_APPROVED' | 'APPROVED' | 'IN_PROGRESS' | 'COMPLETED';
   internalNotes: string | null;
+  autoApproveJoins?: boolean;
   customer: {
     id: string;
     firstName: string;
@@ -772,6 +773,29 @@ export default function ProjectDetailPage() {
           )}
           <StatusBadge tone={caseStatusTone(kase.status)} label={CASE_STATUS_LABELS[kase.status]} />
         </div>
+      </div>
+
+      <div className="mb-4 flex items-center gap-2 text-sm">
+        <span className="text-gray-600">שיבוץ עובדים לעבודות בפרויקט:</span>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              const auth = await authHeaders(getToken);
+              await api.patch(`/cases/${caseId}`, { autoApproveJoins: !kase.autoApproveJoins }, auth);
+              await load();
+            } catch {
+              setError('עדכון מצב השיבוץ נכשל');
+            } finally {
+              setBusy(false);
+            }
+          }}
+          className={`rounded-full border px-3 py-1 text-xs font-medium ${kase.autoApproveJoins ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-gray-300 bg-gray-50 text-gray-700'}`}
+        >
+          {kase.autoApproveJoins ? 'ראשון שמגיע (ללא אישור)' : 'דרוש אישור בעל/ת העסק'}
+        </button>
       </div>
 
       {getCaseStepIndex(kase.status) !== -1 && (
