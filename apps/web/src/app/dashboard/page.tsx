@@ -176,6 +176,18 @@ function caseBadge(status: CaseStatusValue): { label: string; className: string 
   return { label: caseStatusLabel(status), className: CASE_BADGE_CLASS_BY_TONE[caseStatusTone(status)] };
 }
 
+// Owner-visible job status badge (spec §4, §18): שריון / אושר / בוצע / בארכיון.
+const JOB_STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  RESERVATION: { label: 'שריון', className: 'border-sky-300 bg-sky-100 text-sky-700' },
+  APPROVED: { label: 'אושר', className: 'border-emerald-300 bg-emerald-100 text-emerald-700' },
+  COMPLETED: { label: 'בוצע', className: 'border-gray-300 bg-gray-100 text-gray-700' },
+  ARCHIVED: { label: 'בארכיון', className: 'border-gray-300 bg-gray-100 text-gray-500' },
+};
+
+function jobStatusBadge(status: string): { label: string; className: string } {
+  return JOB_STATUS_BADGE[status] ?? { label: status, className: 'border-gray-300 bg-gray-100 text-gray-700' };
+}
+
 export default function DashboardPage() {
   const { user } = useUser();
   const { getToken } = useAuth();
@@ -298,6 +310,7 @@ export default function DashboardPage() {
     payrollCost: string;
     estimatedRevenue: string;
     status: WorkStatus;
+    jobStatus: string;
   };
 
   const allActiveWorks: ActiveWork[] = [];
@@ -444,7 +457,11 @@ export default function DashboardPage() {
           }));
           const actualTeamLeadName = assignedWorkers.find((worker: AssignedWorker) => worker.name === 'אורית')?.name ?? null;
           const status: WorkStatus =
-            job.status === 'IN_PROGRESS' ? 'active' : job.status === 'COMPLETED' || job.status === 'CANCELLED' ? 'done' : 'planned';
+            job.status === 'COMPLETED' || job.status === 'ARCHIVED'
+              ? 'done'
+              : job.status === 'APPROVED'
+                ? 'active'
+                : 'planned';
           const jobType: JobType =
             job.jobType === 'PACKING' ? 'אריזה' : job.jobType === 'UNPACKING' ? 'פריקה' : 'סידור';
           const estimatedRevenueValue = Math.round((job.requiredWorkerCount ?? 0) * 5 * 175);
@@ -468,6 +485,7 @@ export default function DashboardPage() {
             payrollCost: `₪${payrollCostValue.toLocaleString('he-IL')}`,
             estimatedRevenue: formatK(estimatedRevenueValue),
             status,
+            jobStatus: job.status ?? 'RESERVATION',
           };
         });
         
@@ -849,6 +867,7 @@ export default function DashboardPage() {
         payrollCost: '₪0',
         estimatedRevenue: '₪0',
         status: 'planned',
+        jobStatus: 'RESERVATION',
       };
 
       return [...prev, newDashboardWork].sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.id - b.id);
@@ -1503,7 +1522,6 @@ export default function DashboardPage() {
                                 linkedCaseStatus === 'DRAFT' &&
                                 upcomingDiffDays >= 0 &&
                                 upcomingDiffDays <= 7;
-                              const caseMeta = caseBadge(linkedCaseStatus);
                               return (
                                 <button
                                   key={`${worker.id}-${shift.id}`}
@@ -1515,10 +1533,10 @@ export default function DashboardPage() {
                                   <p className="text-[11px] text-gray-600">{shift.customerName}</p>
                                   <p
                                     className={`mt-0.5 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
-                                      isUrgentCase ? 'border-rose-300 bg-rose-100 text-rose-700' : caseMeta.className
+                                      isUrgentCase ? 'border-rose-300 bg-rose-100 text-rose-700' : jobStatusBadge(shift.jobStatus).className
                                     }`}
                                   >
-                                    {isUrgentCase ? 'דחוף: ממתין לאישור לקוח' : caseMeta.label}
+                                    {isUrgentCase ? 'דחוף: ממתין לאישור לקוח' : jobStatusBadge(shift.jobStatus).label}
                                   </p>
                                   {shift.actualTeamLeadName === worker.name && (
                                     <p className="text-[11px] text-emerald-700 font-medium mt-0.5">ראש צוות</p>
@@ -2007,10 +2025,10 @@ export default function DashboardPage() {
                   <p className="text-xs text-gray-600 mt-0.5">{work.assignedWorkers.length}/{work.requiredWorkers} משובצות</p>
                   <p
                     className={`mt-0.5 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
-                      caseBadge(caseById.get(work.caseId)?.status ?? 'ACTIVE').className
+                      jobStatusBadge(work.jobStatus).className
                     }`}
                   >
-                    {caseBadge(caseById.get(work.caseId)?.status ?? 'ACTIVE').label}
+                    {jobStatusBadge(work.jobStatus).label}
                   </p>
                   <p className="text-xs text-gray-600 mt-0.5">
                     {work.responsibleRole === 'admin' ? 'ראש צוות' : 'בעלות'}: {work.responsibleName}
