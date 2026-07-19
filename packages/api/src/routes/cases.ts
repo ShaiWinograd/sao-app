@@ -13,6 +13,7 @@ import {
   getAllowedCaseTransitions,
   groupCasesIntoBoard,
   computeCustomerReport,
+  deriveProjectStatus,
   type CaseStatusValue,
 } from '@workforce/shared';
 import { subDays } from 'date-fns';
@@ -119,7 +120,7 @@ export async function casesRoutes(app: FastifyInstance) {
     }
 
     const { customerId, status } = parseResult.data;
-    return prisma.customerCase.findMany({
+    const cases = await prisma.customerCase.findMany({
       where: {
         ...(customerId ? { customerId } : {}),
         ...(status ? { status } : {}),
@@ -140,6 +141,10 @@ export async function casesRoutes(app: FastifyInstance) {
       },
       orderBy: { updatedAt: 'desc' },
     });
+    return cases.map((kase) => ({
+      ...kase,
+      derivedStatus: deriveProjectStatus(kase.jobs.map((j) => j.status)),
+    }));
   });
 
   // Projects kanban board: cases grouped into lifecycle tabs/columns.
@@ -175,7 +180,7 @@ export async function casesRoutes(app: FastifyInstance) {
       },
     });
     if (!kase) return reply.status(404).send({ error: 'Case not found' });
-    return kase;
+    return { ...kase, derivedStatus: deriveProjectStatus(kase.jobs.map((j) => j.status)) };
   });
 
   // Case hub summary for operational readiness + final report trigger

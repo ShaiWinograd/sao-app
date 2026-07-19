@@ -134,6 +134,7 @@ export default function JobDetailPage() {
   const [moveTargets, setMoveTargets] = useState<Array<{ id: string; label: string }>>([]);
   const [moveTargetId, setMoveTargetId] = useState('');
   const [moveSelected, setMoveSelected] = useState<Record<string, boolean>>({});
+  const [deleteReason, setDeleteReason] = useState('');
   const [activity, setActivity] = useState<
     Array<{ id: string; action: string; entityType: string; reason: string | null; createdAt: string; performedBy?: { firstName: string; lastName: string } | null }>
   >([]);
@@ -214,6 +215,45 @@ export default function JobDetailPage() {
       setBusy(false);
     }
   }, [jobId, getToken, load]);
+
+  const archiveJob = useCallback(async () => {
+    if (!jobId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const auth = await authHeaders(getToken);
+      await api.post(`/jobs/${jobId}/cancel`, {}, auth);
+      await load();
+    } catch (err) {
+      const res = (err as { response?: { data?: { error?: string } } })?.response;
+      setError(res?.data?.error ?? 'העברה לארכיון נכשלה');
+    } finally {
+      setBusy(false);
+    }
+  }, [jobId, getToken, load]);
+
+  const deleteJob = useCallback(
+    async (reason: string) => {
+      if (!jobId) return;
+      setBusy(true);
+      setError(null);
+      try {
+        const auth = await authHeaders(getToken);
+        await api.delete(`/jobs/${jobId}`, { ...auth, data: { reason } });
+        window.location.href = '/jobs';
+      } catch (err) {
+        const res = (err as { response?: { status?: number; data?: { message?: string; error?: string } } })?.response;
+        if (res?.status === 409) {
+          setError(res.data?.message ?? 'לא ניתן למחוק עבודה עם נתוני נוכחות. ניתן להעביר לארכיון בלבד.');
+        } else {
+          setError(res?.data?.error ?? 'מחיקת העבודה נכשלה');
+        }
+      } finally {
+        setBusy(false);
+      }
+    },
+    [jobId, getToken],
+  );
 
   const loadActivity = useCallback(async () => {
     if (!jobId) return;
@@ -659,6 +699,48 @@ export default function JobDetailPage() {
               </ul>
             </section>
           )}
+
+          {/* Danger zone: archive (keeps records) or permanent delete (spec §15) */}
+          <section className="rounded-xl border border-rose-200 bg-rose-50/40 p-5">
+            <h2 className="text-sm font-semibold text-rose-900 mb-2">הסרת העבודה</h2>
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="text-sm">
+                <span className="block text-gray-600 mb-1">סיבה (אופציונלי)</span>
+                <select
+                  value={deleteReason}
+                  onChange={(e) => setDeleteReason(e.target.value)}
+                  className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm"
+                >
+                  <option value="">ללא סיבה</option>
+                  <option value="הלקוח ביטל">הלקוח ביטל</option>
+                  <option value="הלקוח לא הגיב">הלקוח לא הגיב</option>
+                  <option value="התאריך השתנה">התאריך השתנה</option>
+                  <option value="אין צורך בעבודה">אין צורך בעבודה</option>
+                  <option value="נוצר בטעות">נוצר בטעות</option>
+                  <option value="אחר">אחר</option>
+                </select>
+              </label>
+              {job.status !== 'ARCHIVED' && (
+                <button
+                  onClick={() => void archiveJob()}
+                  disabled={busy}
+                  className="px-3 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  העברה לארכיון
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.confirm('למחוק לצמיתות את העבודה? לא ניתן לשחזר.')) void deleteJob(deleteReason);
+                }}
+                disabled={busy}
+                className="px-3 py-2 text-sm rounded-lg bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                מחיקה לצמיתות
+              </button>
+            </div>
+            <p className="mt-2 text-[11px] text-gray-500">מחיקה לצמיתות חסומה לעבודות עם נתוני נוכחות — ניתן להעביר לארכיון בלבד.</p>
+          </section>
         </div>
       )}
 
