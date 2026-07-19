@@ -16,6 +16,15 @@ on:
           - all
           - web
           - api
+      run_migration:
+        description: DB schema migration (auto = run only when the prisma schema changed since the last prod release)
+        required: false
+        default: auto
+        type: choice
+        options:
+          - auto
+          - always
+          - never
       reason:
         description: Why this production container deployment is being run
         required: true
@@ -158,8 +167,55 @@ jobs:
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_WEB_APP_NAME"
 
-      - name: Migrate database schema (prisma db push)
+      - name: Decide whether to run DB migration
+        id: migrate
         if: github.event.inputs.target == 'all' || github.event.inputs.target == 'api'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_MIGRATION: ${{ github.event.inputs.run_migration }}
+        run: |
+          set -euo pipefail
+
+          # Manual overrides.
+          if [ "${RUN_MIGRATION:-auto}" = "never" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping DB migration (run_migration=never)."
+            exit 0
+          fi
+          if [ "${RUN_MIGRATION:-auto}" = "always" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Running DB migration (run_migration=always)."
+            exit 0
+          fi
+
+          # auto: run only when the prisma schema changed since the last prod release.
+          prev_tag="$(gh release list --limit 40 --json tagName \
+            -q '[.[] | select(.tagName | startswith("containers-prod-"))] | .[0].tagName' 2>/dev/null || true)"
+          if [ -z "$prev_tag" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "No previous prod release found; running DB migration."
+            exit 0
+          fi
+          prev_sha="$(gh release view "$prev_tag" --json targetCommitish -q .targetCommitish 2>/dev/null || true)"
+          if [ -z "$prev_sha" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Could not resolve previous release commit; running DB migration."
+            exit 0
+          fi
+
+          # Ensure both commits are available for the diff (checkout is shallow).
+          git fetch --no-tags --depth=1 origin "$prev_sha" >/dev/null 2>&1 || git fetch --unshallow >/dev/null 2>&1 || true
+
+          if git diff --quiet "$prev_sha" "$GITHUB_SHA" -- packages/database/prisma/schema.prisma 2>/dev/null; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No prisma schema change since $prev_tag ($prev_sha); skipping DB migration."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Prisma schema changed since $prev_tag ($prev_sha); running DB migration."
+          fi
+
+      - name: Migrate database schema (prisma db push)
+        if: (github.event.inputs.target == 'all' || github.event.inputs.target == 'api') && steps.migrate.outputs.run == 'true'
         run: |
           set -euo pipefail
 
