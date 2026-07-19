@@ -3,6 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { resolveActor } from '../lib/actor.js';
 import { deleteCaseCascade } from '../lib/deleteCase.js';
+import { buildLinesPdf } from '../lib/pdf.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import {
   CaseStatusSchema,
@@ -11,6 +12,7 @@ import {
   canTransitionCaseStatus,
   getAllowedCaseTransitions,
   groupCasesIntoBoard,
+  computeCustomerReport,
   type CaseStatusValue,
 } from '@workforce/shared';
 import { subDays } from 'date-fns';
@@ -27,6 +29,69 @@ const ArchiveCaseSchema = z.object({
 
 const CaseCommunicationTemplateSchema = z.enum(['quote', 'packing_form', 'move_reminder', 'completion_summary']);
 const CaseCommunicationChannelSchema = z.enum(['whatsapp', 'email']);
+
+// Customer report pricing (spec §23.3): hourly (rate × total actual worker-hours,
+// with optional manual additions and discount) or a fixed global amount.
+const CustomerReportPricingSchema = z.union([
+  z.object({
+    mode: z.literal('HOURLY'),
+    hourlyRate: z.number().nonnegative(),
+    manualAdditions: z.number().optional(),
+    discount: z.number().optional(),
+  }),
+  z.object({
+    mode: z.literal('GLOBAL'),
+    globalAmount: z.number().nonnegative(),
+  }),
+]);
+
+const JOB_TYPE_HE_LABEL: Record<string, string> = {
+  PACKING: 'אריזה',
+  UNPACKING: 'פריקה',
+  HOME_ORGANIZATION: 'סידור',
+};
+
+// Build the customer-report payload for a case: per-job worker counts and actual
+// worker-hours (backups who worked included; individual hours never exposed).
+async function buildCustomerReportForCase(
+  caseId: string,
+  pricing: z.infer<typeof CustomerReportPricingSchema>,
+) {
+  const kase = await prisma.customerCase.findUnique({
+    where: { id: caseId },
+    include: {
+      customer: { select: { firstName: true, lastName: true } },
+      jobs: {
+        orderBy: { date: 'asc' },
+        include: {
+          shifts: { select: { joinRequestStatus: true, approvedHours: true } },
+        },
+      },
+    },
+  });
+  if (!kase) return null;
+
+  const jobInputs = kase.jobs.map((job) => ({
+    jobId: job.id,
+    date: job.date,
+    jobType: job.jobType,
+    // A worker counts as having worked when they have approved billable hours.
+    workedHours: job.shifts
+      .filter((s) => s.joinRequestStatus === 'APPROVED' && s.approvedHours != null)
+      .map((s) => Number(s.approvedHours)),
+  }));
+
+  const report = computeCustomerReport(jobInputs, pricing);
+  const allJobsCompleted = kase.jobs.length > 0 && kase.jobs.every((j) => j.status === 'COMPLETED');
+
+  return {
+    customerName: `${kase.customer.firstName} ${kase.customer.lastName}`.trim(),
+    projectName: kase.name,
+    generatedAt: new Date().toISOString(),
+    allJobsCompleted,
+    report,
+  };
+}
 
 const CreateCaseCommunicationSchema = z.object({
   templateKey: CaseCommunicationTemplateSchema,
@@ -432,5 +497,49 @@ export async function casesRoutes(app: FastifyInstance) {
 
     reply.status(204);
     return null;
+  });
+
+  // Customer report preview (spec §23). Returns computed totals for the wizard.
+  app.post('/:id/customer-report', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const pricing = CustomerReportPricingSchema.parse(req.body);
+    const payload = await buildCustomerReportForCase(id, pricing);
+    if (!payload) return reply.status(404).send({ error: 'Case not found' });
+    return payload;
+  });
+
+  // Customer report PDF download (spec §23.4).
+  app.post('/:id/customer-report.pdf', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const pricing = CustomerReportPricingSchema.parse(req.body);
+    const payload = await buildCustomerReportForCase(id, pricing);
+    if (!payload) return reply.status(404).send({ error: 'Case not found' });
+
+    const { report } = payload;
+    const money = (n: number) => `${n.toLocaleString('he-IL')} ₪`;
+    const lines: string[] = [];
+    lines.push(`לקוח: ${payload.customerName}`);
+    lines.push(`פרויקט: ${payload.projectName}`);
+    lines.push('');
+    lines.push('עבודות:');
+    for (const job of report.jobs) {
+      lines.push(
+        `  ${job.date} · ${JOB_TYPE_HE_LABEL[job.jobType] ?? job.jobType} · ${job.workerCount} עובדים · ${job.actualHours} שעות`,
+      );
+    }
+    lines.push('');
+    lines.push(`סך שעות עבודה בפועל: ${report.totalActualHours}`);
+    if (report.mode === 'HOURLY') {
+      lines.push(`תעריף שעתי: ${money(report.hourlyRate ?? 0)}`);
+      if (report.manualAdditions) lines.push(`תוספות: ${money(report.manualAdditions)}`);
+      if (report.discount) lines.push(`הנחה: ${money(report.discount)}`);
+    }
+    lines.push(`סכום סופי: ${money(report.finalAmount)}`);
+
+    const pdf = await buildLinesPdf('דוח לקוח', payload.projectName, lines);
+    const fileName = `customer-report-${id}.pdf`;
+    reply.header('Content-Type', 'application/pdf');
+    reply.header('Content-Disposition', `attachment; filename="${fileName}"`);
+    return reply.send(pdf);
   });
 }

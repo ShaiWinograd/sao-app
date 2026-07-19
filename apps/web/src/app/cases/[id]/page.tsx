@@ -755,7 +755,16 @@ export default function ProjectDetailPage() {
             {kase.customer.firstName} {kase.customer.lastName} · {kase.customer.phone}
           </p>
         </div>
-        <StatusBadge tone={caseStatusTone(kase.status)} label={CASE_STATUS_LABELS[kase.status]} />
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/cases/${caseId}/customer-report`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            <FileText className="w-4 h-4" />
+            דוח לקוח
+          </Link>
+          <StatusBadge tone={caseStatusTone(kase.status)} label={CASE_STATUS_LABELS[kase.status]} />
+        </div>
       </div>
 
       {getCaseStepIndex(kase.status) !== -1 && (

@@ -17,6 +17,7 @@ export * from './packing-automation';
 export * from './job-readiness';
 export * from './job-status';
 export * from './job-completion';
+export * from './customer-report';
 export * from './reapproval';
 export * from './worker-availability';
 export * from './availability-blocks';
