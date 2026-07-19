@@ -59,7 +59,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
     const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
     if (!worker) return reply.status(403).send({ error: 'Worker profile not found' });
 
-    const job = await prisma.job.findUnique({ where: { id: body.jobId }, include: { slots: true } });
+    const job = await prisma.job.findUnique({ where: { id: body.jobId }, include: { slots: true, case: { select: { autoApproveJoins: true } } } });
     if (!job) return reply.status(404).send({ error: 'Job not found' });
     if (job.status === 'ARCHIVED' || job.status === 'COMPLETED') return reply.status(400).send({ error: 'Job is not open for applications' });
 
@@ -89,6 +89,15 @@ export async function shiftsRoutes(app: FastifyInstance) {
     );
     if (isBlocked) return reply.status(409).send({ error: 'You marked yourself unavailable on this date' });
 
+    // Per-project approval mode (spec §9): when the project auto-approves joins and
+    // a position is still open, the first eligible worker is assigned immediately;
+    // otherwise the request waits for owner approval (default).
+    let autoApprove = false;
+    if (job.case?.autoApproveJoins) {
+      const approvedCount = await prisma.shift.count({ where: { jobId: job.id, joinRequestStatus: 'APPROVED' } });
+      autoApprove = approvedCount < job.requiredWorkerCount;
+    }
+
     const shift = await prisma.shift.create({
       data: {
         workerId: worker.id,
@@ -96,8 +105,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
         slotId: body.slotId ?? null,
         scheduledStart: job.plannedStart,
         scheduledEnd: job.plannedEnd,
-        // Every join request needs owner approval — no auto-accept (owner decision).
-        joinRequestStatus: 'PENDING',
+        joinRequestStatus: autoApprove ? 'APPROVED' : 'PENDING',
         attendanceStatus: 'SCHEDULED',
         hourlyWageSnapshot: worker.hourlyWage,
         dailyPaymentSnapshot: worker.dailyPaymentAmount,
@@ -105,13 +113,31 @@ export async function shiftsRoutes(app: FastifyInstance) {
       },
     });
 
-    // Let owners know a worker is waiting for a decision (spec §5/§19).
+    // Confirming a worker for a date invalidates their other same-date pending requests.
+    if (autoApprove) {
+      await prisma.shift.updateMany({
+        where: { id: { not: shift.id }, workerId: worker.id, joinRequestStatus: 'PENDING', job: { date: job.date } },
+        data: { joinRequestStatus: 'REJECTED' },
+      });
+    }
+
+    // Notify: on auto-approve tell the worker they're assigned; otherwise tell
+    // the owners a decision is waiting (spec §9, §19).
     const owners = await prisma.user.findMany({
       where: { role: { in: [UserRole.OWNER, UserRole.ADMIN] }, isActive: true },
       select: { id: true },
     });
-    if (owners.length) {
-      const dk = job.date.toISOString().slice(0, 10);
+    const dk = job.date.toISOString().slice(0, 10);
+    if (autoApprove) {
+      await prisma.notification.create({
+        data: {
+          userId: worker.userId,
+          title: 'שובצת לעבודה',
+          body: `הצטרפת לעבודה בתאריך ${dk}.`,
+          data: { type: 'JOIN_AUTO_APPROVED', shiftId: shift.id, jobId: job.id } as any,
+        },
+      });
+    } else if (owners.length) {
       await prisma.notification.createMany({
         data: owners.map((o) => ({
           userId: o.id,
@@ -122,9 +148,9 @@ export async function shiftsRoutes(app: FastifyInstance) {
       });
     }
 
-    await logAudit((req as any).user, 'CREATE', 'Shift', shift.id, null, { joinRequestStatus: 'PENDING', jobId: job.id, workerId: worker.id }, 'join-request');
+    await logAudit((req as any).user, 'CREATE', 'Shift', shift.id, null, { joinRequestStatus: autoApprove ? 'APPROVED' : 'PENDING', jobId: job.id, workerId: worker.id }, autoApprove ? 'join-auto-approved' : 'join-request');
     reply.status(201);
-    return { shift, autoApproved: false };
+    return { shift, autoApproved: autoApprove };
   });
 
   // Admin: approve or reject a pending join request

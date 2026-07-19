@@ -64,6 +64,7 @@ export const CustomerCaseSchema = z.object({
   startDate: z.string().optional(),
   assignedAdminId: z.string().optional(),
   internalNotes: z.string().optional(),
+  autoApproveJoins: z.boolean().optional(),
 });
 
 export const CreateCaseSchema = CustomerCaseSchema;
