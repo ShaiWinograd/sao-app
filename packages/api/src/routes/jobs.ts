@@ -4,6 +4,7 @@ import { refreshScheduleStatus } from '../services/caseSchedule.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { CreateJobSchema, UpdateJobSchema } from '@workforce/shared';
 import { UserRole, MANAGER_SKILL } from '@workforce/shared';
+import { GENERAL_RESERVATION_CUSTOMER_ID } from '@workforce/shared';
 import { validateServiceAddition } from '@workforce/shared';
 import { evaluateJobPublishReadiness } from '@workforce/shared';
 import { requiresReapproval } from '@workforce/shared';
@@ -321,6 +322,123 @@ export async function jobsRoutes(app: FastifyInstance) {
       };
     }
     return job;
+  });
+
+  // Quick job creation from the shift board (spec §6.1). Reserve workers with a
+  // tentative customer (existing / new / General Reservation), a city or address,
+  // date and hours — the project and address are created/resolved automatically.
+  const QuickJobSchema = z.object({
+    customerMode: z.enum(['EXISTING', 'NEW', 'GENERAL_RESERVATION']),
+    customerId: z.string().optional(),
+    newCustomer: z
+      .object({
+        firstName: z.string().min(1),
+        lastName: z.string().optional(),
+        phone: z.string().optional(),
+        email: z.string().optional(),
+      })
+      .optional(),
+    jobType: z.enum(['PACKING', 'UNPACKING', 'HOME_ORGANIZATION']),
+    date: z.string(),
+    startTime: z.string(),
+    endTime: z.string(),
+    cityOrAddress: z.string().min(1),
+    requiredWorkerCount: z.number().int().min(1),
+    requiresTeamLeader: z.boolean().optional(),
+    initialStatus: z.enum(['RESERVATION', 'APPROVED']).optional(),
+    notes: z.string().optional(),
+  });
+
+  app.post('/quick', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const body = QuickJobSchema.parse(req.body);
+
+    // 1) Resolve the customer (existing / new / General Reservation).
+    let customerId: string;
+    if (body.customerMode === 'GENERAL_RESERVATION') {
+      customerId = GENERAL_RESERVATION_CUSTOMER_ID;
+    } else if (body.customerMode === 'EXISTING') {
+      if (!body.customerId) return reply.status(400).send({ error: 'customerId required' });
+      const exists = await prisma.customer.findUnique({ where: { id: body.customerId }, select: { id: true } });
+      if (!exists) return reply.status(404).send({ error: 'Customer not found' });
+      customerId = body.customerId;
+    } else {
+      if (!body.newCustomer) return reply.status(400).send({ error: 'newCustomer required' });
+      const created = await prisma.customer.create({
+        data: {
+          firstName: body.newCustomer.firstName,
+          lastName: body.newCustomer.lastName ?? '',
+          phone: body.newCustomer.phone ?? '-',
+          email: body.newCustomer.email ?? `${Date.now()}@placeholder.local`,
+        },
+      });
+      customerId = created.id;
+    }
+
+    // 2) Reuse the customer's latest open project, or create one, so quick
+    //    reservations don't force the project wizard (spec §3.3, §6).
+    const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { firstName: true, lastName: true } });
+    let kase = await prisma.customerCase.findFirst({
+      where: { customerId, status: { notIn: ['CANCELLED', 'COMPLETED', 'PAID'] } },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true },
+    });
+    if (!kase) {
+      kase = await prisma.customerCase.create({
+        data: { customerId, name: `${customer?.firstName ?? ''} ${customer?.lastName ?? ''}`.trim() || 'שריון', status: 'ACTIVE' },
+        select: { id: true },
+      });
+    }
+
+    // 3) Create the address from the city/address text.
+    const address = await prisma.address.create({
+      data: { customerId, fullAddress: body.cityOrAddress.trim(), label: 'OTHER' },
+    });
+
+    // 4) Datetimes + default form template.
+    const dateOnly = body.date.slice(0, 10);
+    const parsedDate = new Date(`${dateOnly}T00:00:00.000Z`);
+    const plannedStart = new Date(`${dateOnly}T${body.startTime}:00.000Z`);
+    const plannedEnd = new Date(`${dateOnly}T${body.endTime}:00.000Z`);
+    const defaultTemplate = await prisma.formTemplate.findFirst({ where: { jobType: body.jobType, isDefault: true }, select: { id: true } });
+
+    const teamLeaderSlots = body.requiresTeamLeader ? 1 : 0;
+    const job = await prisma.job.create({
+      data: {
+        caseId: kase.id,
+        customerId,
+        addressId: address.id,
+        jobType: body.jobType,
+        date: parsedDate,
+        plannedStart,
+        plannedEnd,
+        requiredWorkerCount: body.requiredWorkerCount,
+        jobNotes: body.notes ?? null,
+        formTemplateId: defaultTemplate?.id ?? null,
+        status: body.initialStatus ?? 'RESERVATION',
+        slots: {
+          create: [
+            ...(teamLeaderSlots ? [{ requiredSkill: MANAGER_SKILL as any }] : []),
+            ...Array.from({ length: Math.max(0, body.requiredWorkerCount - teamLeaderSlots) }, () => ({ requiredSkill: null })),
+          ],
+        },
+      },
+      include: { slots: true },
+    });
+
+    await refreshScheduleStatus(prisma, job.caseId);
+    await logAudit((req as any).user, 'CREATE', 'Job', job.id, null, { status: job.status, quick: true }, 'quick-created');
+    await notifyJobPublished(job.id);
+
+    // 5) Advisory capacity warning (spec §17) — never blocks creation.
+    const activeWorkers = await prisma.worker.count({ where: { isActive: true } });
+    const occupied = await prisma.shift.findMany({
+      where: { joinRequestStatus: { in: ['PENDING', 'AWAITING_WORKER', 'APPROVED'] }, job: { date: parsedDate } },
+      select: { workerId: true },
+    });
+    const available = Math.max(0, activeWorkers - new Set(occupied.map((s) => s.workerId)).size);
+
+    reply.status(201);
+    return { job, capacityWarning: available < body.requiredWorkerCount, availableWorkers: available };
   });
 
   app.post('/', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {

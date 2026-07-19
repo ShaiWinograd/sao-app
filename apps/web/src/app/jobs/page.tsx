@@ -169,7 +169,7 @@ export default function JobsPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">יומן עבודות</h1>
-          <p className="text-sm text-gray-600 mt-1">כל העבודות המתוזמנות, לפי תאריך וסוג. עבודות נוצרות מתוך פרויקט.</p>
+          <p className="text-sm text-gray-600 mt-1">כל העבודות, לפי תאריך וסוג. ניתן ליצור עבודה חדשה לשריון עובדים.</p>
         </div>
         <div className="flex items-center gap-2">
           <Link
@@ -180,8 +180,15 @@ export default function JobsPage() {
             החלפות משמרות
           </Link>
           <Link
-            href="/cases/new"
+            href="/jobs/new"
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            עבודה חדשה
+          </Link>
+          <Link
+            href="/cases/new"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
           >
             <Plus className="w-3.5 h-3.5" />
             פרויקט חדש
