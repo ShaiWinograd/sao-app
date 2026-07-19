@@ -1,0 +1,41 @@
+name: Scheduled reminders
+
+# Time-triggered operational tasks (spec §19, §20.2, §21, §12.3):
+#   - auto clock-out for workers left clocked in past their shift
+#   - end-of-shift form reminders (and overdue-form flags to the owner)
+#   - the daily 19:00 assignment-approval reminder
+# The API endpoint is idempotent, so an hourly cadence is safe. Daily tasks
+# self-gate on Israel local time inside the endpoint.
+
+on:
+  schedule:
+    - cron: '0 * * * *' # every hour, on the hour (UTC)
+  workflow_dispatch: {}
+
+jobs:
+  run-scheduled-tasks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger scheduler endpoint
+        env:
+          SCHEDULER_SECRET: ${{ secrets.SCHEDULER_SECRET }}
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SCHEDULER_SECRET}" ]; then
+            echo "SCHEDULER_SECRET is not set; skipping." >&2
+            exit 1
+          fi
+          BASE="${API_BASE_URL:-https://spaceorder-api-app-poc-h7hef6a2gtd5euhq.israelcentral-01.azurewebsites.net}"
+          echo "Calling scheduler at ${BASE}/api/v1/scheduler/run"
+          HTTP_CODE=$(curl -sS -o /tmp/scheduler-response.json -w '%{http_code}' \
+            -X POST "${BASE}/api/v1/scheduler/run" \
+            -H "x-scheduler-secret: ${SCHEDULER_SECRET}" \
+            -H 'Content-Type: application/json')
+          echo "HTTP ${HTTP_CODE}"
+          cat /tmp/scheduler-response.json || true
+          echo ""
+          if [ "${HTTP_CODE}" != "200" ]; then
+            echo "Scheduler call failed" >&2
+            exit 1
+          fi

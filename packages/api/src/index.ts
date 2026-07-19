@@ -27,6 +27,7 @@ import { settingsRoutes } from './routes/settings.js';
 import { notificationsRoutes } from './routes/notifications.js';
 import { auditRoutes } from './routes/audit.js';
 import { webhooksRoutes } from './routes/webhooks.js';
+import { schedulerRoutes } from './routes/scheduler.js';
 
 const PORT = Number(process.env.API_PORT ?? 3001);
 
@@ -151,6 +152,7 @@ async function build() {
   await app.register(notificationsRoutes,  { prefix: `${prefix}/notifications` });
   await app.register(adminRoutes,          { prefix: `${prefix}/admin` });
   await app.register(auditRoutes,          { prefix: `${prefix}/audit` });
+  await app.register(schedulerRoutes,      { prefix: `${prefix}/scheduler` });
   await app.register(webhooksRoutes,       { prefix: `/webhooks` });
 
   return app;
