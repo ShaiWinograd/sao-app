@@ -5,6 +5,7 @@ import { ClockInSchema, ClockOutSchema, AttendanceCorrectionSchema } from '@work
 import { distanceInMeters } from '@workforce/shared';
 import { evaluateJobCompletion } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
+import { flagWorkerReportStale } from '../lib/workerReport.js';
 
 // Auto-complete a job once all regular workers have clocked out with no
 // unresolved attendance issues (spec §4.3). No-op unless the job is currently a
@@ -192,14 +193,9 @@ export async function attendanceRoutes(app: FastifyInstance) {
     if (info) {
       const month = info.job.date.getMonth() + 1;
       const year = info.job.date.getFullYear();
-      const approval = await prisma.workerReportApproval.findUnique({
-        where: { workerId_month_year: { workerId: info.workerId, month, year } },
-      });
-      if (approval && approval.status === 'APPROVED') {
-        await prisma.workerReportApproval.update({
-          where: { workerId_month_year: { workerId: info.workerId, month, year } },
-          data: { status: 'PENDING', resolvedAt: null },
-        });
+      // Flag the current published monthly report as needing a new version.
+      const flagged = await flagWorkerReportStale(info.workerId, month, year);
+      if (flagged) {
         reportWarning = true;
         await prisma.notification.create({
           data: {

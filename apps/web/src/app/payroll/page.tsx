@@ -47,7 +47,9 @@ type WorkerPayrollSummary = {
   shifts: WorkerShift[];
   adjustments: WorkerAdjustment[];
   payments: WorkerPayment[];
-  approval?: { status: string; note: string | null; resolvedAt: string | null };
+  reportStatus?: string;
+  version?: number | null;
+  workerNote?: string | null;
   notes?: Array<{ id: string; shiftId: string | null; type: string; message: string; createdAt: string }>;
   summary: {
     shiftsCount: number;
@@ -164,6 +166,36 @@ export default function PayrollPage() {
   useEffect(() => {
     void loadPayroll();
   }, [loadPayroll]);
+
+  const publishReport = useCallback(async () => {
+    if (!selectedWorkerId) return;
+    const [year, month] = monthYear.split('-').map(Number);
+    setSaving(true);
+    try {
+      await api.post(`/payroll/worker/${selectedWorkerId}/publish`, { month, year });
+      setMessage('הדוח פורסם לעובד/ת.');
+      await loadPayroll();
+    } catch {
+      setMessage('פרסום הדוח נכשל.');
+    } finally {
+      setSaving(false);
+    }
+  }, [selectedWorkerId, monthYear, loadPayroll]);
+
+  const markReportPaid = useCallback(async () => {
+    if (!selectedWorkerId) return;
+    const [year, month] = monthYear.split('-').map(Number);
+    setSaving(true);
+    try {
+      await api.post(`/payroll/worker/${selectedWorkerId}/mark-paid`, { month, year });
+      setMessage('הדוח סומן כשולם.');
+      await loadPayroll();
+    } catch {
+      setMessage('סימון כשולם נכשל.');
+    } finally {
+      setSaving(false);
+    }
+  }, [selectedWorkerId, monthYear, loadPayroll]);
 
   const selectedSummary = selectedWorkerId ? summaries[selectedWorkerId] ?? null : null;
   const selectedWorker = useMemo(
@@ -468,25 +500,52 @@ export default function PayrollPage() {
                 <span className="font-semibold text-gray-900">{canSeeFinancials ? formatCurrency(toNumber(selectedSummary.summary.totalDue)) : 'מוסתר'}</span>
               </div>
 
-              {/* Worker report feedback (approval + comments/missing-shift reports) */}
+              {/* Worker report: publish / versioning / approval + comments */}
               {(() => {
-                const status = selectedSummary.approval?.status ?? 'PENDING';
+                const status = selectedSummary.reportStatus ?? 'DRAFT';
                 const notes = selectedSummary.notes ?? [];
                 const statusMeta: Record<string, { label: string; cls: string }> = {
-                  APPROVED: { label: 'העובדת אישרה את הדוח', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-                  CHANGES_REQUESTED: { label: 'העובדת ביקשה תיקון', cls: 'border-amber-200 bg-amber-50 text-amber-700' },
-                  PENDING: { label: 'ממתין לאישור העובדת', cls: 'border-gray-200 bg-gray-50 text-gray-500' },
+                  DRAFT: { label: 'טרם פורסם', cls: 'border-gray-200 bg-gray-50 text-gray-500' },
+                  PUBLISHED: { label: 'פורסם — ממתין לאישור', cls: 'border-amber-200 bg-amber-50 text-amber-700' },
+                  REVISED: { label: 'עודכן — ממתין לאישור', cls: 'border-amber-200 bg-amber-50 text-amber-700' },
+                  CORRECTION_REQUESTED: { label: 'העובדת ביקשה תיקון', cls: 'border-rose-200 bg-rose-50 text-rose-700' },
+                  WORKER_APPROVED: { label: 'העובדת אישרה את הדוח', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+                  PAID: { label: 'שולם', cls: 'border-primary-200 bg-primary-50 text-primary-700' },
                 };
-                const meta = statusMeta[status] ?? statusMeta.PENDING;
-                if (status === 'PENDING' && notes.length === 0) return null;
+                const meta = statusMeta[status] ?? statusMeta.DRAFT;
+                const needsPublish = status === 'DRAFT' || status === 'CORRECTION_REQUESTED';
                 return (
                   <div className="rounded-lg border border-gray-200 p-3 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-gray-700">משוב העובדת על הדוח</span>
+                      <span className="text-xs font-semibold text-gray-700">
+                        דוח חודשי{selectedSummary.version ? ` · גרסה ${selectedSummary.version}` : ''}
+                      </span>
                       <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${meta.cls}`}>{meta.label}</span>
                     </div>
-                    {status === 'CHANGES_REQUESTED' && selectedSummary.approval?.note && (
-                      <p className="rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">{selectedSummary.approval.note}</p>
+                    {status !== 'PAID' && (
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void publishReport()}
+                          disabled={saving}
+                          className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+                        >
+                          {needsPublish ? (status === 'DRAFT' ? 'פרסום הדוח' : 'פרסום גרסה מעודכנת') : 'פרסום גרסה חדשה'}
+                        </button>
+                        {status === 'WORKER_APPROVED' && (
+                          <button
+                            type="button"
+                            onClick={() => void markReportPaid()}
+                            disabled={saving}
+                            className="rounded-lg border border-primary-300 px-3 py-1.5 text-xs font-semibold text-primary-700 hover:bg-primary-50 disabled:opacity-50"
+                          >
+                            סימון כשולם
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {status === 'CORRECTION_REQUESTED' && selectedSummary.workerNote && (
+                      <p className="rounded-md bg-rose-50 px-2.5 py-1.5 text-xs text-rose-800">{selectedSummary.workerNote}</p>
                     )}
                     {notes.length > 0 && (
                       <div className="space-y-1.5">
