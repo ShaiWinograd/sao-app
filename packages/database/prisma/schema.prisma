@@ -90,12 +90,14 @@ enum ServiceTimingPrecision {
   UNKNOWN
 }
 
+// Owner-visible job lifecycle (spec §4). Every new job starts as RESERVATION
+// and is published to workers immediately (no draft state). ARCHIVED replaces
+// the old CANCELLED status; permanent deletion is a separate hard-delete.
 enum JobStatus {
-  DRAFT
-  PUBLISHED
-  IN_PROGRESS
+  RESERVATION
+  APPROVED
   COMPLETED
-  CANCELLED
+  ARCHIVED
 }
 
 enum StaffingMode {
@@ -119,6 +121,15 @@ enum JoinRequestStatus {
   REJECTED
   WAITLISTED
   CANCELLED
+}
+
+// A worker's role on a specific job (spec §3.5). TEAM_LEADER counts toward the
+// required worker count (§10); BACKUP is an extra worker beyond the requirement
+// (§11) and does not fill a required position.
+enum AssignmentRole {
+  REGULAR
+  TEAM_LEADER
+  BACKUP
 }
 
 enum AttendanceStatus {
@@ -379,6 +390,9 @@ model Customer {
   specialRequests    String?
   internalNotes      String?
   isActive           Boolean  @default(true)
+  // System customers (e.g. "General Reservation" / שריון כללי) cannot be deleted
+  // and are used to reserve workforce before a real customer exists (spec §3.2).
+  isSystem           Boolean  @default(false)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -458,7 +472,7 @@ model Job {
   billingRate          Decimal?     @db.Decimal(10, 2)
   locationRadiusMeters Int          @default(500)
   enableWaitlist       Boolean      @default(false)
-  status               JobStatus    @default(DRAFT)
+  status               JobStatus    @default(RESERVATION)
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
 
@@ -511,6 +525,7 @@ model Shift {
   clockInMethod           AttendanceMethod?
   clockOutMethod          AttendanceMethod?
   joinRequestStatus       JoinRequestStatus  @default(PENDING)
+  assignmentRole          AssignmentRole     @default(REGULAR)
   replacementStatus       ReplacementStatus  @default(NONE)
   formStatus              FormSubmissionStatus @default(NOT_SUBMITTED)
   approvedHours           Decimal?           @db.Decimal(10, 2)

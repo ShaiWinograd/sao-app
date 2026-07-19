@@ -73,7 +73,7 @@ type ApiJob = {
   id: string;
   date: string;
   jobType: 'PACKING' | 'UNPACKING' | 'HOME_ORGANIZATION';
-  status: 'DRAFT' | 'PUBLISHED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  status: 'RESERVATION' | 'APPROVED' | 'COMPLETED' | 'ARCHIVED';
   address?: { fullAddress: string };
 };
 
@@ -107,8 +107,8 @@ function mapApiJobTypeToUi(jobType: ApiJob['jobType']): RelatedWork['jobType'] {
 }
 
 function mapApiJobStatus(status: ApiJob['status']): RelatedWork['status'] {
-  if (status === 'COMPLETED' || status === 'CANCELLED') return 'בוצע';
-  if (status === 'IN_PROGRESS') return 'בביצוע';
+  if (status === 'COMPLETED' || status === 'ARCHIVED') return 'בוצע';
+  if (status === 'APPROVED') return 'בביצוע';
   return 'מתוכנן';
 }
 

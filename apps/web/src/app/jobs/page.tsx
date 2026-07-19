@@ -13,7 +13,7 @@ type ApiJob = {
   plannedStart: string;
   plannedEnd: string;
   requiredWorkerCount: number;
-  status: 'DRAFT' | 'PUBLISHED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  status: 'RESERVATION' | 'APPROVED' | 'COMPLETED' | 'ARCHIVED';
   customer: { firstName: string; lastName: string };
   case: { id: string; name: string } | null;
   shifts: Array<{ workerId: string }>;
@@ -106,7 +106,7 @@ export default function JobsPage() {
     try {
       const auth = await authHeaders(getToken);
       const res = await api.get<ApiJob[]>('/jobs', auth);
-      setJobs(res.data.filter((job) => job.status !== 'CANCELLED'));
+      setJobs(res.data.filter((job) => job.status !== 'ARCHIVED'));
     } catch {
       setError('טעינת יומן העבודות נכשלה');
     } finally {
@@ -270,53 +270,132 @@ export default function JobsPage() {
         )}
       </section>
 
-      {/* Open-staffing summary: jobs that still need workers */}
+      {/* Owner shift board: jobs grouped by status with quick filters (spec §18) */}
       {!isLoading && !error && (
-        <OpenStaffingList jobs={jobs} />
+        <OwnerShiftBoard jobs={jobs} />
       )}
     </div>
   );
 }
 
-function OpenStaffingList({ jobs }: { jobs: ApiJob[] }) {
-  const openJobs = useMemo(
+const BOARD_STATUS_ORDER = ['RESERVATION', 'APPROVED', 'COMPLETED'] as const;
+const BOARD_STATUS_LABELS: Record<string, string> = {
+  RESERVATION: 'שריון',
+  APPROVED: 'אושר',
+  COMPLETED: 'בוצע',
+};
+
+type BoardFilter = 'all' | 'reservation' | 'approved' | 'completed' | 'missing' | 'attention';
+
+const BOARD_FILTERS: Array<{ key: BoardFilter; label: string }> = [
+  { key: 'all', label: 'הכל' },
+  { key: 'reservation', label: 'שריונים' },
+  { key: 'approved', label: 'אושרו' },
+  { key: 'completed', label: 'בוצעו' },
+  { key: 'missing', label: 'חסרים עובדים' },
+  { key: 'attention', label: 'דורש טיפול' },
+];
+
+function OwnerShiftBoard({ jobs }: { jobs: ApiJob[] }) {
+  const [filter, setFilter] = useState<BoardFilter>('all');
+
+  const missingWorkers = (job: ApiJob) => Math.max(0, job.requiredWorkerCount - job.shifts.length) > 0;
+
+  const filtered = useMemo(
     () =>
-      jobs
-        .filter((job) => Math.max(0, job.requiredWorkerCount - job.shifts.length) > 0)
-        .sort((a, b) => a.date.localeCompare(b.date)),
-    [jobs],
+      jobs.filter((job) => {
+        switch (filter) {
+          case 'reservation':
+            return job.status === 'RESERVATION';
+          case 'approved':
+            return job.status === 'APPROVED';
+          case 'completed':
+            return job.status === 'COMPLETED';
+          case 'missing':
+            return job.status !== 'COMPLETED' && missingWorkers(job);
+          case 'attention':
+            return (job.status === 'RESERVATION' || job.status === 'APPROVED') && missingWorkers(job);
+          default:
+            return true;
+        }
+      }),
+    [jobs, filter],
   );
 
-  if (openJobs.length === 0) return null;
+  const groups = useMemo(() => {
+    const byStatus: Record<string, ApiJob[]> = { RESERVATION: [], APPROVED: [], COMPLETED: [] };
+    for (const job of filtered) {
+      (byStatus[job.status] ??= []).push(job);
+    }
+    for (const key of Object.keys(byStatus)) {
+      byStatus[key].sort((a, b) => a.date.localeCompare(b.date));
+    }
+    return byStatus;
+  }, [filtered]);
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <h2 className="text-sm font-semibold text-gray-900 mb-3">עבודות עם מקומות פנויים</h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-        {openJobs.map((job) => {
-          const open = Math.max(0, job.requiredWorkerCount - job.shifts.length);
-          const type = JOB_TYPE[job.jobType];
-          return (
-            <Link
-              key={job.id}
-              href={`/jobs/${job.id}`}
-              className={`rounded-lg border p-3 hover:brightness-95 ${type.cls}`}
-            >
-              <div className="flex items-center gap-1.5 text-sm font-semibold">
-                <span className={`h-2 w-2 rounded-full ${type.dot}`} />
-                {type.label}
-              </div>
-              <div className="mt-1 text-sm text-gray-800">{job.customer.firstName} {job.customer.lastName}</div>
-              <div className="text-xs text-gray-500">
-                {new Date(job.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'long' })} · {formatTime(job.plannedStart)}
-              </div>
-              <div className="mt-1.5 inline-flex items-center rounded-full bg-white/70 px-2 py-0.5 text-xs font-medium">
-                {open} מקומות פנויים
-              </div>
-            </Link>
-          );
-        })}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {BOARD_FILTERS.map((f) => (
+          <button
+            key={f.key}
+            onClick={() => setFilter(f.key)}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              filter === f.key ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
       </div>
+
+      {BOARD_STATUS_ORDER.every((s) => groups[s].length === 0) ? (
+        <p className="text-sm text-gray-400">אין עבודות להצגה בסינון זה.</p>
+      ) : (
+        <div className="space-y-4">
+          {BOARD_STATUS_ORDER.map((status) =>
+            groups[status].length === 0 ? null : (
+              <div key={status}>
+                <h3 className="mb-2 text-xs font-semibold text-gray-500">
+                  {BOARD_STATUS_LABELS[status]} · {groups[status].length}
+                </h3>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {groups[status].map((job) => {
+                    const open = Math.max(0, job.requiredWorkerCount - job.shifts.length);
+                    const type = JOB_TYPE[job.jobType];
+                    return (
+                      <Link
+                        key={job.id}
+                        href={`/jobs/${job.id}`}
+                        className={`rounded-lg border p-3 hover:brightness-95 ${type.cls}`}
+                      >
+                        <div className="flex items-center justify-between gap-1.5 text-sm font-semibold">
+                          <span className="flex items-center gap-1.5">
+                            <span className={`h-2 w-2 rounded-full ${type.dot}`} />
+                            {type.label}
+                          </span>
+                          {open > 0 && (
+                            <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                              חסרים {open}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1 text-sm text-gray-800">
+                          {job.customer.firstName} {job.customer.lastName}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {new Date(job.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'long' })} ·{' '}
+                          {formatTime(job.plannedStart)}
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ),
+          )}
+        </div>
+      )}
     </section>
   );
 }

@@ -7,7 +7,7 @@ const job = {
   date: '2026-08-01T08:00:00.000Z',
   plannedStart: '2026-08-01T08:00:00.000Z',
   plannedEnd: '2026-08-01T13:00:00.000Z',
-  status: 'DRAFT',
+  status: 'RESERVATION',
   requiredWorkerCount: 2,
   addressId: 'addr-1',
   jobNotes: 'להביא ארגזים נוספים',

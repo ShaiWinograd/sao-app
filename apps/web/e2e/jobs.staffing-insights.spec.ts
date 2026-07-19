@@ -64,7 +64,7 @@ test.describe('Jobs staffing insights', () => {
             plannedEnd: '2026-07-12T13:00:00.000Z',
             requiredWorkerCount: 4,
             staffingMode: 'MANAGER_APPROVAL',
-            status: 'PUBLISHED',
+            status: 'RESERVATION',
             customer: { firstName: 'נועה', lastName: 'כהן' },
             case: { id: 'case-1', name: 'פרויקט נועה' },
             address: { fullAddress: 'תל אביב 1' },

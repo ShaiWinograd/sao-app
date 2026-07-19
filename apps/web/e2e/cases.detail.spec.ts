@@ -11,7 +11,7 @@ const caseDetail = {
       id: 'job-1',
       date: '2026-08-01T08:00:00.000Z',
       jobType: 'PACKING',
-      status: 'DRAFT',
+      status: 'RESERVATION',
       requiredWorkerCount: 4,
       address: { fullAddress: 'תל אביב 1' },
     },

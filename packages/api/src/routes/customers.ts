@@ -93,6 +93,11 @@ export async function customersRoutes(app: FastifyInstance) {
   // Deactivate customer (soft delete)
   app.delete('/:id', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
+    const customer = await prisma.customer.findUnique({ where: { id }, select: { isSystem: true } });
+    if (!customer) return reply.status(404).send({ error: 'Customer not found' });
+    if (customer.isSystem) {
+      return reply.status(409).send({ error: 'לא ניתן למחוק לקוח מערכת (שריון כללי).' });
+    }
     await prisma.customer.update({ where: { id }, data: { isActive: false } });
     return { success: true };
   });

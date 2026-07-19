@@ -8,7 +8,7 @@ export type JobReadinessInput = {
 };
 
 export type JobReadinessCheckKey =
-  | 'notCancelled'
+  | 'notArchived'
   | 'hasWorkerRequirement'
   | 'slotsCoverRequirement'
   | 'validTimeWindow'
@@ -27,7 +27,7 @@ export type JobReadinessResult = {
 };
 
 const CHECK_LABELS: Record<JobReadinessCheckKey, string> = {
-  notCancelled: 'העבודה אינה מבוטלת',
+  notArchived: 'העבודה אינה בארכיון',
   hasWorkerRequirement: 'הוגדר מספר עובדים נדרש',
   slotsCoverRequirement: 'הוגדרו מספיק עמדות לכל העובדים הנדרשים',
   validTimeWindow: 'שעת הסיום מאוחרת משעת ההתחלה',
@@ -43,7 +43,7 @@ export function evaluateJobPublishReadiness(input: JobReadinessInput): JobReadin
   const end = toTime(input.plannedEnd);
 
   const passedByKey: Record<JobReadinessCheckKey, boolean> = {
-    notCancelled: input.status !== 'CANCELLED',
+    notArchived: input.status !== 'ARCHIVED',
     hasWorkerRequirement: input.requiredWorkerCount >= 1,
     slotsCoverRequirement:
       input.requiredWorkerCount >= 1 && input.slotCount >= input.requiredWorkerCount,

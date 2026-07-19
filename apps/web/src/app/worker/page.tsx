@@ -25,10 +25,11 @@ type BoardShift = {
   customerName: string;
   address: string | null;
   requiredWorkerCount: number;
-  assignedWorkers: { name: string; isTeamLeader: boolean }[];
+  assignedWorkers: { name: string; isTeamLeader: boolean; isBackup?: boolean }[];
   openSpots: number;
   myStatus: MyStatus;
   myShiftId: string | null;
+  blockedSameDay?: boolean;
 };
 
 type SwapShiftView = { date: string; plannedStart: string; plannedEnd: string; jobType: string; customerName: string };
@@ -149,6 +150,25 @@ export default function WorkerShiftsPage() {
       setBusy(null);
     }
   }, [joinTarget, getToken, loadBoard]);
+
+  const cancelRequest = useCallback(
+    async (shiftId: string) => {
+      setBusy(shiftId);
+      setMessage(null);
+      try {
+        const auth = await authHeaders(getToken);
+        await api.post(`/shifts/${shiftId}/cancel-request`, {}, auth);
+        setMessage('בקשת ההצטרפות בוטלה.');
+        await loadBoard();
+      } catch (err) {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+        setMessage(msg ? `הפעולה נכשלה: ${msg}` : 'ביטול הבקשה נכשל.');
+      } finally {
+        setBusy(null);
+      }
+    },
+    [getToken, loadBoard],
+  );
 
   const respondAssignment = useCallback(
     async (shiftId: string, accepted: boolean) => {
@@ -272,6 +292,7 @@ export default function WorkerShiftsPage() {
               busy={busy === s.jobId || (s.myShiftId ? busy === s.myShiftId : false)}
               onAskToJoin={() => setJoinTarget(s)}
               onRespond={(accepted) => s.myShiftId && void respondAssignment(s.myShiftId, accepted)}
+              onCancelRequest={() => s.myShiftId && void cancelRequest(s.myShiftId)}
             />
           ))}
         </div>
@@ -384,11 +405,13 @@ function ShiftCard({
   busy,
   onAskToJoin,
   onRespond,
+  onCancelRequest,
 }: {
   shift: BoardShift;
   busy: boolean;
   onAskToJoin: () => void;
   onRespond: (accepted: boolean) => void;
+  onCancelRequest: () => void;
 }) {
   // 1) Fully assigned (not mine): solid type-color fill.
   if (shift.myStatus === 'NONE' && shift.openSpots === 0) {
@@ -404,8 +427,25 @@ function ShiftCard({
     );
   }
 
-  // 2) Open spots (not mine): white card + type-color side strip; click to ask to join.
+  // 2) Open spots (not mine): if already booked that date, show as unavailable
+  //    (spec §8.1); otherwise click to ask to join.
   if (shift.myStatus === 'NONE' && shift.openSpots > 0) {
+    if (shift.blockedSameDay) {
+      return (
+        <div className="relative w-full overflow-hidden rounded-xl border border-gray-200 bg-gray-50 p-4 pr-5 text-right opacity-70">
+          <span className={`absolute inset-y-0 right-0 w-1.5 ${jobTypeStripColor(shift.jobType)}`} />
+          <CardHeader shift={shift} />
+          <CardMeta shift={shift} />
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px] font-medium text-gray-500">
+              {shift.openSpots} מקומות פנויים
+            </span>
+            <AssignedNames workers={shift.assignedWorkers} />
+          </div>
+          <p className="mt-2 text-[11px] font-semibold text-gray-500">כבר יש לך בקשה או שיבוץ בתאריך זה</p>
+        </div>
+      );
+    }
     return (
       <button
         type="button"
@@ -493,17 +533,27 @@ function ShiftCard({
 
   // 5) My pending join request.
   return (
-    <Link
-      href={shift.myShiftId ? `/worker/shifts/${shift.myShiftId}` : '#'}
-      className="relative block overflow-hidden rounded-xl border border-gray-200 bg-white p-4 pr-5 hover:shadow-sm"
-    >
+    <div className="relative block overflow-hidden rounded-xl border border-gray-200 bg-white p-4 pr-5">
       <span className={`absolute inset-y-0 right-0 w-1.5 ${jobTypeStripColor(shift.jobType)}`} />
-      <CardHeader shift={shift} />
-      <CardMeta shift={shift} />
-      <p className="mt-2 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-        ממתין לאישור בעל/ת העסק
-      </p>
-    </Link>
+      <Link href={shift.myShiftId ? `/worker/shifts/${shift.myShiftId}` : '#'} className="block hover:opacity-90">
+        <CardHeader shift={shift} />
+        <CardMeta shift={shift} />
+      </Link>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+          ממתין לאישור בעל/ת העסק
+        </span>
+        <button
+          type="button"
+          onClick={onCancelRequest}
+          disabled={busy}
+          className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          <X className="w-3.5 h-3.5" />
+          ביטול בקשה
+        </button>
+      </div>
+    </div>
   );
 }
 
