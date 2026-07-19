@@ -341,6 +341,7 @@ model Worker {
   suggestedReplacements ReplacementRequest[] @relation("ReplacementSuggested")
   approvedReplacements ReplacementRequest[] @relation("ReplacementApproved")
   reportApprovals     WorkerReportApproval[]
+  monthlyReports      WorkerMonthlyReport[]
   reportNotes         WorkerReportNote[]
   replacementVolunteers ReplacementVolunteer[]
   swapsProposed       ShiftSwap[]          @relation("SwapFromWorker")
@@ -836,6 +837,43 @@ model WorkerReportApproval {
 
   @@unique([workerId, month, year])
   @@map("worker_report_approvals")
+}
+
+// ─── Worker Monthly Report (versioned, publishable) ───────────────────────────
+
+// Owner-published monthly worker report with immutable per-version snapshots
+// (spec §24). Each publish creates a new version; approved/paid versions keep
+// their snapshot. The "current" report for a month is the highest version.
+enum WorkerReportStatus {
+  DRAFT
+  PUBLISHED
+  CORRECTION_REQUESTED
+  REVISED
+  WORKER_APPROVED
+  PAID
+}
+
+model WorkerMonthlyReport {
+  id               String             @id @default(cuid())
+  workerId         String
+  month            Int
+  year             Int
+  version          Int
+  status           WorkerReportStatus @default(PUBLISHED)
+  snapshot         Json
+  publishedById    String?
+  publishedAt      DateTime           @default(now())
+  workerApprovedAt DateTime?
+  workerNote       String?
+  paidAt           DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  worker           Worker             @relation(fields: [workerId], references: [id])
+
+  @@unique([workerId, month, year, version])
+  @@index([workerId, month, year])
+  @@map("worker_monthly_reports")
 }
 
 // ─── Worker Report Note ───────────────────────────────────────────────────────

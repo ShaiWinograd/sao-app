@@ -32,7 +32,7 @@ export async function adminRoutes(app: FastifyInstance) {
       prisma.shift.count({
         where: { attendanceStatus: { in: ['CLOCKED_OUT', 'CORRECTED', 'AUTO_CLOCKED_OUT'] }, formStatus: 'NOT_SUBMITTED' },
       }),
-      prisma.workerReportApproval.count({ where: { status: 'CHANGES_REQUESTED' } }),
+      prisma.workerMonthlyReport.count({ where: { status: 'CORRECTION_REQUESTED' } }),
     ]);
     return { joinRequests, pendingAcceptance, replacementRequests, swapApprovals, missingForms, reportCorrections };
   });

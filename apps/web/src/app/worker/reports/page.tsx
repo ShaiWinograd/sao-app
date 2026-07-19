@@ -8,15 +8,17 @@ import { api, authHeaders } from '../../../lib/api';
 type EarningsLine = { shiftId: string; date: string; customerName: string; approvedHours: number; pay: number };
 type Adjustment = { id: string; amount: number; reason: string; category: string };
 type Payment = { id: string; amount: number; paymentDate: string; method: string };
-type Approval = { status: string; note: string | null; resolvedAt: string | null };
 type ReportNote = { id: string; shiftId: string | null; type: string; message: string; createdAt: string };
 type Earnings = {
   month: number;
   year: number;
+  status: string;
+  version: number | null;
+  isPublished: boolean;
+  workerNote: string | null;
   shifts: EarningsLine[];
   adjustments: Adjustment[];
   payments: Payment[];
-  approval: Approval;
   notes: ReportNote[];
   summary: {
     shiftsCount: number;
@@ -27,22 +29,27 @@ type Earnings = {
     totalDue: number;
     totalPaid: number;
     outstanding: number;
-    status: string;
   };
 };
 
 const MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
 
 const STATUS_LABEL: Record<string, string> = {
+  DRAFT: 'טרם פורסם',
+  PUBLISHED: 'פורסם – ממתין לאישורך',
+  REVISED: 'עודכן – ממתין לאישורך',
+  CORRECTION_REQUESTED: 'בקשת תיקון',
+  WORKER_APPROVED: 'אושר',
   PAID: 'שולם',
-  PARTIALLY_PAID: 'שולם חלקית',
-  NOT_PREPARED: 'טרם הוכן',
 };
 
 const STATUS_CLASS: Record<string, string> = {
+  DRAFT: 'border-gray-200 bg-gray-50 text-gray-500',
+  PUBLISHED: 'border-amber-200 bg-amber-50 text-amber-700',
+  REVISED: 'border-amber-200 bg-amber-50 text-amber-700',
+  CORRECTION_REQUESTED: 'border-rose-200 bg-rose-50 text-rose-700',
+  WORKER_APPROVED: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   PAID: 'border-primary-200 bg-primary-50 text-primary-700',
-  PARTIALLY_PAID: 'border-amber-200 bg-amber-50 text-amber-700',
-  NOT_PREPARED: 'border-gray-200 bg-gray-50 text-gray-500',
 };
 
 function ils(n: number): string {
@@ -117,6 +124,23 @@ export default function WorkerReportsPage() {
     },
     [getToken, month, year, load],
   );
+
+  const downloadPdf = useCallback(async () => {
+    try {
+      const auth = await authHeaders(getToken);
+      const res = await api.get(`/payroll/me/report.pdf?month=${month}&year=${year}`, { ...auth, responseType: 'blob' });
+      const url = URL.createObjectURL(res.data as Blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `worker-report-${year}-${String(month).padStart(2, '0')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      /* ignore */
+    }
+  }, [getToken, month, year]);
 
   const isCurrentOrFuture = useMemo(() => {
     const first = new Date(year, month - 1, 1);
@@ -207,9 +231,22 @@ export default function WorkerReportsPage() {
                 <Wallet className="w-4 h-4 text-gray-400" />
                 סיכום חודשי
               </h2>
-              <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${STATUS_CLASS[data.summary.status] ?? STATUS_CLASS.NOT_PREPARED}`}>
-                {STATUS_LABEL[data.summary.status] ?? data.summary.status}
-              </span>
+              <div className="flex items-center gap-2">
+                {data.isPublished && (
+                  <button
+                    type="button"
+                    onClick={() => void downloadPdf()}
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-0.5 text-[11px] text-gray-600 hover:bg-gray-50"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    PDF
+                  </button>
+                )}
+                <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${STATUS_CLASS[data.status] ?? STATUS_CLASS.DRAFT}`}>
+                  {STATUS_LABEL[data.status] ?? data.status}
+                  {data.version ? ` · v${data.version}` : ''}
+                </span>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <Stat label="משמרות" value={String(data.summary.shiftsCount)} />
@@ -227,7 +264,9 @@ export default function WorkerReportsPage() {
           {data.summary.shiftsCount > 0 && (
             <div className="no-print">
               <ApprovalCard
-                approval={data.approval}
+                status={data.status}
+                isPublished={data.isPublished}
+                workerNote={data.workerNote}
                 busy={approvalBusy}
                 disputeOpen={disputeOpen}
                 disputeNote={disputeNote}
@@ -318,7 +357,9 @@ function Stat({ label, value, icon, strong }: { label: string; value: string; ic
 }
 
 function ApprovalCard({
-  approval,
+  status,
+  isPublished,
+  workerNote,
   busy,
   disputeOpen,
   disputeNote,
@@ -327,7 +368,9 @@ function ApprovalCard({
   onApprove,
   onRequestChanges,
 }: {
-  approval: Approval;
+  status: string;
+  isPublished: boolean;
+  workerNote: string | null;
   busy: boolean;
   disputeOpen: boolean;
   disputeNote: string;
@@ -336,14 +379,31 @@ function ApprovalCard({
   onApprove: () => void;
   onRequestChanges: () => void;
 }) {
-  if (approval.status === 'APPROVED') {
+  if (!isPublished) {
+    return (
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+        <p className="text-sm text-gray-600">הדוח החודשי טרם פורסם על ידי בעל/ת העסק.</p>
+      </div>
+    );
+  }
+  if (status === 'PAID') {
     return (
       <div className="rounded-xl border border-primary-200 bg-primary-50 p-4">
         <p className="flex items-center gap-2 text-sm font-semibold text-primary-800">
           <CheckCircle2 className="w-4 h-4" />
+          הדוח סומן כשולם
+        </p>
+      </div>
+    );
+  }
+  if (status === 'WORKER_APPROVED') {
+    return (
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+        <p className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
+          <CheckCircle2 className="w-4 h-4" />
           אישרת את הדוח החודשי
         </p>
-        <p className="mt-1 text-xs text-primary-700">אם יבוצע תיקון בדוח, האישור יתאפס ותתבקשי לאשר מחדש.</p>
+        <p className="mt-1 text-xs text-emerald-700">אם תפורסם גרסה מעודכנת, תתבקשי לאשר אותה מחדש.</p>
       </div>
     );
   }
@@ -353,16 +413,16 @@ function ApprovalCard({
         <h2 className="text-sm font-semibold text-gray-900">אישור הדוח החודשי</h2>
         <p className="text-xs text-gray-500 mt-0.5">בדקי את הנתונים ואשרי, או בקשי תיקון.</p>
       </div>
-      {approval.status === 'CHANGES_REQUESTED' && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-          <p className="flex items-center gap-1.5 text-xs font-medium text-amber-800">
+      {status === 'CORRECTION_REQUESTED' && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
+          <p className="flex items-center gap-1.5 text-xs font-medium text-rose-800">
             <MessageSquareWarning className="w-3.5 h-3.5" />
-            ביקשת תיקון — ממתין לטיפול בעל/ת העסק
+            ביקשת תיקון — ממתין לגרסה מעודכנת מבעל/ת העסק
           </p>
-          {approval.note && <p className="mt-1 text-xs text-amber-700">{approval.note}</p>}
+          {workerNote && <p className="mt-1 text-xs text-rose-700">{workerNote}</p>}
         </div>
       )}
-      {disputeOpen ? (
+      {status !== 'CORRECTION_REQUESTED' && (disputeOpen ? (
         <div className="space-y-2">
           <textarea
             value={disputeNote}
@@ -410,7 +470,7 @@ function ApprovalCard({
             בקשת תיקון
           </button>
         </div>
-      )}
+      ))}
     </div>
   );
 }
