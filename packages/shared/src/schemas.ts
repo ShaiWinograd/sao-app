@@ -71,125 +71,6 @@ export const CreateCaseSchema = CustomerCaseSchema;
 export const UpdateCaseSchema = CustomerCaseSchema.partial().omit({ customerId: true });
 
 
-// ─── Quotation ───────────────────────────────────────────────────────────────
-
-export const QuotationDatePrecisionSchema = z.enum([
-  'EXACT',
-  'PARTIAL',
-  'EXPECTED_MONTH',
-  'DATE_RANGE',
-  'TO_BE_DETERMINED',
-]);
-
-export const QuotationSendChannelSchema = z.enum(['WHATSAPP', 'EMAIL', 'MANUAL']);
-
-export const QuotationApprovalMethodSchema = z.enum([
-  'DIGITAL',
-  'SIGNED_DOCUMENT',
-  'WHATSAPP',
-  'EMAIL',
-  'VERBAL',
-  'MANUAL',
-]);
-
-export const QuotationLineItemSchema = z.object({
-  description: z.string().min(1),
-  detail: z.string().optional(),
-  hours: z.string().optional(),
-  price: z.number().optional(),
-});
-
-export const QuotationDetailsSchema = z.object({
-  scopeOfWork: z.string().optional(),
-  projectStartDate: z.string().optional(),
-  projectEndDate: z.string().optional(),
-  lineItems: z.array(QuotationLineItemSchema).optional(),
-  depositAmount: z.number().optional(),
-  depositDueDate: z.string().optional(),
-  notes: z.string().optional(),
-});
-export type QuotationLineItem = z.infer<typeof QuotationLineItemSchema>;
-export type QuotationDetails = z.infer<typeof QuotationDetailsSchema>;
-
-export const CreateQuotationSchema = z.object({
-  caseId: z.string(),
-  estimatedTotal: z.number().nonnegative(),
-  includedServices: z.array(z.string().min(1)).min(1),
-  datePrecision: QuotationDatePrecisionSchema.optional(),
-  timingNote: z.string().optional(),
-  validUntil: z.string().optional(),
-  notes: z.string().optional(),
-  details: QuotationDetailsSchema.optional(),
-});
-
-export const UpdateQuotationVersionSchema = z
-  .object({
-    estimatedTotal: z.number().nonnegative(),
-    includedServices: z.array(z.string().min(1)).min(1),
-    datePrecision: QuotationDatePrecisionSchema,
-    timingNote: z.string(),
-    validUntil: z.string(),
-    notes: z.string(),
-    details: QuotationDetailsSchema,
-  })
-  .partial();
-
-export const CreateQuotationVersionSchema = z.object({
-  estimatedTotal: z.number().nonnegative(),
-  includedServices: z.array(z.string().min(1)).min(1),
-  datePrecision: QuotationDatePrecisionSchema.optional(),
-  timingNote: z.string().optional(),
-  validUntil: z.string().optional(),
-  notes: z.string().optional(),
-  details: QuotationDetailsSchema.optional(),
-  isAddendum: z.boolean().optional(),
-});
-
-export const SendQuotationSchema = z.object({
-  channel: QuotationSendChannelSchema,
-  recipient: z.string().min(1),
-});
-
-export const RecordQuotationApprovalSchema = z.object({
-  approvalMethod: QuotationApprovalMethodSchema,
-  approvedAt: z.string().optional(),
-  approvalNotes: z.string().optional(),
-  approvalAttachmentUrl: z.string().url().optional(),
-});
-
-// ─── Planned Service Component ───────────────────────────────────────────────
-
-export const ServiceTypeSchema = z.enum(['PACKING', 'UNPACKING', 'HOME_ORGANIZATION']);
-
-export const ServiceTimingPrecisionSchema = z.enum([
-  'EXACT_DATE',
-  'MULTIPLE_EXACT_DATES',
-  'DATE_RANGE',
-  'EXPECTED_MONTH',
-  'EXPECTED_YEAR',
-  'UNKNOWN',
-]);
-
-export const CreatePlannedServiceSchema = z.object({
-  serviceType: ServiceTypeSchema,
-  timingPrecision: ServiceTimingPrecisionSchema.optional(),
-  timingNote: z.string().optional(),
-  estimatedWorkdays: z.number().int().min(0).optional(),
-  workersPerDay: z.number().int().min(0).optional(),
-  hoursPerDay: z.number().min(0).optional(),
-  requiresManager: z.boolean().optional(),
-  reservedManagerPositions: z.number().int().min(0).optional(),
-  notes: z.string().optional(),
-  sortOrder: z.number().int().min(0).optional(),
-});
-
-export const UpdatePlannedServiceSchema = CreatePlannedServiceSchema.partial();
-
-// Create planned components from a high-level wizard service selection.
-export const CreatePlannedServicesFromSelectionSchema = z.object({
-  selection: z.enum(['PACKING', 'UNPACKING', 'ORGANIZATION', 'MOVING']),
-});
-
 // ─── Job ─────────────────────────────────────────────────────────────────────
 
 export const JobSchema = z.object({
@@ -223,7 +104,6 @@ export const JobSchema = z.object({
   workerVisibleNotes: z.string().optional(),
   billingModel: z.enum(['HOURLY', 'FIXED', 'CUSTOM']).optional(),
   billingRate: z.number().optional(),
-  enableWaitlist: z.boolean().optional(),
   locationRadiusMeters: z.number().optional(),
   formTemplateId: z.string().optional(),
 });
@@ -370,39 +250,6 @@ export const FormSubmissionSchema = z.object({
   managerNote: z.string().optional(),
 });
 
-// ─── Invoice ──────────────────────────────────────────────────────────────────
-
-export const InvoiceSchema = z.object({
-  caseId: z.string(),
-  customerId: z.string(),
-  jobIds: z.array(z.string()),
-  billableHours: z.number().optional(),
-  hourlyRate: z.number().optional(),
-  fixedPrice: z.number().optional(),
-  additionalFees: z.number().optional(),
-  discount: z.number().optional(),
-  vatRate: z.number().optional(),
-  dueDate: z.string().optional(),
-  notes: z.string().optional(),
-});
-
-export const CreateInvoiceSchema = InvoiceSchema;
-export const UpdateInvoiceSchema = InvoiceSchema.partial().omit({
-  caseId: true,
-  customerId: true,
-});
-
-// ─── Customer Payment ─────────────────────────────────────────────────────────
-
-export const CustomerPaymentSchema = z.object({
-  invoiceId: z.string(),
-  amount: z.number().positive(),
-  paymentDate: z.string(),
-  method: z.enum(['BANK_TRANSFER', 'CASH', 'BIT', 'CHECK', 'OTHER']),
-  reference: z.string().optional(),
-  notes: z.string().optional(),
-});
-
 // ─── Worker ───────────────────────────────────────────────────────────────────
 
 export const WorkerProfileSchema = z.object({
@@ -440,41 +287,6 @@ export const UpdateWorkerProfileSchema = z
     homeArea: z.string().max(100),
   })
   .partial();
-
-// ─── Worker Adjustment ────────────────────────────────────────────────────────
-
-export const WorkerAdjustmentSchema = z.object({
-  workerId: z.string(),
-  amount: z.number(),
-  category: z.enum([
-    'CUSTOMER_REFERRAL',
-    'SHIFT_LEADER_BONUS',
-    'SPECIAL_ASSIGNMENT_BONUS',
-    'TRAVEL_REIMBURSEMENT',
-    'EXTRA_RESPONSIBILITY',
-    'CORRECTION',
-    'DEDUCTION',
-  ]),
-  reason: z.string(),
-  shiftId: z.string().optional(),
-  caseId: z.string().optional(),
-  payrollMonth: z.number().int().min(1).max(12),
-  payrollYear: z.number().int(),
-  isIncluded: z.boolean().optional(),
-});
-
-// ─── Worker Payment ───────────────────────────────────────────────────────────
-
-export const WorkerPaymentSchema = z.object({
-  workerId: z.string(),
-  month: z.number().int().min(1).max(12),
-  year: z.number().int(),
-  amount: z.number().positive(),
-  paymentDate: z.string(),
-  method: z.enum(['BANK_TRANSFER', 'CASH', 'BIT', 'CHECK', 'OTHER']),
-  reference: z.string().optional(),
-  notes: z.string().optional(),
-});
 
 // ─── Business Expense ─────────────────────────────────────────────────────────
 
@@ -515,10 +327,6 @@ export type ClockOutInput = z.infer<typeof ClockOutSchema>;
 export type AttendanceCorrectionInput = z.infer<typeof AttendanceCorrectionSchema>;
 export type ReplacementRequestInput = z.infer<typeof ReplacementRequestSchema>;
 export type FormSubmissionInput = z.infer<typeof FormSubmissionSchema>;
-export type CreateInvoiceInput = z.infer<typeof CreateInvoiceSchema>;
-export type CustomerPaymentInput = z.infer<typeof CustomerPaymentSchema>;
 export type CreateWorkerInput = z.infer<typeof CreateWorkerSchema>;
 export type UpdateWorkerInput = z.infer<typeof UpdateWorkerSchema>;
-export type WorkerAdjustmentInput = z.infer<typeof WorkerAdjustmentSchema>;
-export type WorkerPaymentInput = z.infer<typeof WorkerPaymentSchema>;
 export type BusinessExpenseInput = z.infer<typeof BusinessExpenseSchema>;

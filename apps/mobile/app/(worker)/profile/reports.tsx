@@ -54,7 +54,8 @@ export default function ReportsScreen() {
     setDisputeOpen(false);
   };
 
-  const status = data?.approval?.status as string | undefined;
+  const status = data?.status as string | undefined;
+  const isPublished = Boolean(data?.isPublished);
   const summary = data?.summary;
   const lines = (data?.shifts ?? []) as any[];
 
@@ -80,20 +81,22 @@ export default function ReportsScreen() {
           <>
             <Card>
               <View style={styles.statsRow}>
-                <Stat label="תשלום שעתי" value={ils(summary?.hourlyPay ?? 0)} />
-                <Stat label="תשלום יומי" value={ils(summary?.dailyPay ?? 0)} />
+                <Stat label="ימי עבודה" value={String(summary?.workdays ?? 0)} />
+                <Stat label="שעות מאושרות" value={String(summary?.totalApprovedHours ?? 0)} />
               </View>
               <View style={styles.divider} />
               <View style={styles.outstandingRow}>
-                <Text style={styles.outstandingVal}>{ils(summary?.outstanding ?? 0)}</Text>
-                <Text style={styles.outstandingLabel}>יתרה לתשלום</Text>
+                <Text style={styles.outstandingVal}>{ils(summary?.total ?? 0)}</Text>
+                <Text style={styles.outstandingLabel}>סה״כ לחודש</Text>
               </View>
             </Card>
 
             <Card>
-              {status === 'APPROVED' ? (
+              {!isPublished ? (
+                <Text style={styles.muted}>הדוח החודשי טרם פורסם.</Text>
+              ) : status === 'WORKER_APPROVED' ? (
                 <Pill label="הדוח אושר על ידך" color={colors.primary} bg={colors.primaryLight} />
-              ) : status === 'CHANGES_REQUESTED' ? (
+              ) : status === 'CORRECTION_REQUESTED' ? (
                 <Pill label="נשלחה בקשת תיקון" color="#b45309" bg="#fef3c7" />
               ) : (
                 <>
@@ -117,10 +120,18 @@ export default function ReportsScreen() {
             ) : (
               lines.map((s, i) => (
                 <Card key={s.shiftId ?? i} style={styles.lineRow}>
-                  <Text style={styles.linePay}>{ils(s.pay ?? 0)}</Text>
+                  <Text style={styles.linePay}>{ils(s.dayTotal ?? 0)}</Text>
                   <View style={styles.lineInfo}>
-                    <Text style={styles.lineCustomer}>{s.customerName}</Text>
-                    <Text style={styles.lineMeta}>{fmtDate(s.date)} · {s.approvedHours} שעות</Text>
+                    <Text style={styles.lineCustomer}>
+                      {s.customerName}
+                      {s.jobTypeLabel ? ` · ${s.jobTypeLabel}` : ''}
+                      {s.roleLabel ? ` · ${s.roleLabel}` : ''}
+                    </Text>
+                    <Text style={styles.lineMeta}>
+                      {fmtDate(s.date)}
+                      {s.clockIn && s.clockOut ? ` · ${s.clockIn}–${s.clockOut}` : ''}
+                      {` · ${s.approvedHours} שעות`}
+                    </Text>
                   </View>
                 </Card>
               ))

@@ -115,88 +115,6 @@ export async function adminRoutes(app: FastifyInstance) {
     return { seeded: created, totalWorkers };
   });
 
-  // One-shot seed of the real "Cara Paley" interior-design quotation (from the
-  // owner's actual Word quote) so the full customer-facing quotation renders
-  // end-to-end. Same BOOTSTRAP_SECRET guard as /seed. Idempotent per customer.
-  app.post('/seed-quote', async (req, reply) => {
-    const secret = process.env.BOOTSTRAP_SECRET;
-    if (!secret) return reply.status(404).send({ error: 'Not found' });
-    if (req.headers['x-seed-secret'] !== secret) {
-      return reply.status(403).send({ error: 'Forbidden' });
-    }
-
-    const email = 'cara.paley@sao.local';
-    let customer = await prisma.customer.findFirst({ where: { email } });
-    if (!customer) {
-      customer = await prisma.customer.create({
-        data: { firstName: 'Cara', lastName: 'Paley', phone: '-', email },
-      });
-    }
-
-    const caseName = 'Interior Design and Styling – Cara Paley';
-    let kase = await prisma.customerCase.findFirst({
-      where: { customerId: customer.id, name: caseName },
-    });
-    if (!kase) {
-      kase = await prisma.customerCase.create({
-        data: { customerId: customer.id, name: caseName, status: 'ACTIVE' },
-      });
-    }
-
-    const existing = await prisma.quotation.findFirst({ where: { caseId: kase.id } });
-    if (existing) {
-      return { alreadySeeded: true, quotationId: existing.id, link: `/q/${existing.id}` };
-    }
-
-    const details = {
-      scopeOfWork: 'Interior Design and Styling',
-      projectStartDate: '2026-07-10',
-      projectEndDate: '2026-09-10',
-      lineItems: [
-        {
-          description: 'Full Home Design: color and materials concept',
-          detail:
-            'Furniture layout, furniture selection based on an agreed list, selection of materials and colors, curtains, and textiles.',
-          price: 5500,
-        },
-        {
-          description: 'Materials and inspiration presentation, including links to recommended products.',
-        },
-        {
-          description: 'In-person shopping days (optional)',
-          detail: 'The proposal does not include in-person shopping days. These can be added as an optional service.',
-          hours: 'per day',
-          price: 1300,
-        },
-      ],
-      depositAmount: 2500,
-      depositDueDate: '2026-07-10',
-    };
-
-    const quotation = await prisma.quotation.create({
-      data: {
-        caseId: kase.id,
-        status: 'SENT',
-        versions: {
-          create: {
-            versionNumber: 1,
-            status: 'SENT',
-            sentAt: new Date(),
-            estimatedTotal: 5500,
-            includedServices: [
-              'Full Home Design: color and materials concept',
-              'Materials and inspiration presentation',
-            ],
-            datePrecision: 'EXACT',
-            details: details as never,
-          },
-        },
-      },
-    });
-
-    return { seeded: true, quotationId: quotation.id, link: `/q/${quotation.id}` };
-  });
-
   // One-shot cleanup of the seeded demo workers (email @sao.local, user id
   // seed-worker-*) so the owner starts from a clean list. Same BOOTSTRAP_SECRET
   // guard. Hard delete — demo workers have no shifts/payments referencing them.
@@ -256,8 +174,6 @@ export async function adminRoutes(app: FastifyInstance) {
 
     await prisma.address.deleteMany({});
     const customers = await prisma.customer.deleteMany({});
-    await prisma.workerPayment.deleteMany({});
-    await prisma.workerAdjustment.deleteMany({});
     const workers = await prisma.worker.deleteMany({});
     await prisma.user.deleteMany({ where: { role: UserRole.WORKER } });
 

@@ -5,9 +5,19 @@ import { useAuth } from '@clerk/nextjs';
 import { ChevronRight, ChevronLeft, CalendarDays, Clock, Wallet, CheckCircle2, MessageSquareWarning, MessageSquarePlus, Trash2, Download } from 'lucide-react';
 import { api, authHeaders } from '../../../lib/api';
 
-type EarningsLine = { shiftId: string; date: string; customerName: string; approvedHours: number; pay: number };
-type Adjustment = { id: string; amount: number; reason: string; category: string };
-type Payment = { id: string; amount: number; paymentDate: string; method: string };
+type EarningsLine = {
+  shiftId: string;
+  date: string;
+  customerName: string;
+  jobType: string;
+  jobTypeLabel: string;
+  role: string | null;
+  roleLabel: string;
+  clockIn: string | null;
+  clockOut: string | null;
+  approvedHours: number;
+  dayTotal: number;
+};
 type ReportNote = { id: string; shiftId: string | null; type: string; message: string; createdAt: string };
 type Earnings = {
   month: number;
@@ -17,18 +27,11 @@ type Earnings = {
   isPublished: boolean;
   workerNote: string | null;
   shifts: EarningsLine[];
-  adjustments: Adjustment[];
-  payments: Payment[];
   notes: ReportNote[];
   summary: {
-    shiftsCount: number;
+    workdays: number;
     totalApprovedHours: number;
-    hourlyPay: number;
-    dailyPay: number;
-    adjustmentTotal: number;
-    totalDue: number;
-    totalPaid: number;
-    outstanding: number;
+    total: number;
   };
 };
 
@@ -40,7 +43,6 @@ const STATUS_LABEL: Record<string, string> = {
   REVISED: 'עודכן – ממתין לאישורך',
   CORRECTION_REQUESTED: 'בקשת תיקון',
   WORKER_APPROVED: 'אושר',
-  PAID: 'שולם',
 };
 
 const STATUS_CLASS: Record<string, string> = {
@@ -49,7 +51,6 @@ const STATUS_CLASS: Record<string, string> = {
   REVISED: 'border-amber-200 bg-amber-50 text-amber-700',
   CORRECTION_REQUESTED: 'border-rose-200 bg-rose-50 text-rose-700',
   WORKER_APPROVED: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  PAID: 'border-primary-200 bg-primary-50 text-primary-700',
 };
 
 function ils(n: number): string {
@@ -248,20 +249,15 @@ export default function WorkerReportsPage() {
                 </span>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <Stat label="משמרות" value={String(data.summary.shiftsCount)} />
+            <div className="grid grid-cols-3 gap-3 text-sm">
+              <Stat label="ימי עבודה" value={String(data.summary.workdays)} />
               <Stat label="שעות מאושרות" value={`${data.summary.totalApprovedHours}`} icon={<Clock className="w-3.5 h-3.5" />} />
-              <Stat label="תשלום שעתי" value={ils(data.summary.hourlyPay)} />
-              <Stat label="תשלום יומי" value={ils(data.summary.dailyPay)} />
-              {data.summary.adjustmentTotal !== 0 && <Stat label="התאמות" value={ils(data.summary.adjustmentTotal)} />}
-              <Stat label="סה״כ מגיע" value={ils(data.summary.totalDue)} strong />
-              <Stat label="שולם" value={ils(data.summary.totalPaid)} />
-              <Stat label="יתרה לתשלום" value={ils(data.summary.outstanding)} strong />
+              <Stat label="סה״כ לחודש" value={ils(data.summary.total)} strong />
             </div>
           </div>
 
           {/* Report approval */}
-          {data.summary.shiftsCount > 0 && (
+          {data.summary.workdays > 0 && (
             <div className="no-print">
               <ApprovalCard
                 status={data.status}
@@ -287,46 +283,24 @@ export default function WorkerReportsPage() {
               <div className="space-y-2">
                 {data.shifts.map((s) => (
                   <div key={s.shiftId} className="flex items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{s.customerName || 'לקוח/ה'}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{fmtDate(s.date)} · {s.approvedHours} שעות</p>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900">
+                        {s.customerName || 'לקוח/ה'}
+                        <span className="mr-1.5 text-xs font-normal text-gray-500">· {s.jobTypeLabel}</span>
+                        {s.roleLabel && <span className="mr-1.5 text-xs font-normal text-gray-400">· {s.roleLabel}</span>}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {fmtDate(s.date)}
+                        {s.clockIn && s.clockOut ? ` · ${s.clockIn}–${s.clockOut}` : ''}
+                        {` · ${s.approvedHours} שעות`}
+                      </p>
                     </div>
-                    <span className="text-sm font-semibold text-gray-900">{ils(s.pay)}</span>
+                    <span className="shrink-0 text-sm font-semibold text-gray-900">{ils(s.dayTotal)}</span>
                   </div>
                 ))}
               </div>
             )}
           </section>
-
-          {/* Adjustments */}
-          {data.adjustments.length > 0 && (
-            <section>
-              <h2 className="text-sm font-semibold text-gray-900 mb-2">התאמות</h2>
-              <div className="space-y-2">
-                {data.adjustments.map((a) => (
-                  <div key={a.id} className="flex items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
-                    <p className="text-sm text-gray-700">{a.reason}</p>
-                    <span className={`text-sm font-semibold ${a.amount < 0 ? 'text-rose-600' : 'text-primary-700'}`}>{ils(a.amount)}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Payments */}
-          {data.payments.length > 0 && (
-            <section>
-              <h2 className="text-sm font-semibold text-gray-900 mb-2">תשלומים שהתקבלו</h2>
-              <div className="space-y-2">
-                {data.payments.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
-                    <p className="text-xs text-gray-500">{fmtDate(p.paymentDate)}</p>
-                    <span className="text-sm font-semibold text-primary-700">{ils(p.amount)}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
 
           {/* Comments & missing-shift reports */}
           <div className="no-print">
@@ -383,16 +357,6 @@ function ApprovalCard({
     return (
       <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
         <p className="text-sm text-gray-600">הדוח החודשי טרם פורסם על ידי בעל/ת העסק.</p>
-      </div>
-    );
-  }
-  if (status === 'PAID') {
-    return (
-      <div className="rounded-xl border border-primary-200 bg-primary-50 p-4">
-        <p className="flex items-center gap-2 text-sm font-semibold text-primary-800">
-          <CheckCircle2 className="w-4 h-4" />
-          הדוח סומן כשולם
-        </p>
       </div>
     );
   }

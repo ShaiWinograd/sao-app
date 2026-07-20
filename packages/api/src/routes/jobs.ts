@@ -1,6 +1,5 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
-import { refreshScheduleStatus } from '../services/caseSchedule.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { CreateJobSchema, UpdateJobSchema } from '@workforce/shared';
 import { UserRole, MANAGER_SKILL } from '@workforce/shared';
@@ -82,10 +81,6 @@ async function validateProjectJobRules(input: {
 
   if (!kase) {
     return { ok: false as const, statusCode: 404, error: 'Project not found' };
-  }
-
-  if (kase.status === 'CANCELLED') {
-    return { ok: false as const, statusCode: 409, error: 'לא ניתן לתזמן עבודות לפרויקט שבוטל.' };
   }
 
   const siblingJobs = (await prisma.job.findMany({
@@ -425,7 +420,6 @@ export async function jobsRoutes(app: FastifyInstance) {
       include: { slots: true },
     });
 
-    await refreshScheduleStatus(prisma, job.caseId);
     await logAudit((req as any).user, 'CREATE', 'Job', job.id, null, { status: job.status, quick: true }, 'quick-created');
     await notifyJobPublished(job.id);
 
@@ -488,8 +482,6 @@ export async function jobsRoutes(app: FastifyInstance) {
       },
       include: { slots: true },
     });
-
-    await refreshScheduleStatus(prisma, job.caseId);
 
     // Spec §6.3: every new job is published to workers immediately (no draft).
     await logAudit((req as any).user, 'CREATE', 'Job', job.id, null, { status: job.status }, 'created+published');
@@ -632,7 +624,6 @@ export async function jobsRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const before = await prisma.job.findUnique({ where: { id }, select: { status: true, date: true } });
     const archived = await prisma.job.update({ where: { id }, data: { status: 'ARCHIVED' } });
-    await refreshScheduleStatus(prisma, archived.caseId);
     await notifyAssignedWorkers(id, 'עבודה הוסרה', `העבודה בתאריך ${heDate(archived.date)} הוסרה. אינך משובץ/ת אליה יותר.`, 'JOB_CANCELLED');
     await logAudit((req as any).user, 'UPDATE', 'Job', id, { status: before?.status ?? null }, { status: 'ARCHIVED' }, 'archive');
     return archived;
@@ -735,7 +726,6 @@ export async function jobsRoutes(app: FastifyInstance) {
 
     // Preserve deletion history in the audit log (spec §15.1).
     await logAudit((req as any).user, 'DELETE', 'Job', id, { status: job.status, date: job.date }, null, reason ? `deleted: ${reason}` : 'deleted');
-    await refreshScheduleStatus(prisma, job.caseId);
     return { success: true };
   });
 
@@ -866,9 +856,6 @@ export async function jobsRoutes(app: FastifyInstance) {
       );
       moved.push(shift.id);
     }
-
-    await refreshScheduleStatus(prisma, source.caseId);
-    if (target.caseId !== source.caseId) await refreshScheduleStatus(prisma, target.caseId);
 
     return { movedCount: moved.length, movedShiftIds: moved, reapprovalRequired: needsReapproval };
   });

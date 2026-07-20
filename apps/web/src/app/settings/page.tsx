@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Lock, Save, ShieldCheck, SlidersHorizontal, UserCog, UserPlus } from 'lucide-react';
+import { Lock, Save, SlidersHorizontal, UserCog, UserPlus } from 'lucide-react';
 import { api } from '../../lib/api';
 
 type AppRole = 'owner' | 'operations_admin' | 'finance_admin';
@@ -23,9 +23,6 @@ export default function SettingsPage() {
   const [defaultRadius, setDefaultRadius] = useState(500);
   const [graceMinutes, setGraceMinutes] = useState(12);
   const [caseMatchDays, setCaseMatchDays] = useState(60);
-  const [vatEnabled, setVatEnabled] = useState(true);
-  const [vatRate, setVatRate] = useState(18);
-  const [showWorkerPayments, setShowWorkerPayments] = useState(false);
   const [monthLockRequiresOwner, setMonthLockRequiresOwner] = useState(true);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -36,7 +33,6 @@ export default function SettingsPage() {
   const [message, setMessage] = useState('');
 
   const isOwner = rolePreview === 'owner';
-  const hasFinanceAccess = rolePreview === 'owner' || rolePreview === 'finance_admin';
 
   const settingsByKey = useMemo(
     () => new Map<string, string>(),
@@ -54,9 +50,6 @@ export default function SettingsPage() {
         setDefaultRadius(toNumber(settingsByKey.get('defaultRadiusMeters'), 500));
         setGraceMinutes(toNumber(settingsByKey.get('attendanceGraceMinutes'), 12));
         setCaseMatchDays(toNumber(settingsByKey.get('caseMatchDays'), 60));
-        setVatEnabled(toBool(settingsByKey.get('vatEnabled'), true));
-        setVatRate(toNumber(settingsByKey.get('vatRate'), 18));
-        setShowWorkerPayments(toBool(settingsByKey.get('showWorkerPayments'), false));
         setMonthLockRequiresOwner(toBool(settingsByKey.get('monthLockRequiresOwner'), true));
       } catch {
         if (!cancelled) setMessage('לא ניתן לטעון את הגדרות המערכת כרגע.');
@@ -103,10 +96,6 @@ export default function SettingsPage() {
       setMessage('טווח התאמת תיק חייב להיות בין 0 ל-180 ימים.');
       return;
     }
-    if (vatEnabled && (vatRate < 0 || vatRate > 30)) {
-      setMessage('אחוז מע״מ חייב להיות בין 0 ל-30.');
-      return;
-    }
 
     setSettingsSaving(true);
     try {
@@ -114,9 +103,6 @@ export default function SettingsPage() {
         api.patch('/settings/defaultRadiusMeters', { value: String(defaultRadius) }),
         api.patch('/settings/attendanceGraceMinutes', { value: String(graceMinutes) }),
         api.patch('/settings/caseMatchDays', { value: String(caseMatchDays) }),
-        api.patch('/settings/vatEnabled', { value: String(vatEnabled) }),
-        api.patch('/settings/vatRate', { value: String(vatRate) }),
-        api.patch('/settings/showWorkerPayments', { value: String(showWorkerPayments) }),
         api.patch('/settings/monthLockRequiresOwner', { value: String(monthLockRequiresOwner) }),
       ]);
       setMessage('ההגדרות נשמרו בהצלחה.');
@@ -200,35 +186,6 @@ export default function SettingsPage() {
             כלל התאמת תיק אוטומטי (ימים)
             <input type="number" value={caseMatchDays} onChange={(event) => setCaseMatchDays(Number(event.target.value))} className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
           </label>
-        </article>
-
-        <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm space-y-3">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-gray-500" />
-            <h2 className="text-lg font-semibold">הגדרות פיננסיות</h2>
-          </div>
-
-          {!hasFinanceAccess ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 inline-flex items-center gap-2">
-              <Lock className="w-4 h-4" />
-              אין הרשאת צפייה/עריכה להגדרות פיננסיות בתפקיד זה.
-            </div>
-          ) : (
-            <>
-              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" checked={vatEnabled} onChange={(event) => setVatEnabled(event.target.checked)} />
-                מע״מ פעיל
-              </label>
-              <label className="block text-sm text-gray-700">
-                אחוז מע״מ
-                <input type="number" value={vatRate} onChange={(event) => setVatRate(Number(event.target.value))} disabled={!vatEnabled} className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100" />
-              </label>
-              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" checked={showWorkerPayments} onChange={(event) => setShowWorkerPayments(event.target.checked)} />
-                לאפשר לעובדות לצפות בסיכום תשלומים אישי
-              </label>
-            </>
-          )}
         </article>
       </section>
 

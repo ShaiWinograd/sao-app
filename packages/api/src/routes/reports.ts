@@ -127,24 +127,10 @@ async function computePeriodSummary(start: Date, end: Date, basis: ReportingBasi
       0,
     );
 
-  const invoices = await prisma.invoice.findMany({
-    where: {
-      createdAt: { gte: start, lt: end },
-      status: { not: 'CANCELLED' },
-    },
-    select: { total: true },
-  });
-
-  const payments = await prisma.customerPayment.findMany({
-    where: { paymentDate: { gte: start, lt: end } },
-    select: { amount: true },
-  });
-
-  const invoiced = invoices.reduce((sum: number, invoice: (typeof invoices)[number]) => sum + money(invoice.total), 0);
-  const collected = payments.reduce(
-    (sum: number, payment: (typeof payments)[number]) => sum + money(payment.amount),
-    0,
-  );
+  // Customer invoicing/payment tracking was removed (spec §1.2 non-goals): the
+  // business no longer tracks invoiced or collected revenue in-app.
+  const invoiced = 0;
+  const collected = 0;
   const grossRevenue = basis === 'CASH' ? collected : invoiced;
 
   const overheadExpenses = await prisma.businessExpense.findMany({

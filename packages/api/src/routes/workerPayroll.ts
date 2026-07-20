@@ -1,11 +1,11 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireOwner, requireAnyRole } from '../middleware/auth.js';
-import { WorkerAdjustmentSchema, WorkerPaymentSchema, WorkerReportApprovalSchema, WorkerReportNoteSchema } from '@workforce/shared';
+import { WorkerReportApprovalSchema, WorkerReportNoteSchema } from '@workforce/shared';
 import { UserRole } from '@workforce/shared';
 import { money, round2 } from '../lib/money.js';
 import { buildLinesPdf } from '../lib/pdf.js';
-import { latestWorkerReport as latestReport, flagWorkerReportStale as flagReportStale } from '../lib/workerReport.js';
+import { latestWorkerReport as latestReport } from '../lib/workerReport.js';
 
 async function resolveAuditUser(userId?: string) {
   return (
@@ -27,8 +27,9 @@ async function ensureMonthOpenOrOwner(month: number, year: number, role: UserRol
 }
 
 // Compute a worker's monthly report payload (work diary + totals) from live data
-// (spec §24). The daily fixed payment is added once per worked date via each
-// shift's isDailyPaymentEligible flag (the system allows one job per worker/day).
+// (spec §19). One total amount per worked day using the hourly wage plus the
+// fixed daily payment (applied once per worked date via isDailyPaymentEligible).
+// No manual additions, deductions, bonuses, or payment status (spec §19.2).
 async function computeMonthlyReport(workerId: string, m: number, y: number) {
   const shifts = await prisma.shift.findMany({
     where: {
@@ -39,12 +40,9 @@ async function computeMonthlyReport(workerId: string, m: number, y: number) {
     include: { job: { include: { customer: true, case: true } } },
     orderBy: { scheduledStart: 'asc' },
   });
-  const adjustments = await prisma.workerAdjustment.findMany({
-    where: { workerId, payrollMonth: m, payrollYear: y, isIncluded: true },
-  });
-  const payments = await prisma.workerPayment.findMany({ where: { workerId, month: m, year: y } });
 
   const JOB_TYPE_LABEL: Record<string, string> = { PACKING: 'אריזה', UNPACKING: 'פריקה', HOME_ORGANIZATION: 'סידור' };
+  const ROLE_LABEL: Record<string, string> = { REGULAR: 'עובדת', TEAM_LEADER: 'ראש צוות', BACKUP: 'גיבוי' };
   const heTime = (d: Date) => d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' });
 
   let hourlyPay = 0;
@@ -66,40 +64,36 @@ async function computeMonthlyReport(workerId: string, m: number, y: number) {
       startTime: heTime(shift.scheduledStart),
       endTime: heTime(shift.scheduledEnd),
       jobType: shift.job.jobType,
+      role: shift.assignmentRole,
+      roleLabel: ROLE_LABEL[shift.assignmentRole] ?? shift.assignmentRole,
+      // Approved clock-in/out (final attendance); null until resolved.
+      clockIn: shift.actualStart ? heTime(shift.actualStart) : null,
+      clockOut: shift.actualEnd ? heTime(shift.actualEnd) : null,
       customerName: `${shift.job.customer.firstName} ${shift.job.customer.lastName}`.trim(),
       approvedHours: round2(h),
+      // Internal only (owner / audit / salary history) — never shown to workers.
       hourlyRate: round2(money(shift.hourlyWageSnapshot)),
       dailyPayment: round2(dp),
       pay: round2(hp + dp),
     };
   });
 
-  const adjustmentTotal = adjustments.reduce((s: number, a: any) => s + money(a.amount), 0);
-  const totalDue = hourlyPay + dailyPay + adjustmentTotal;
-  const totalPaid = payments.reduce((s: number, p: any) => s + money(p.amount), 0);
+  const total = hourlyPay + dailyPay;
 
   return {
     month: m,
     year: y,
     shifts: lines,
-    adjustments: adjustments.map((a) => ({ id: a.id, amount: round2(money(a.amount)), reason: a.reason, category: a.category })),
-    payments: payments.map((p) => ({ id: p.id, amount: round2(money(p.amount)), paymentDate: p.paymentDate, method: p.method })),
     summary: {
       shiftsCount: shifts.length,
       totalApprovedHours: round2(totalHours),
       hourlyPay: round2(hourlyPay),
       dailyPay: round2(dailyPay),
-      adjustmentTotal: round2(adjustmentTotal),
-      totalDue: round2(totalDue),
-      totalPaid: round2(totalPaid),
-      outstanding: round2(totalDue - totalPaid),
-      status: totalPaid >= totalDue && totalDue > 0 ? 'PAID' : totalPaid > 0 ? 'PARTIALLY_PAID' : 'NOT_PREPARED',
+      total: round2(total),
     },
   };
 }
-
 // Latest (current) published version of a worker's monthly report.
-// Owner publishes a new immutable version snapshotting the current computed data.
 async function publishReportVersion(workerId: string, m: number, y: number, publishedById?: string) {
   const payload = await computeMonthlyReport(workerId, m, y);
   const latest = await latestReport(workerId, m, y);
@@ -110,9 +104,38 @@ async function publishReportVersion(workerId: string, m: number, y: number, publ
   });
 }
 
+// Strip internal money breakdown (hourly rate, hourly/daily subtotals) from a
+// computed/snapshot report so the worker-facing UI and PDF only ever see the
+// spec §19.3 line (date, customer, job type, role, approved clock-in/out,
+// approved hours, one day total) and summary (workdays, hours, monthly total).
+function toWorkerFacingReport(payload: any) {
+  const lines = Array.isArray(payload?.shifts) ? payload.shifts : [];
+  const summary = payload?.summary ?? {};
+  return {
+    shifts: lines.map((s: any) => ({
+      shiftId: s.shiftId,
+      date: s.date,
+      customerName: s.customerName,
+      jobType: s.jobType,
+      jobTypeLabel: s.shiftLabel ?? s.jobTypeLabel ?? '',
+      role: s.role ?? null,
+      roleLabel: s.roleLabel ?? '',
+      clockIn: s.clockIn ?? null,
+      clockOut: s.clockOut ?? null,
+      approvedHours: s.approvedHours,
+      dayTotal: s.pay,
+    })),
+    summary: {
+      workdays: summary.shiftsCount ?? lines.length,
+      totalApprovedHours: summary.totalApprovedHours ?? 0,
+      total: summary.total ?? 0,
+    },
+  };
+}
+
 export async function workerPayrollRoutes(app: FastifyInstance) {
   // Worker: their own monthly report — the published immutable snapshot, or the
-  // live draft if the owner has not published yet (spec §24).
+  // live draft if the owner has not published yet (spec §19).
   app.get('/me', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
     const user = (req as any).user;
     const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
@@ -124,7 +147,8 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
     const y = Number(q.year) || now.getFullYear();
 
     const report = await latestReport(worker.id, m, y);
-    const body = report ? (report.snapshot as any) : await computeMonthlyReport(worker.id, m, y);
+    const raw = report ? (report.snapshot as any) : await computeMonthlyReport(worker.id, m, y);
+    const body = toWorkerFacingReport(raw);
     const notes = await prisma.workerReportNote.findMany({
       where: { workerId: worker.id, month: m, year: y },
       orderBy: { createdAt: 'desc' },
@@ -138,7 +162,6 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
       version: report?.version ?? null,
       isPublished: Boolean(report),
       workerNote: report?.workerNote ?? null,
-      paidAt: report?.paidAt ?? null,
       notes: notes.map((n) => ({ id: n.id, shiftId: n.shiftId, type: n.type, message: n.message, createdAt: n.createdAt })),
     };
   });
@@ -152,7 +175,6 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
     const body = WorkerReportApprovalSchema.parse(req.body);
     const report = await latestReport(worker.id, body.month, body.year);
     if (!report) return reply.status(409).send({ error: 'אין דוח שפורסם לחודש זה' });
-    if (report.status === 'PAID') return reply.status(409).send({ error: 'הדוח כבר סומן כשולם' });
 
     if (body.action === 'APPROVE') {
       if (!['PUBLISHED', 'REVISED'].includes(report.status)) {
@@ -201,7 +223,7 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
     return { status: updated.status, version: updated.version, note: updated.workerNote };
   });
 
-  // Worker: download their published monthly report as a PDF (spec §24.3).
+  // Worker: download their published monthly report as a PDF (spec §19.6).
   app.get('/me/report.pdf', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
     const user = (req as any).user;
     const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
@@ -215,23 +237,23 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
     const report = await latestReport(worker.id, m, y);
     if (!report) return reply.status(404).send({ error: 'אין דוח שפורסם לחודש זה' });
 
-    const snap = report.snapshot as any;
+    // Worker-facing PDF: no hourly rate, subtotals, or payment status (spec §19.3/§19.6).
+    const snap = toWorkerFacingReport(report.snapshot as any);
     const nis = (n: number) => `${Number(n).toLocaleString('he-IL')} ₪`;
     const heDate = (d: string) => new Date(d).toISOString().slice(0, 10);
     const lines: string[] = [];
     lines.push(`עובד/ת: ${worker.firstName} ${worker.lastName}`);
     lines.push(`חודש: ${m}/${y} · גרסה ${report.version} · ${report.status}`);
     lines.push('');
-    for (const s of snap.shifts as any[]) {
-      lines.push(`  ${heDate(s.date)} · ${s.customerName} · ${s.approvedHours} שעות · ${nis(s.pay)}`);
+    for (const s of snap.shifts) {
+      const clock = s.clockIn && s.clockOut ? `${s.clockIn}–${s.clockOut}` : '—';
+      const role = s.roleLabel ? ` · ${s.roleLabel}` : '';
+      lines.push(`  ${heDate(s.date)} · ${s.customerName} · ${s.jobTypeLabel}${role} · ${clock} · ${s.approvedHours} שעות · ${nis(s.dayTotal)}`);
     }
     lines.push('');
+    lines.push(`ימי עבודה: ${snap.summary.workdays}`);
     lines.push(`שעות מאושרות: ${snap.summary.totalApprovedHours}`);
-    lines.push(`תשלום שעתי: ${nis(snap.summary.hourlyPay)}`);
-    lines.push(`תשלום יומי קבוע: ${nis(snap.summary.dailyPay)}`);
-    if (snap.summary.adjustmentTotal) lines.push(`התאמות: ${nis(snap.summary.adjustmentTotal)}`);
-    lines.push(`סה"כ לתשלום: ${nis(snap.summary.totalDue)}`);
-    lines.push(`שולם: ${nis(snap.summary.totalPaid)}`);
+    lines.push(`סה"כ לחודש: ${nis(snap.summary.total)}`);
 
     const pdf = await buildLinesPdf('דוח חודשי', `${worker.firstName} ${worker.lastName} · ${m}/${y}`, lines);
     reply.header('Content-Type', 'application/pdf');
@@ -296,13 +318,44 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
     return null;
   });
 
+  // Owner: monthly overview of every active worker's computed report (spec §19).
+  app.get('/summary', { preHandler: [authenticate, requireOwner] }, async (req, reply) => {
+    const now = new Date();
+    const q = req.query as { month?: string; year?: string };
+    const m = Number(q.month) || now.getMonth() + 1;
+    const y = Number(q.year) || now.getFullYear();
+
+    const workers = await prisma.worker.findMany({
+      where: { isActive: true },
+      select: { id: true, firstName: true, lastName: true },
+      orderBy: { firstName: 'asc' },
+    });
+
+    const rows = await Promise.all(
+      workers.map(async (w) => {
+        const draft = await computeMonthlyReport(w.id, m, y);
+        const current = await latestReport(w.id, m, y);
+        return {
+          id: w.id,
+          firstName: w.firstName,
+          lastName: w.lastName,
+          summary: draft.summary,
+          reportStatus: current?.status ?? 'DRAFT',
+          version: current?.version ?? null,
+        };
+      }),
+    );
+
+    return { workers: rows, month: m, year: y };
+  });
+
+  // Owner: a worker's live draft plus published version history (spec §19).
   app.get('/worker/:workerId', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { workerId } = req.params as { workerId: string };
     const { month, year } = req.query as { month: string; year: string };
     const m = Number(month);
     const y = Number(year);
 
-    // Live draft (recomputed) plus the published version history (spec §24).
     const draft = await computeMonthlyReport(workerId, m, y);
     const versions = await prisma.workerMonthlyReport.findMany({
       where: { workerId, month: m, year: y },
@@ -320,7 +373,7 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
       reportStatus: current?.status ?? 'DRAFT',
       version: current?.version ?? null,
       workerNote: current?.workerNote ?? null,
-      versions: versions.map((v) => ({ id: v.id, version: v.version, status: v.status, publishedAt: v.publishedAt, workerApprovedAt: v.workerApprovedAt, paidAt: v.paidAt })),
+      versions: versions.map((v) => ({ id: v.id, version: v.version, status: v.status, publishedAt: v.publishedAt, workerApprovedAt: v.workerApprovedAt })),
       notes: notes.map((n) => ({ id: n.id, shiftId: n.shiftId, type: n.type, message: n.message, createdAt: n.createdAt })),
     };
   });
@@ -351,83 +404,5 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
       });
     }
     return { id: published.id, version: published.version, status: published.status };
-  });
-
-  // Owner: mark the current published report as paid (spec §24.3, §26).
-  app.post('/worker/:workerId/mark-paid', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
-    const { workerId } = req.params as { workerId: string };
-    const { month, year } = req.body as { month: number; year: number };
-    const report = await latestReport(workerId, month, year);
-    if (!report) return reply.status(409).send({ error: 'אין דוח שפורסם לחודש זה' });
-
-    const worker = await prisma.worker.findUnique({ where: { id: workerId }, select: { userId: true } });
-    const updated = await prisma.workerMonthlyReport.update({ where: { id: report.id }, data: { status: 'PAID', paidAt: new Date() } });
-    if (worker) {
-      await prisma.notification.create({
-        data: {
-          userId: worker.userId,
-          title: 'הדוח סומן כשולם',
-          body: `הדוח ל-${month}/${year} סומן כשולם.`,
-          data: { type: 'REPORT_PAID', month, year } as any,
-        },
-      });
-    }
-    return { status: updated.status, paidAt: updated.paidAt };
-  });
-
-  app.post('/adjustments', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
-    const user = (req as any).user as { id?: string; role: UserRole };
-    const body = WorkerAdjustmentSchema.parse(req.body);
-    await ensureMonthOpenOrOwner(body.payrollMonth, body.payrollYear, user.role);
-    const adjustment = await prisma.workerAdjustment.create({ data: body as any });
-    // A correction flags the current published report as needing a new version.
-    await flagReportStale(body.workerId, body.payrollMonth, body.payrollYear);
-    const auditUser = await resolveAuditUser(user.id);
-    if (auditUser) {
-      await prisma.auditLog.create({
-        data: {
-          performedById: auditUser.id,
-          action: 'UPDATE',
-          entityType: 'WorkerAdjustment',
-          entityId: adjustment.id,
-          previousValue: undefined,
-          newValue: adjustment,
-          reason: body.reason,
-        },
-      });
-    }
-    reply.status(201);
-    return adjustment;
-  });
-
-  app.post('/payments', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
-    const user = (req as any).user as { id?: string; role: UserRole };
-    const body = WorkerPaymentSchema.parse(req.body);
-    await ensureMonthOpenOrOwner(body.month, body.year, user.role);
-    const payment = await prisma.workerPayment.create({ data: { ...body, paymentDate: new Date(body.paymentDate) } });
-    // A correction flags the current published report as needing a new version.
-    await flagReportStale(body.workerId, body.month, body.year);
-    const auditUser = await resolveAuditUser(user.id);
-    if (auditUser) {
-      await prisma.auditLog.create({
-        data: {
-          performedById: auditUser.id,
-          action: 'CREATE',
-          entityType: 'WorkerPayment',
-          entityId: payment.id,
-          previousValue: undefined,
-          newValue: payment,
-          reason: body.notes ?? body.reference ?? undefined,
-        },
-      });
-    }
-    reply.status(201);
-    return payment;
-  });
-
-  app.get('/summary', { preHandler: [authenticate, requireOwner] }, async (req, reply) => {
-    const { month, year } = req.query as { month: string; year: string };
-    const workers = await prisma.worker.findMany({ where: { isActive: true }, select: { id: true, firstName: true, lastName: true } });
-    return { workers, month, year, message: 'Use /worker/:id endpoint for individual summaries' };
   });
 }

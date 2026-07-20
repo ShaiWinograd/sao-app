@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { caseStatusTone, invoiceStatusTone, quotationStatusTone } from './status-tone';
+import { caseStatusTone } from './status-tone';
 
 describe('caseStatusTone', () => {
   it('maps approved/paid states to success', () => {
@@ -22,24 +22,5 @@ describe('caseStatusTone', () => {
   it('maps draft/cancelled states to neutral', () => {
     expect(caseStatusTone('DRAFT')).toBe('neutral');
     expect(caseStatusTone('CANCELLED')).toBe('neutral');
-  });
-});
-
-describe('quotationStatusTone', () => {
-  it('maps quotation states to semantic tones', () => {
-    expect(quotationStatusTone('APPROVED')).toBe('success');
-    expect(quotationStatusTone('SENT')).toBe('info');
-    expect(quotationStatusTone('REJECTED')).toBe('error');
-    expect(quotationStatusTone('EXPIRED')).toBe('warning');
-    expect(quotationStatusTone('DRAFT')).toBe('neutral');
-  });
-});
-
-describe('invoiceStatusTone', () => {
-  it('maps invoice states to semantic tones', () => {
-    expect(invoiceStatusTone('PAID')).toBe('success');
-    expect(invoiceStatusTone('PARTIALLY_PAID')).toBe('warning');
-    expect(invoiceStatusTone('SENT')).toBe('info');
-    expect(invoiceStatusTone('VOID')).toBe('neutral');
   });
 });
