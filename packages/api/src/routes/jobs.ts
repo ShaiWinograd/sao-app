@@ -7,6 +7,9 @@ import { GENERAL_RESERVATION_CUSTOMER_ID } from '@workforce/shared';
 import { validateServiceAddition } from '@workforce/shared';
 import { evaluateJobPublishReadiness } from '@workforce/shared';
 import { requiresReapproval } from '@workforce/shared';
+import { validateCapacityReduction } from '@workforce/shared';
+import { isUnavailableOn } from '@workforce/shared';
+import type { AvailabilityBlock } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
 import { z } from 'zod';
 
@@ -203,8 +206,11 @@ export async function jobsRoutes(app: FastifyInstance) {
     });
 
     // Dates the viewer is already occupied on (pending/awaiting/approved) — used
-    // to mark same-day jobs as unavailable to join (spec §8.1).
+    // to mark same-day jobs as unavailable to join (spec §8.1). Availability
+    // blocks the worker marked are folded in so the board matches the same-day
+    // commitment guard the join endpoint enforces (§12.1).
     const occupiedDates = new Set<string>();
+    let availabilityBlocks: AvailabilityBlock[] = [];
     if (me) {
       for (const j of jobs) {
         const mine = j.shifts.find(
@@ -216,6 +222,12 @@ export async function jobsRoutes(app: FastifyInstance) {
         );
         if (mine) occupiedDates.add(j.date.toISOString().slice(0, 10));
       }
+      availabilityBlocks = (await prisma.workerAvailability.findMany({ where: { workerId: me.id } })).map((b) => ({
+        type: b.type,
+        startDate: b.startDate ? b.startDate.toISOString() : null,
+        endDate: b.endDate ? b.endDate.toISOString() : null,
+        weekday: b.weekday,
+      }));
     }
 
     return jobs.map((job) => {
@@ -243,7 +255,9 @@ export async function jobsRoutes(app: FastifyInstance) {
           )
         : undefined;
       // Occupied elsewhere on this date and not on this job → cannot join (§8.1).
-      const blockedSameDay = !myShift && occupiedDates.has(job.date.toISOString().slice(0, 10));
+      const dateKey = job.date.toISOString().slice(0, 10);
+      const blockedSameDay =
+        !myShift && (occupiedDates.has(dateKey) || (me ? isUnavailableOn(availabilityBlocks, dateKey) : false));
       return {
         jobId: job.id,
         jobType: job.jobType,
@@ -494,10 +508,14 @@ export async function jobsRoutes(app: FastifyInstance) {
   app.patch('/:id', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = UpdateJobSchema.parse(req.body);
+    // Owner's chosen shifts to demote to backup when capacity is reduced (§13).
+    const demoteToBackupIds: string[] = Array.isArray((req.body as any)?.demoteToBackupIds)
+      ? ((req.body as any).demoteToBackupIds as string[])
+      : [];
 
     const existingJob = await prisma.job.findUnique({
       where: { id },
-      select: { id: true, caseId: true, jobType: true, date: true, plannedStart: true, plannedEnd: true, addressId: true, status: true },
+      select: { id: true, caseId: true, jobType: true, date: true, plannedStart: true, plannedEnd: true, addressId: true, status: true, requiredWorkerCount: true },
     });
     if (!existingJob) {
       return reply.status(404).send({ error: 'Job not found' });
@@ -516,7 +534,66 @@ export async function jobsRoutes(app: FastifyInstance) {
       return reply.status(validationResult.statusCode).send({ error: validationResult.error });
     }
 
-    const updated = await prisma.job.update({ where: { id }, data: body as any });
+    // §13 capacity change. When the required worker count is reduced below the
+    // number of currently-assigned regular/leader workers, the owner must pick
+    // exactly which of them become backups — the system never auto-selects,
+    // deletes, or rejects anyone. When it is increased, active workers are told
+    // that more positions opened.
+    const newCount = body.requiredWorkerCount;
+    let demotedUserIds: string[] = [];
+    let capacityIncreased = false;
+    if (typeof newCount === 'number' && newCount !== existingJob.requiredWorkerCount) {
+      const regulars = await prisma.shift.findMany({
+        where: { jobId: id, joinRequestStatus: 'APPROVED', assignmentRole: { in: ['REGULAR', 'TEAM_LEADER'] } },
+        select: { id: true, worker: { select: { userId: true } } },
+      });
+      if (newCount < regulars.length) {
+        const check = validateCapacityReduction({
+          newRequiredCount: newCount,
+          regularShiftIds: regulars.map((r) => r.id),
+          demoteToBackupIds,
+        });
+        if (!check.ok) {
+          return reply.status(409).send({
+            error: check.code,
+            message: check.message,
+            needed: check.needed,
+            regularShiftIds: regulars.map((r) => r.id),
+          });
+        }
+        demotedUserIds = regulars.filter((r) => demoteToBackupIds.includes(r.id)).map((r) => r.worker.userId);
+      } else if (newCount > existingJob.requiredWorkerCount) {
+        capacityIncreased = true;
+      }
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      if (demoteToBackupIds.length) {
+        await tx.shift.updateMany({
+          where: { id: { in: demoteToBackupIds }, jobId: id },
+          data: { assignmentRole: 'BACKUP' },
+        });
+        for (const sid of demoteToBackupIds) {
+          await logAudit((req as any).user, 'UPDATE', 'Shift', sid, { assignmentRole: 'REGULAR' }, { assignmentRole: 'BACKUP' }, 'capacity-reduced', tx);
+        }
+      }
+      return tx.job.update({ where: { id }, data: body as any });
+    });
+
+    const capDateKey = heDate(nextDate);
+    if (demotedUserIds.length) {
+      await prisma.notification.createMany({
+        data: demotedUserIds.map((userId) => ({
+          userId,
+          title: 'עודכן שיבוצך לגיבוי',
+          body: `כמות העובדים לעבודה בתאריך ${capDateKey} הוקטנה ושובצת כגיבוי. תקבל/י עדכון אם תידרש/י.`,
+          data: { type: 'MOVED_TO_BACKUP', jobId: id } as any,
+        })),
+      });
+    }
+    if (capacityIncreased) {
+      await notifyAssignedWorkers(id, 'נוספו מקומות לעבודה', `נפתחו מקומות נוספים לעבודה בתאריך ${capDateKey}.`, 'CAPACITY_INCREASED');
+    }
 
     // Determine whether the change requires worker reapproval (spec §13):
     // a city/street change or a schedule shift of at least 3 hours.
