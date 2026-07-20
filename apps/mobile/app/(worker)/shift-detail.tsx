@@ -21,6 +21,7 @@ import { api } from '../../lib/api';
 import { colors, fonts, jobTypeColor } from '../../lib/theme';
 import { Screen, ScreenHeader, Card, Pill, Button } from '../../components/ui';
 import { useToast } from '../../components/toast';
+import { useAttendanceMonitor } from '../../hooks/useAttendanceMonitor';
 
 type Completion = 'COMPLETED' | 'PARTIALLY_COMPLETED' | 'NOT_COMPLETED';
 
@@ -39,6 +40,13 @@ function typeLabel(t?: string): string {
 function mapsUrl(address: string): string {
   const q = encodeURIComponent(address);
   return Platform.OS === 'ios' ? `http://maps.apple.com/?q=${q}` : `https://www.google.com/maps/search/?api=1&query=${q}`;
+}
+
+function formatCountdown(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 export default function ShiftDetailScreen() {
@@ -103,11 +111,11 @@ export default function ShiftDetailScreen() {
       .sort((a: any, b: any) => Number(b.lead) - Number(a.lead));
   }, [job]);
 
-  const invalidate = () => {
+  const invalidate = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['shift', id] });
     qc.invalidateQueries({ queryKey: ['my-shifts'] });
     qc.invalidateQueries({ queryKey: ['board'] });
-  };
+  }, [qc, id]);
 
   // Best-effort location: §16.1 allows clock-in even without permission (the
   // server flags it for owner review), so we never block on a denied/failed fix.
@@ -148,7 +156,17 @@ export default function ShiftDetailScreen() {
       setFormOpen(true);
       invalidate();
     },
-    onError: () => Alert.alert('שגיאה', 'לא ניתן לרשום יציאה'),
+    onError: (err: any) => {
+      // The server sweep may have already auto-clocked-out (race). Reconcile to the
+      // authoritative state instead of showing a hard error.
+      const msg = err?.response?.data?.error;
+      if (msg === 'Already clocked out') {
+        toast.show('המשמרת כבר נסגרה.');
+        invalidate();
+      } else {
+        Alert.alert('שגיאה', 'לא ניתן לרשום יציאה');
+      }
+    },
   });
 
   // §16.2: worker confirms the owner-proposed start after a missing clock-in.
@@ -216,6 +234,19 @@ export default function ShiftDetailScreen() {
       invalidate();
     },
     onError: (err: any) => Alert.alert('שגיאה', err?.response?.data?.error ?? 'שליחת ההצעה נכשלה'),
+  });
+
+  // §16.3/§16.4 leaving-area watcher for this shift (active only while clocked in).
+  const jobCoords =
+    shift?.job?.address?.latitude != null && shift?.job?.address?.longitude != null
+      ? { latitude: shift.job.address.latitude as number, longitude: shift.job.address.longitude as number }
+      : null;
+  const areaMonitor = useAttendanceMonitor({
+    shiftId: id,
+    attendanceStatus: shift?.attendanceStatus ?? '',
+    areaExitDeadline: shift?.areaExitDeadline ?? null,
+    jobCoords,
+    refetch: invalidate,
   });
 
   if (isLoading) {
@@ -350,6 +381,15 @@ export default function ShiftDetailScreen() {
               ) : null}
               {isActive ? (
                 <Button title={HE.worker.endShift} icon="log-out-outline" variant="danger" style={styles.mt12} loading={clockOut.isPending} onPress={() => clockOut.mutate()} />
+              ) : null}
+              {isActive && areaMonitor.pendingExit ? (
+                <View style={styles.exitPrompt}>
+                  <Text style={styles.exitPromptTitle}>עזבת את אזור העבודה</Text>
+                  <Text style={styles.exitPromptBody}>
+                    המשמרת תיסגר אוטומטית בעוד {formatCountdown(areaMonitor.remainingMs)} אם לא תחזרי לאזור. ניתן לסיים כעת.
+                  </Text>
+                  <Button title="סיום משמרת עכשיו" icon="log-out-outline" variant="danger" style={styles.mt8} loading={clockOut.isPending} onPress={() => clockOut.mutate()} />
+                </View>
               ) : null}
               {isDone && !formOpen ? (
                 <Button title="מילוי טופס סיום" icon="document-text-outline" variant="outline" style={styles.mt12} onPress={() => setFormOpen(true)} />
@@ -551,6 +591,9 @@ const styles = StyleSheet.create({
   noteValue: { fontSize: 14, color: colors.text, fontFamily: fonts.regular, textAlign: 'right', marginTop: 1 },
   mt8: { marginTop: 8 },
   mt12: { marginTop: 12 },
+  exitPrompt: { marginTop: 12, borderRadius: 12, borderWidth: 1, borderColor: '#fecaca', backgroundColor: '#fef2f2', padding: 12 },
+  exitPromptTitle: { fontSize: 15, fontWeight: '700', color: '#b91c1c' },
+  exitPromptBody: { fontSize: 13, color: '#7f1d1d', marginTop: 4 },
   field: { marginTop: 12 },
   fieldLabel: { fontSize: 13, color: colors.muted, fontFamily: fonts.semibold, textAlign: 'right', marginBottom: 6 },
   segment: { flexDirection: 'row', gap: 8 },

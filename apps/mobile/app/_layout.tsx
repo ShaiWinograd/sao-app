@@ -6,6 +6,9 @@ import { useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
+// Registers the background geofencing TaskManager task at startup so the OS can
+// invoke it after a cold start (§16.4 leaving-area detection).
+import '../lib/backgroundGeofence';
 import {
   useFonts,
   Assistant_400Regular,

@@ -55,10 +55,11 @@ export async function attendanceRoutes(app: FastifyInstance) {
       });
     }
 
-    // Geocode job address to lat/lon (in production, use Google Maps Geocoding API)
-    // For now we assume job address lat/lon is stored or passed in
-    const jobLat = (shift.job as any).addressLat as number | null;
-    const jobLon = (shift.job as any).addressLon as number | null;
+    // Job geofence centre (the address's geocoded coordinates). Nullable until the
+    // address is geocoded — when absent we cannot judge range, so clock-in is
+    // allowed and simply not distance-validated.
+    const jobLat = shift.job.address?.latitude ?? null;
+    const jobLon = shift.job.address?.longitude ?? null;
 
     const radiusSetting = await prisma.appSetting.findUnique({
       where: { key: 'DEFAULT_LOCATION_RADIUS_METERS' },
@@ -163,16 +164,16 @@ export async function attendanceRoutes(app: FastifyInstance) {
     const { shiftId, latitude, longitude } = req.body as any;
     const shift = await prisma.shift.findUnique({
       where: { id: shiftId },
-      include: { job: true },
+      include: { job: { include: { address: true } } },
     });
     if (!shift) return reply.status(404).send({ error: 'Shift not found' });
 
-    const jobLat = (shift.job as any).addressLat as number | null;
-    const jobLon = (shift.job as any).addressLon as number | null;
+    const jobLat = shift.job.address?.latitude ?? null;
+    const jobLon = shift.job.address?.longitude ?? null;
     const allowedRadius = shift.job.locationRadiusMeters;
     let distanceMeters = 0;
     let isWithinRadius = true;
-    if (jobLat && jobLon) {
+    if (jobLat != null && jobLon != null) {
       distanceMeters = distanceInMeters(latitude, longitude, jobLat, jobLon);
       isWithinRadius = distanceMeters <= allowedRadius;
     }

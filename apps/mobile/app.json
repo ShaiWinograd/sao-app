@@ -16,8 +16,9 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.spaceorder.workforce",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "נדרש לאימות מיקום בזמן משמרת",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "נדרש לבדיקות מיקום תקופתיות במהלך משמרת פעילה"
+        "NSLocationWhenInUseUsageDescription": "נדרש לאימות מיקום בעת כניסה למשמרת ולבדיקות מיקום במהלך משמרת פעילה",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "נדרש לזיהוי יציאה מאזור העבודה במהלך משמרת פעילה כדי לסגור את המשמרת אוטומטית",
+        "UIBackgroundModes": ["location"]
       }
     },
     "android": {
@@ -29,6 +30,7 @@
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE"
       ]
     },
@@ -38,8 +40,10 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "נדרש לבדיקות מיקום תקופתיות במהלך משמרת פעילה",
-          "locationWhenInUsePermission": "נדרש לאימות מיקום בזמן משמרת"
+          "locationAlwaysAndWhenInUsePermission": "נדרש לזיהוי יציאה מאזור העבודה במהלך משמרת פעילה",
+          "locationWhenInUsePermission": "נדרש לאימות מיקום בעת כניסה למשמרת",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isIosBackgroundLocationEnabled": true
         }
       ],
       [

@@ -347,6 +347,11 @@ model Address {
   accessNotes      String?
   parkingNotes     String?
   elevatorNotes    String?
+  // Geocoded coordinates for the 500m attendance geofence (§16.1/§16.4). Nullable
+  // until an address is geocoded; when absent, attendance falls back to the
+  // owner-review flow and the mobile leaving-area watcher stays inactive.
+  latitude         Float?
+  longitude        Float?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
