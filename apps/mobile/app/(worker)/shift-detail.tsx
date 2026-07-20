@@ -109,11 +109,17 @@ export default function ShiftDetailScreen() {
     qc.invalidateQueries({ queryKey: ['board'] });
   };
 
-  const getPosition = async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') throw new Error('location_denied');
-    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-    return { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+  // Best-effort location: §16.1 allows clock-in even without permission (the
+  // server flags it for owner review), so we never block on a denied/failed fix.
+  const getPosition = async (): Promise<{ latitude: number | null; longitude: number | null }> => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return { latitude: null, longitude: null };
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      return { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+    } catch {
+      return { latitude: null, longitude: null };
+    }
   };
 
   const clockIn = useMutation({
@@ -121,14 +127,12 @@ export default function ShiftDetailScreen() {
       const pos = await getPosition();
       return api.post('/attendance/clock-in', { shiftId: id, ...pos, timestamp: new Date().toISOString() });
     },
-    onSuccess: () => {
-      toast.show('כניסה למשמרת נרשמה בהצלחה');
+    onSuccess: (res: any) => {
+      toast.show(res?.data?.needsReview ? 'הכניסה נרשמה וממתינה לאישור בעל/ת העסק' : 'כניסה למשמרת נרשמה בהצלחה');
       invalidate();
     },
     onError: (err: any) => {
-      if (err?.message === 'location_denied') Alert.alert('שגיאה', 'נדרשת הרשאת מיקום. אפשרי גישה בהגדרות.');
-      else if (err?.response?.data?.error === 'outside_radius') Alert.alert('מחוץ לתחום', HE.messages.locationBlocked);
-      else Alert.alert('שגיאה', err?.response?.data?.error ?? 'לא ניתן לרשום כניסה');
+      Alert.alert('שגיאה', err?.response?.data?.message ?? err?.response?.data?.error ?? 'לא ניתן לרשום כניסה');
     },
   });
 
@@ -145,6 +149,16 @@ export default function ShiftDetailScreen() {
       invalidate();
     },
     onError: () => Alert.alert('שגיאה', 'לא ניתן לרשום יציאה'),
+  });
+
+  // §16.2: worker confirms the owner-proposed start after a missing clock-in.
+  const confirmProposed = useMutation({
+    mutationFn: async () => api.post(`/attendance/${id}/confirm-proposed`, {}),
+    onSuccess: () => {
+      toast.show('אישרת את שעת ההתחלה. ממתין לאישור בעל/ת העסק.');
+      invalidate();
+    },
+    onError: (err: any) => Alert.alert('שגיאה', err?.response?.data?.error ?? 'הפעולה נכשלה'),
   });
 
   const submitForm = useMutation({
@@ -329,7 +343,9 @@ export default function ShiftDetailScreen() {
                 color={isActive ? colors.primary : colors.muted}
                 bg={isActive ? colors.primaryLight : '#f1eff4'}
               />
-              {!isActive && !isDone ? (
+              {shift.attendanceStatus === 'PROPOSED' ? (
+                <Button title="אישור שעת התחלה מוצעת" icon="checkmark-circle-outline" style={styles.mt12} loading={confirmProposed.isPending} onPress={() => confirmProposed.mutate()} />
+              ) : !isActive && !isDone ? (
                 <Button title={HE.worker.startShift} icon="log-in-outline" style={styles.mt12} loading={clockIn.isPending} onPress={() => clockIn.mutate()} />
               ) : null}
               {isActive ? (
