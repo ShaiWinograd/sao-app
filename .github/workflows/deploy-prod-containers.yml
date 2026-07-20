@@ -146,27 +146,9 @@ jobs:
           docker push "$API_IMAGE"
           echo "DEPLOYED_API_IMAGE=$API_IMAGE" >> "$GITHUB_ENV"
 
-      - name: Deploy web container
-        if: github.event.inputs.target == 'all' || github.event.inputs.target == 'web'
-        run: |
-          set -euo pipefail
-          az webapp config appsettings set \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$AZURE_WEB_APP_NAME" \
-            --settings WEBSITES_PORT=8080 >/dev/null
-
-          az webapp config container set \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$AZURE_WEB_APP_NAME" \
-            --container-image-name "$WEB_IMAGE" \
-            --container-registry-url "https://$CONTAINER_REGISTRY_SERVER" \
-            --container-registry-user "$CONTAINER_REGISTRY_USERNAME" \
-            --container-registry-password "$CONTAINER_REGISTRY_PASSWORD"
-
-          az webapp restart \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$AZURE_WEB_APP_NAME"
-
+      # ── DB schema reconciliation runs BEFORE any container is deployed, so a
+      #    refused/destructive change halts the whole deployment (no container is
+      #    shipped against an unreconciled or partially-updated schema). ──────────
       - name: Decide whether to run DB migration
         id: migrate
         if: github.event.inputs.target == 'all' || github.event.inputs.target == 'api'
@@ -248,23 +230,106 @@ jobs:
             --start-ip-address "$runner_ip" \
             --end-ip-address "$runner_ip" >/dev/null
 
-          # Run prisma db push inside the freshly built API image (it already
-          # contains the prisma CLI and schema). Additive changes only; retry
-          # to allow the firewall rule to propagate.
+          # Apply ONLY non-destructive (additive) schema changes automatically via
+          # `prisma db push`, run inside the freshly built API image. The pipeline
+          # NEVER passes --accept-data-loss: if Prisma refuses because a change
+          # would drop/rename a column, table, or enum value, we STOP and fail the
+          # whole deployment. Destructive changes require a reviewed, backed-up,
+          # one-time manual reconciliation — see docs/container-deploy.md
+          # ("Destructive schema changes"). Transient/connection failures are
+          # retried to allow the firewall rule to propagate.
+          push_log="$(mktemp)"
           pushed=false
+          destructive=false
           for attempt in $(seq 1 6); do
             if docker run --rm -e DATABASE_URL="$database_url" "$API_IMAGE" \
-                 npm run --workspace @workforce/database db:push -- --skip-generate; then
+                 npm run --workspace @workforce/database db:push -- --skip-generate >"$push_log" 2>&1; then
               pushed=true
+              cat "$push_log"
               break
             fi
-            echo "db push attempt $attempt failed; waiting for firewall propagation..."
+            cat "$push_log"
+            # Prisma's own data-loss guard fired → destructive change. Do NOT retry
+            # and do NOT auto-accept: fail immediately.
+            if grep -qiE "accept-data-loss|data loss|cannot be executed|will be removed" "$push_log"; then
+              destructive=true
+              break
+            fi
+            echo "db push attempt $attempt failed (transient/connection?); waiting for firewall propagation..."
             sleep 15
           done
-          if [ "$pushed" != true ]; then
-            echo "::error::prisma db push failed after retries"
+
+          emit_diff() {
+            docker run --rm -e DATABASE_URL="$database_url" "$API_IMAGE" \
+              sh -c 'npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel packages/database/prisma/schema.prisma --script' 2>/dev/null \
+              || echo "(could not generate schema diff)"
+          }
+
+          if [ "$destructive" = true ]; then
+            {
+              echo "## ❌ Destructive schema change detected — deployment halted"
+              echo ""
+              echo "\`prisma db push\` refused a change that would lose data (dropped/renamed"
+              echo "column, table, or enum value). **Production was not modified and no container"
+              echo "was deployed.** A reviewed, backed-up, one-time manual reconciliation is"
+              echo "required first — see \`docs/container-deploy.md\` → \"Destructive schema changes\"."
+              echo "The pipeline never applies \`--accept-data-loss\`."
+              echo ""
+              echo "### Detected schema diff (production → target)"
+              echo '```sql'
+              emit_diff
+              echo '```'
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "::error title=Destructive schema change — manual reconciliation required::prisma db push refused a destructive change; production was NOT modified and deployment is halted. See docs/container-deploy.md (Destructive schema changes)."
             exit 1
           fi
+
+          if [ "$pushed" != true ]; then
+            echo "::error::prisma db push failed after retries (non-destructive/connection error). Deployment halted."
+            exit 1
+          fi
+
+          # Belt-and-suspenders: even on a "successful" push, confirm ZERO drift.
+          # If any change remains (e.g. a destructive op was silently skipped), fail
+          # rather than deploy against a partially-updated schema.
+          remaining="$(emit_diff)"
+          if echo "$remaining" | grep -qiE "^[[:space:]]*(CREATE|ALTER|DROP)[[:space:]]"; then
+            {
+              echo "## ❌ Schema drift remains after db push — deployment halted"
+              echo ""
+              echo "\`prisma db push\` reported success but the database still differs from the"
+              echo "Prisma schema. This must be reconciled manually before deploying — see"
+              echo "\`docs/container-deploy.md\` → \"Destructive schema changes\"."
+              echo ""
+              echo '```sql'
+              echo "$remaining"
+              echo '```'
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "::error title=Schema drift remains::prisma db push did not fully reconcile the schema; deployment halted."
+            exit 1
+          fi
+          echo "Schema in sync — non-destructive changes applied automatically."
+
+      - name: Deploy web container
+        if: github.event.inputs.target == 'all' || github.event.inputs.target == 'web'
+        run: |
+          set -euo pipefail
+          az webapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEB_APP_NAME" \
+            --settings WEBSITES_PORT=8080 >/dev/null
+
+          az webapp config container set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEB_APP_NAME" \
+            --container-image-name "$WEB_IMAGE" \
+            --container-registry-url "https://$CONTAINER_REGISTRY_SERVER" \
+            --container-registry-user "$CONTAINER_REGISTRY_USERNAME" \
+            --container-registry-password "$CONTAINER_REGISTRY_PASSWORD"
+
+          az webapp restart \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEB_APP_NAME"
 
       - name: Deploy API container
         if: github.event.inputs.target == 'all' || github.event.inputs.target == 'api'
