@@ -186,13 +186,6 @@ export default function JobsPage() {
             <Plus className="w-3.5 h-3.5" />
             עבודה חדשה
           </Link>
-          <Link
-            href="/cases/new"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            פרויקט חדש
-          </Link>
         </div>
       </div>
 
