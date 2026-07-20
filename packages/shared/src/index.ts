@@ -23,5 +23,6 @@ export * from './availability-blocks';
 export * from './date-finder';
 export * from './pricing-review';
 export * from './staffing-insights';
+export * from './staffing';
 export * from './utils';
 export * from './dashboard-issues';
