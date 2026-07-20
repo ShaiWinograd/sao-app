@@ -121,3 +121,36 @@ and downtime are safe:
 - form reminders send at most **one** catch-up per run (no burst for missed
   3-hour intervals) and advance `formLastReminderAt`;
 - overdue transitions exactly once.
+
+## Mobile leaving-area watcher (§16.4)
+
+The worker app detects leaving the 500 m radius and calls `POST /attendance/area-exit`
+/ `area-return`; the sweep then enforces the 15-minute auto-clock-out from the
+**recorded exit time**. Decision logic is pure and unit-tested
+(`apps/mobile/lib/attendanceMonitor.ts`); the hook `useAttendanceMonitor` wires it
+to `expo-location` and the API.
+
+**Prerequisite:** the geofence needs the job address's `latitude`/`longitude`
+(added to `Address`). Until an address is geocoded these are `null`, the watcher
+stays inactive, and attendance relies on the manual + owner-review flow (the app
+never blocks). Populating coordinates (geocoding) is a separate step.
+
+**Guarantee matrix:**
+
+| Context | Behavior |
+| --- | --- |
+| **Foreground (app open, clocked in)** | Reliable. 15-minute location checks; a confirmed exit (debounced against noisy/stale GPS) calls `area-exit` once and shows the prompt + a countdown driven by the **server** deadline; returning calls `area-return`; manual clock-out from the prompt is supported. |
+| **Backgrounded** | Best-effort only. OS geofencing (`startGeofencingAsync`) can wake a headless task, but the API client's short-lived Clerk token is only available while the app tree is mounted, so the background task **records the exit locally** and the app **flushes it to `area-exit` on the next foreground**. Reliable silent background reporting is **not** guaranteed on Expo + Clerk. |
+| **App killed / device off** | No client detection. If the exit was never reported, no auto-clock-out occurs; the owner still resolves attendance via review/manual completion. |
+
+**Permissions:** foreground location is requested when a session becomes active;
+background location is requested only when registering the geofence. Denial of
+either never blocks clock-in — attendance falls back to owner review.
+
+**Privacy:** only the minimum radius-state events are sent (`location-check`,
+`area-exit`, `area-return`); no continuous coordinate trail is stored or displayed,
+and no analytics contain precise coordinates.
+
+**Not validated on device in this change** — the foreground path is covered by unit
+tests; background geofencing reliability must be verified on the actual iOS/Android
+build targets (step 8 of the rollout) before relying on it.
