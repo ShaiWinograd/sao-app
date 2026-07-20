@@ -24,17 +24,18 @@ const DEMO_WORKERS = [
 export async function adminRoutes(app: FastifyInstance) {
   // Aggregated owner action items for the dashboard (integration spec §21).
   app.get('/tasks', { preHandler: [authenticate, requireAdmin] }, async () => {
-    const [joinRequests, pendingAcceptance, replacementRequests, swapApprovals, missingForms, reportCorrections] = await Promise.all([
+    const [joinRequests, pendingAcceptance, replacementRequests, swapApprovals, attendanceReview, reportCorrections] = await Promise.all([
       prisma.shift.count({ where: { joinRequestStatus: 'PENDING' } }),
       prisma.shift.count({ where: { joinRequestStatus: 'AWAITING_WORKER' } }),
       prisma.replacementRequest.count({ where: { status: 'PENDING' } }),
       prisma.shiftSwap.count({ where: { status: 'PENDING_OWNER' } }),
-      prisma.shift.count({
-        where: { attendanceStatus: { in: ['CLOCKED_OUT', 'CORRECTED', 'AUTO_CLOCKED_OUT'] }, formStatus: 'NOT_SUBMITTED' },
-      }),
+      // §16: attendance needing owner review — missing-clock-in proposals,
+      // out-of-range / no-permission clock-ins, and automatic clock-outs. Missing
+      // end forms are intentionally NOT here (they are informational — §17.3).
+      prisma.shift.count({ where: { requiresReview: true } }),
       prisma.workerMonthlyReport.count({ where: { status: 'CORRECTION_REQUESTED' } }),
     ]);
-    return { joinRequests, pendingAcceptance, replacementRequests, swapApprovals, missingForms, reportCorrections };
+    return { joinRequests, pendingAcceptance, replacementRequests, swapApprovals, attendanceReview, reportCorrections };
   });
 
   // Invite an owner/admin team member by email (no worker profile). The invited
