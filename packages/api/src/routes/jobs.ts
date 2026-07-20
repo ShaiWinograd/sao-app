@@ -7,7 +7,12 @@ import { GENERAL_RESERVATION_CUSTOMER_ID } from '@workforce/shared';
 import { validateServiceAddition } from '@workforce/shared';
 import { evaluateJobPublishReadiness } from '@workforce/shared';
 import { requiresReapproval } from '@workforce/shared';
+import { validateCapacityReduction } from '@workforce/shared';
+import { isUnavailableOn } from '@workforce/shared';
+import type { AvailabilityBlock } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
+import { AppError } from '../lib/errors.js';
+import { lockJob } from '../lib/commitment.js';
 import { z } from 'zod';
 
 const JOB_TYPE_HE: Record<string, string> = {
@@ -203,8 +208,11 @@ export async function jobsRoutes(app: FastifyInstance) {
     });
 
     // Dates the viewer is already occupied on (pending/awaiting/approved) — used
-    // to mark same-day jobs as unavailable to join (spec §8.1).
+    // to mark same-day jobs as unavailable to join (spec §8.1). Availability
+    // blocks the worker marked are folded in so the board matches the same-day
+    // commitment guard the join endpoint enforces (§12.1).
     const occupiedDates = new Set<string>();
+    let availabilityBlocks: AvailabilityBlock[] = [];
     if (me) {
       for (const j of jobs) {
         const mine = j.shifts.find(
@@ -216,6 +224,12 @@ export async function jobsRoutes(app: FastifyInstance) {
         );
         if (mine) occupiedDates.add(j.date.toISOString().slice(0, 10));
       }
+      availabilityBlocks = (await prisma.workerAvailability.findMany({ where: { workerId: me.id } })).map((b) => ({
+        type: b.type,
+        startDate: b.startDate ? b.startDate.toISOString() : null,
+        endDate: b.endDate ? b.endDate.toISOString() : null,
+        weekday: b.weekday,
+      }));
     }
 
     return jobs.map((job) => {
@@ -243,7 +257,9 @@ export async function jobsRoutes(app: FastifyInstance) {
           )
         : undefined;
       // Occupied elsewhere on this date and not on this job → cannot join (§8.1).
-      const blockedSameDay = !myShift && occupiedDates.has(job.date.toISOString().slice(0, 10));
+      const dateKey = job.date.toISOString().slice(0, 10);
+      const blockedSameDay =
+        !myShift && (occupiedDates.has(dateKey) || (me ? isUnavailableOn(availabilityBlocks, dateKey) : false));
       return {
         jobId: job.id,
         jobType: job.jobType,
@@ -494,10 +510,14 @@ export async function jobsRoutes(app: FastifyInstance) {
   app.patch('/:id', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = UpdateJobSchema.parse(req.body);
+    // Owner's chosen shifts to demote to backup when capacity is reduced (§13).
+    const demoteToBackupIds: string[] = Array.isArray((req.body as any)?.demoteToBackupIds)
+      ? ((req.body as any).demoteToBackupIds as string[])
+      : [];
 
     const existingJob = await prisma.job.findUnique({
       where: { id },
-      select: { id: true, caseId: true, jobType: true, date: true, plannedStart: true, plannedEnd: true, addressId: true, status: true },
+      select: { id: true, caseId: true, jobType: true, date: true, plannedStart: true, plannedEnd: true, addressId: true, status: true, requiredWorkerCount: true },
     });
     if (!existingJob) {
       return reply.status(404).send({ error: 'Job not found' });
@@ -516,7 +536,68 @@ export async function jobsRoutes(app: FastifyInstance) {
       return reply.status(validationResult.statusCode).send({ error: validationResult.error });
     }
 
-    const updated = await prisma.job.update({ where: { id }, data: body as any });
+    // §13 capacity change. Handled atomically under a per-job advisory lock so a
+    // concurrent staffing change cannot invalidate the owner's backup selection
+    // between validation and apply. When the required count drops below the number
+    // of assigned regular/leader workers the owner must pick exactly which of them
+    // become backups (MUST_SELECT_BACKUPS) — the system never auto-selects, deletes
+    // or rejects anyone. The team-leader requirement must survive the reduction.
+    // Any invalid selection (including a shift concurrently removed or already
+    // demoted) rolls the whole change back. When the count increases, active
+    // workers are told that more positions opened.
+    const newCount = body.requiredWorkerCount;
+    let demotedUserIds: string[] = [];
+    let capacityIncreased = false;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      if (typeof newCount === 'number' && newCount !== existingJob.requiredWorkerCount) {
+        await lockJob(tx, id);
+        const regulars = await tx.shift.findMany({
+          where: { jobId: id, joinRequestStatus: 'APPROVED', assignmentRole: { in: ['REGULAR', 'TEAM_LEADER'] } },
+          select: { id: true, assignmentRole: true, worker: { select: { userId: true } } },
+        });
+        if (newCount < regulars.length) {
+          const regularShiftIds = regulars.map((r) => r.id);
+          // Selection validity + exact count. A selected shift that was concurrently
+          // removed or demoted is no longer in regularShiftIds → INVALID_SELECTION.
+          const check = validateCapacityReduction({ newRequiredCount: newCount, regularShiftIds, demoteToBackupIds });
+          if (!check.ok) {
+            throw new AppError(409, check.code, check.message, { needed: check.needed, regularShiftIds });
+          }
+          // The team-leader requirement must remain valid: the only leader may not
+          // be demoted while the job still requires a leader slot.
+          const requiresLeader = (await tx.jobSlot.count({ where: { jobId: id, requiredSkill: MANAGER_SKILL } })) > 0;
+          const demotedSet = new Set(demoteToBackupIds);
+          const leaderRemains = regulars.some((r) => r.assignmentRole === 'TEAM_LEADER' && !demotedSet.has(r.id));
+          if (requiresLeader && !leaderRemains) {
+            throw new AppError(409, 'LEADER_REQUIRED', 'לא ניתן להעביר את ראש הצוות לגיבוי — העבודה דורשת ראש צוות.', { regularShiftIds });
+          }
+          await tx.shift.updateMany({ where: { id: { in: demoteToBackupIds }, jobId: id }, data: { assignmentRole: 'BACKUP' } });
+          for (const sid of demoteToBackupIds) {
+            await logAudit((req as any).user, 'UPDATE', 'Shift', sid, { assignmentRole: 'REGULAR' }, { assignmentRole: 'BACKUP' }, 'capacity-reduced', tx);
+          }
+          demotedUserIds = regulars.filter((r) => demotedSet.has(r.id)).map((r) => r.worker.userId);
+        } else if (newCount > existingJob.requiredWorkerCount) {
+          capacityIncreased = true;
+        }
+      }
+      return tx.job.update({ where: { id }, data: body as any });
+    });
+
+    const capDateKey = heDate(nextDate);
+    if (demotedUserIds.length) {
+      await prisma.notification.createMany({
+        data: demotedUserIds.map((userId) => ({
+          userId,
+          title: 'עודכן שיבוצך לגיבוי',
+          body: `כמות העובדים לעבודה בתאריך ${capDateKey} הוקטנה ושובצת כגיבוי. תקבל/י עדכון אם תידרש/י.`,
+          data: { type: 'MOVED_TO_BACKUP', jobId: id } as any,
+        })),
+      });
+    }
+    if (capacityIncreased) {
+      await notifyAssignedWorkers(id, 'נוספו מקומות לעבודה', `נפתחו מקומות נוספים לעבודה בתאריך ${capDateKey}.`, 'CAPACITY_INCREASED');
+    }
 
     // Determine whether the change requires worker reapproval (spec §13):
     // a city/street change or a schedule shift of at least 3 hours.

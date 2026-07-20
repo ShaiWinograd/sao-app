@@ -1,5 +1,8 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
 import { UserRole } from '@workforce/shared';
+
+type DbClient = Prisma.TransactionClient | typeof prisma;
 
 export type ResolvedActor = { id: string; firstName: string; lastName: string };
 
@@ -11,24 +14,25 @@ export type ResolvedActor = { id: string; firstName: string; lastName: string };
  *
  * This guarantees a non-null actor so audit-logging writes can never hard-fail
  * (previously endpoints returned 500 "No active admin user available for audit
- * logging" on a fresh database).
+ * logging" on a fresh database). Pass a transaction client to attribute inside
+ * the caller's transaction.
  */
-export async function resolveActor(user?: { id?: string } | null): Promise<ResolvedActor> {
+export async function resolveActor(user?: { id?: string } | null, client: DbClient = prisma): Promise<ResolvedActor> {
   const existing =
     (user?.id
-      ? await prisma.user.findUnique({
+      ? await client.user.findUnique({
           where: { id: user.id },
           select: { id: true, firstName: true, lastName: true },
         })
       : null) ??
-    (await prisma.user.findFirst({
+    (await client.user.findFirst({
       where: { role: { in: [UserRole.OWNER, UserRole.ADMIN] }, isActive: true },
       select: { id: true, firstName: true, lastName: true },
     }));
 
   if (existing) return existing;
 
-  return prisma.user.upsert({
+  return client.user.upsert({
     where: { id: 'system' },
     update: {},
     create: {

@@ -369,10 +369,6 @@ model CustomerCase {
   internalNotes        String?
   finalReportStatus    String?    // 'NOT_GENERATED' | 'DRAFT' | 'SENT'
   customerReportStatus String?
-  // When true, the first eligible worker to request a job in this project is
-  // assigned immediately without owner approval (spec §9.2). Default: approval
-  // required (§9).
-  autoApproveJoins     Boolean    @default(false)
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
 

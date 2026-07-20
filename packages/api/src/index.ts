@@ -5,6 +5,8 @@ import multipart from '@fastify/multipart';
 import { ZodError } from 'zod';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { prisma } from './lib/prisma.js';
+import { CommitmentConflictError } from './lib/commitment.js';
+import { AppError } from './lib/errors.js';
 
 // Route plugins
 import { customersRoutes } from './routes/customers.js';
@@ -68,6 +70,16 @@ async function build() {
           message: issue.message,
         })),
       });
+    }
+
+    // Same-day commitment guard conflict (§12.1, §13) — 409 with the rule code.
+    if (error instanceof CommitmentConflictError) {
+      return reply.status(409).send({ error: error.code, message: error.message });
+    }
+
+    // Typed, exposable staffing/domain errors (e.g. capacity/leader/backup decisions).
+    if (error instanceof AppError) {
+      return reply.status(error.statusCode).send({ error: error.code, message: error.message, ...(error.data ?? {}) });
     }
 
     if (error instanceof PrismaClientKnownRequestError) {

@@ -24,6 +24,7 @@ type BoardShift = {
   openSpots: number;
   myStatus: MyStatus;
   myShiftId: string | null;
+  blockedSameDay: boolean;
 };
 
 type Filter = 'ALL' | 'MINE' | 'OPEN' | 'CONFIRM';
@@ -33,7 +34,7 @@ function matchesFilter(s: BoardShift, f: Filter): boolean {
     case 'MINE':
       return s.myStatus === 'APPROVED' || s.myStatus === 'PENDING';
     case 'OPEN':
-      return s.myStatus === 'NONE' && s.openSpots > 0;
+      return s.myStatus === 'NONE' && s.openSpots > 0 && !s.blockedSameDay;
     case 'CONFIRM':
       return s.myStatus === 'AWAITING_WORKER';
     default:
@@ -68,7 +69,7 @@ export default function BoardScreen() {
       qc.invalidateQueries({ queryKey: ['board'] });
       qc.invalidateQueries({ queryKey: ['my-shifts'] });
     },
-    onError: (err: any) => Alert.alert('שגיאה', err.response?.data?.error ?? 'לא ניתן לשלוח בקשה'),
+    onError: (err: any) => Alert.alert('שגיאה', err.response?.data?.message ?? err.response?.data?.error ?? 'לא ניתן לשלוח בקשה'),
   });
 
   function confirmJoin(shift: BoardShift) {
@@ -169,11 +170,31 @@ function BoardCard({ shift, onJoin, joining }: { shift: BoardShift; onJoin: () =
         </Text>
         {shift.address ? <Text style={styles.addressLight}>{shift.address}</Text> : null}
         <Names workers={shift.assignedWorkers} light />
+        <Text style={styles.fullLabel}>העבודה מלאה</Text>
       </View>
     );
   }
 
-  // 2) Open spots (not mine): white + type strip + ask to join.
+  // 2) Open spots but the worker is already committed/unavailable that date (§8.1).
+  if (shift.myStatus === 'NONE' && shift.openSpots > 0 && shift.blockedSameDay) {
+    return (
+      <View style={[styles.card, styles.stripCard, { borderRightColor: tColor, opacity: 0.7 }]}>
+        <View style={styles.headerRow}>
+          <Text style={[styles.type, { color: tColor }]}>{typeLabel(shift.jobType)}</Text>
+          <Text style={styles.date}>{formatDate(shift.date)}</Text>
+        </View>
+        <Text style={styles.customer}>{shift.customerName}</Text>
+        <Text style={styles.time}>
+          {formatTime(shift.plannedStart)}–{formatTime(shift.plannedEnd)}
+        </Text>
+        {shift.address ? <Text style={styles.address}>{shift.address}</Text> : null}
+        <Names workers={shift.assignedWorkers} />
+        <Text style={styles.blockedLabel}>כבר יש לך בקשה או שיבוץ בתאריך זה</Text>
+      </View>
+    );
+  }
+
+  // 3) Open spots (not mine): white + type strip + ask to join.
   if (shift.myStatus === 'NONE' && shift.openSpots > 0) {
     return (
       <View style={[styles.card, styles.stripCard, { borderRightColor: tColor }]}>
@@ -250,6 +271,8 @@ const styles = StyleSheet.create({
   time: { fontSize: 14, color: colors.text, marginTop: 4 },
   timeLight: { fontSize: 14, color: colors.white, marginTop: 4 },
   openSpots: { fontSize: 13, color: colors.primaryDark, fontWeight: '700', marginTop: 6 },
+  fullLabel: { fontSize: 12, color: 'rgba(255,255,255,0.9)', fontWeight: '700', marginTop: 8 },
+  blockedLabel: { fontSize: 12, color: colors.muted, fontWeight: '600', marginTop: 8 },
   namesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   namesEmpty: { fontSize: 12, color: colors.muted, marginTop: 8 },
   lightMuted: { color: 'rgba(255,255,255,0.85)' },

@@ -144,8 +144,8 @@ export default function WorkerShiftsPage() {
       setJoinTarget(null);
       await loadBoard();
     } catch (err) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-      setMessage(msg ? `הבקשה נכשלה: ${msg}` : 'שליחת הבקשה נכשלה.');
+      const data = (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
+      setMessage(data?.message ?? (data?.error ? `הבקשה נכשלה: ${data.error}` : 'שליחת הבקשה נכשלה.'));
     } finally {
       setBusy(null);
     }
@@ -180,8 +180,8 @@ export default function WorkerShiftsPage() {
         setMessage(accepted ? 'אישרת את השיבוץ.' : 'דחית את השיבוץ.');
         await loadBoard();
       } catch (err) {
-        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-        setMessage(msg ? `הפעולה נכשלה: ${msg}` : 'הפעולה נכשלה.');
+        const data = (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
+        setMessage(data?.message ?? (data?.error ? `הפעולה נכשלה: ${data.error}` : 'הפעולה נכשלה.'));
       } finally {
         setBusy(null);
       }
@@ -423,6 +423,7 @@ function ShiftCard({
           <Users className="w-3.5 h-3.5 text-white/80" />
           <AssignedNames workers={shift.assignedWorkers} light />
         </div>
+        <p className="mt-2 text-[11px] font-semibold text-white/90">העבודה מלאה</p>
       </div>
     );
   }
