@@ -1,0 +1,9 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "SWEEP_API_URL": "http://localhost:3001/api/v1/internal/sweeps/attendance",
+    "INTERNAL_SWEEP_SECRET": "local-dev-secret"
+  }
+}
