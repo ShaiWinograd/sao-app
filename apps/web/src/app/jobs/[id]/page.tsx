@@ -47,7 +47,7 @@ type ApiJobDetail = {
   addressId: string | null;
   jobNotes: string | null;
   workerVisibleNotes: string | null;
-  address?: { fullAddress: string } | null;
+  address?: { fullAddress: string; latitude?: number | null; longitude?: number | null } | null;
   customer: { firstName: string; lastName: string; phone: string; isSystem?: boolean };
   slots: ApiJobSlot[];
   shifts: ApiJobShift[];
@@ -1160,6 +1160,14 @@ export default function JobDetailPage() {
               </button>
             )}
           </div>
+          {job.address && (job.address.latitude == null || job.address.longitude == null) && (
+            <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>
+                לכתובת העבודה אין קואורדינטות — ניטור מיקום (כניסה/יציאה מהאזור) אינו פעיל למשמרת זו. הנוכחות אינה מוגנת ע״י כלל 500 מ׳ ותיבדק ידנית לפי הצורך.
+              </span>
+            </div>
+          )}
           {job.shifts.length === 0 ? (
             <p className="text-sm text-gray-400">אין עובדים משובצים לעבודה זו</p>
           ) : (

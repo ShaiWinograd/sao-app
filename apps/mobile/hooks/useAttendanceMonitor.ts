@@ -93,9 +93,10 @@ export function useAttendanceMonitor({ shiftId, attendanceStatus, areaExitDeadli
     } catch {
       return; // no fix this cycle — try again next cadence
     }
-    // Periodic during-work check (context only; never a route history).
-    void api.post('/attendance/location-check', { shiftId, latitude: reading.latitude, longitude: reading.longitude }).catch(() => {});
-
+    // Privacy (§16.3): distance is evaluated ON DEVICE from the job coordinates —
+    // we never send a stream of coordinates to the server, so no location trail is
+    // stored. Only the derived radius-state transitions (exit/return, which carry
+    // no coordinates) are reported.
     const { state: next, action } = reduceReading(stateRef.current, reading, jobCoords, radiusMeters, Date.now());
     setState(next);
     if (action === 'SEND_EXIT') {
