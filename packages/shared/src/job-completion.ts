@@ -1,10 +1,12 @@
-// Automatic job completion rule (spec §4.3).
+// Automatic job completion rule (spec §16.6, §17.1).
 //
-// A job may move automatically to COMPLETED when all regular workers who worked
-// the job have clocked out, with no unresolved attendance issue. The following
-// do NOT block completion: missing end-of-shift forms, backup workers who did
-// not work, and removed workers. An automatic clock-out awaiting owner review
-// blocks completion until resolved.
+// A job may move to COMPLETED only once EVERY expected regular worker and team
+// leader has a resolved outcome: valid worked attendance (clocked in and out with
+// nothing awaiting review) OR an explicit "Did not work" (NO_SHOW). The following
+// do NOT block completion: missing end-of-shift forms, backup workers who did not
+// work, and removed workers. A backup who actually worked becomes a participant
+// and must also be fully resolved. An automatic clock-out / correction awaiting
+// owner review blocks completion until resolved.
 
 export type CompletionShift = {
   // Assignment lifecycle status (only APPROVED assignments are considered).
@@ -23,34 +25,44 @@ export type JobCompletionResult = {
   blockingReasons: string[];
 };
 
+function isResolvedOutcome(s: CompletionShift, reasons: Set<string>): void {
+  // Explicit "Did not work" is a resolved outcome (spec §16.5).
+  if (s.attendanceStatus === 'NO_SHOW') return;
+  // Otherwise the worker must have valid worked attendance.
+  if (s.actualStart == null) {
+    reasons.add('a worker has no attendance outcome yet');
+    return;
+  }
+  if (s.attendanceStatus === 'CLOCKED_IN' || s.actualEnd == null) {
+    reasons.add('a worker has not clocked out');
+  }
+  if (s.requiresReview) {
+    reasons.add('attendance awaiting owner review');
+  }
+}
+
 export function evaluateJobCompletion(shifts: CompletionShift[]): JobCompletionResult {
-  const reasons: string[] = [];
+  const reasons = new Set<string>();
 
-  // Regular (non-backup) approved workers who actually worked. Team leaders are
-  // regular workers for completion purposes; backups and removed workers are
-  // ignored (spec §4.3, §11).
-  const regularWorked = shifts.filter(
-    (s) =>
-      s.joinRequestStatus === 'APPROVED' &&
-      s.assignmentRole !== 'BACKUP' &&
-      s.actualStart != null,
+  // Regular (non-backup) approved workers, including team leaders. Every one of
+  // them must reach a resolved outcome before the job can complete (§17.1).
+  const regulars = shifts.filter(
+    (s) => s.joinRequestStatus === 'APPROVED' && s.assignmentRole !== 'BACKUP',
   );
 
-  if (regularWorked.length === 0) {
-    return { complete: false, blockingReasons: ['no regular worker has worked yet'] };
+  if (regulars.length === 0) {
+    return { complete: false, blockingReasons: ['no regular worker assigned'] };
   }
 
-  const notClockedOut = regularWorked.some(
-    (s) => s.attendanceStatus === 'CLOCKED_IN' || s.actualEnd == null,
+  for (const s of regulars) isResolvedOutcome(s, reasons);
+
+  // A backup who actually worked becomes a worked participant (§16.6) and must
+  // also be clocked out with nothing awaiting review. Backups who did not work
+  // are ignored.
+  const workedBackups = shifts.filter(
+    (s) => s.joinRequestStatus === 'APPROVED' && s.assignmentRole === 'BACKUP' && s.actualStart != null,
   );
-  if (notClockedOut) {
-    reasons.push('a regular worker has not clocked out');
-  }
+  for (const s of workedBackups) isResolvedOutcome(s, reasons);
 
-  const reviewPending = regularWorked.some((s) => s.requiresReview);
-  if (reviewPending) {
-    reasons.push('attendance awaiting owner review');
-  }
-
-  return { complete: reasons.length === 0, blockingReasons: reasons };
+  return { complete: reasons.size === 0, blockingReasons: [...reasons] };
 }

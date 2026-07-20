@@ -147,16 +147,21 @@ export const CreateWorkerAvailabilitySchema = z
 
 export const ClockInSchema = z.object({
   shiftId: z.string(),
-  latitude: z.number(),
-  longitude: z.number(),
+  // Optional: absent when the worker denied/lacks location permission (§16.1 —
+  // clock-in is still allowed but flagged for owner review).
+  latitude: z.number().nullish(),
+  longitude: z.number().nullish(),
   timestamp: z.string(),
+  // Optional worker note requesting owner review of an otherwise-normal clock-in.
+  reviewNote: z.string().optional(),
 });
 
 export const ClockOutSchema = z.object({
   shiftId: z.string(),
-  latitude: z.number(),
-  longitude: z.number(),
+  latitude: z.number().nullish(),
+  longitude: z.number().nullish(),
   timestamp: z.string(),
+  reviewNote: z.string().optional(),
 });
 
 export const AttendanceCorrectionSchema = z.object({
