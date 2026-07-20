@@ -109,16 +109,22 @@ export default function ShiftsScreen() {
       qc.invalidateQueries({ queryKey: ['my-shifts'] });
       qc.invalidateQueries({ queryKey: ['board'] });
     },
-    onError: (err: any) => Alert.alert('שגיאה', err.response?.data?.error ?? 'הפעולה נכשלה'),
+    onError: (err: any) => Alert.alert('שגיאה', err.response?.data?.message ?? err.response?.data?.error ?? 'הפעולה נכשלה'),
   });
 
   const replacementMutation = useMutation({
     mutationFn: (shiftId: string) => api.post(`/shifts/${shiftId}/replacement`, { reason: 'בקשת החלפה מהאפליקציה' }),
-    onSuccess: () => {
-      toast.show('בקשת ההחלפה נשלחה. תישארי משובצת עד לאישור בעל/ת העסק.');
+    onSuccess: (res: any) => {
+      // Within 48h of the job the drop is immediate (a backup is auto-promoted);
+      // otherwise it opens a replacement request the owner resolves (§13.2).
+      toast.show(
+        res?.data?.autoPromoted
+          ? 'שוחררת מהמשמרת. גיבוי שובץ במקומך.'
+          : 'בקשת ההחלפה נשלחה. תישארי משובצת עד לאישור בעל/ת העסק.',
+      );
       qc.invalidateQueries({ queryKey: ['my-shifts'] });
     },
-    onError: (err: any) => Alert.alert('שגיאה', err.response?.data?.error ?? 'שליחת הבקשה נכשלה'),
+    onError: (err: any) => Alert.alert('שגיאה', err.response?.data?.message ?? err.response?.data?.error ?? 'שליחת הבקשה נכשלה'),
   });
 
   const { data: swaps } = useQuery<any[]>({

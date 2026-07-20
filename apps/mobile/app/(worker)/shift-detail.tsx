@@ -177,16 +177,20 @@ export default function ShiftDetailScreen() {
       toast.show(accepted ? 'אישרת את השיבוץ.' : 'דחית את השיבוץ.');
       invalidate();
     },
-    onError: (err: any) => Alert.alert('שגיאה', err?.response?.data?.error ?? 'הפעולה נכשלה'),
+    onError: (err: any) => Alert.alert('שגיאה', err?.response?.data?.message ?? err?.response?.data?.error ?? 'הפעולה נכשלה'),
   });
 
   const replacement = useMutation({
     mutationFn: () => api.post(`/shifts/${id}/replacement`, { reason: 'בקשת החלפה מהאפליקציה' }),
-    onSuccess: () => {
-      toast.show('בקשת ההחלפה נשלחה. תישארי משובצת עד לאישור בעל/ת העסק.');
+    onSuccess: (res: any) => {
+      toast.show(
+        res?.data?.autoPromoted
+          ? 'שוחררת מהמשמרת. גיבוי שובץ במקומך.'
+          : 'בקשת ההחלפה נשלחה. תישארי משובצת עד לאישור בעל/ת העסק.',
+      );
       invalidate();
     },
-    onError: (err: any) => Alert.alert('שגיאה', err?.response?.data?.error ?? 'שליחת הבקשה נכשלה'),
+    onError: (err: any) => Alert.alert('שגיאה', err?.response?.data?.message ?? err?.response?.data?.error ?? 'שליחת הבקשה נכשלה'),
   });
 
   const proposeSwap = useMutation({
