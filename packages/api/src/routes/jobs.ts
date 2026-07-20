@@ -9,6 +9,7 @@ import { evaluateJobPublishReadiness } from '@workforce/shared';
 import { requiresReapproval } from '@workforce/shared';
 import { validateCapacityReduction } from '@workforce/shared';
 import { isUnavailableOn } from '@workforce/shared';
+import { evaluateJobCompletion } from '@workforce/shared';
 import type { AvailabilityBlock } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
 import { AppError } from '../lib/errors.js';
@@ -729,6 +730,94 @@ export async function jobsRoutes(app: FastifyInstance) {
     const updated = await prisma.job.update({ where: { id }, data: { status: 'APPROVED' } });
     await logAudit((req as any).user, 'APPROVE', 'Job', id, { status: job.status }, { status: 'APPROVED' }, 'approve');
     return updated;
+  });
+
+  // Owner manually marks a job Completed (spec §17.2). Every assigned regular
+  // worker and team leader must have a resolved attendance outcome first. The
+  // owner may resolve any that are missing inline via `resolutions`: each is
+  // either { outcome: 'DID_NOT_WORK' } or { outcome: 'WORKED', clockIn, clockOut }.
+  // When outcomes are still missing, responds 409 with the list so the UI can
+  // show the per-worker resolution screen. All resolutions + the status change +
+  // audits are atomic.
+  app.post('/:id/complete', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const user = (req as any).user;
+    const { id } = req.params as { id: string };
+    const { resolutions } = (req.body ?? {}) as {
+      resolutions?: Array<{ shiftId: string; outcome: 'WORKED' | 'DID_NOT_WORK'; clockIn?: string; clockOut?: string }>;
+    };
+
+    const job = await prisma.job.findUnique({ where: { id }, select: { id: true, status: true } });
+    if (!job) return reply.status(404).send({ error: 'Job not found' });
+    if (job.status === 'COMPLETED') return reply.status(409).send({ error: 'העבודה כבר הושלמה.' });
+    if (job.status === 'ARCHIVED') return reply.status(409).send({ error: 'לא ניתן להשלים עבודה שהוסרה.' });
+
+    const completed = await prisma.$transaction(async (tx) => {
+      for (const r of resolutions ?? []) {
+        const s = await tx.shift.findFirst({ where: { id: r.shiftId, jobId: id }, select: { id: true, attendanceStatus: true } });
+        if (!s) throw new AppError(400, 'INVALID_RESOLUTION', 'אחת מהעובדות שנבחרו אינה משובצת לעבודה זו.');
+        if (r.outcome === 'DID_NOT_WORK') {
+          await tx.shift.update({
+            where: { id: r.shiftId },
+            data: { attendanceStatus: 'NO_SHOW', requiresReview: false, actualStart: null, actualEnd: null, approvedHours: null, isDailyPaymentEligible: false },
+          });
+          await logAudit(user, 'UPDATE', 'Shift', r.shiftId, { attendanceStatus: s.attendanceStatus }, { attendanceStatus: 'NO_SHOW' }, 'manual-complete:did-not-work', tx);
+        } else {
+          if (!r.clockIn || !r.clockOut) throw new AppError(400, 'INVALID_RESOLUTION', 'יש להזין שעת התחלה וסיום עבור עובד/ת שעבד/ה.');
+          const hours = (new Date(r.clockOut).getTime() - new Date(r.clockIn).getTime()) / (1000 * 60 * 60);
+          if (!(hours > 0)) throw new AppError(400, 'INVALID_RESOLUTION', 'שעת הסיום חייבת להיות אחרי שעת ההתחלה.');
+          await tx.shift.update({
+            where: { id: r.shiftId },
+            data: {
+              actualStart: new Date(r.clockIn),
+              actualEnd: new Date(r.clockOut),
+              attendanceStatus: 'CORRECTED',
+              clockInMethod: 'MANUALLY_ADDED',
+              clockOutMethod: 'MANUALLY_ADDED',
+              requiresReview: false,
+              approvedHours: hours.toFixed(2),
+              isDailyPaymentEligible: true,
+            },
+          });
+          await logAudit(user, 'CORRECTION', 'Shift', r.shiftId, { attendanceStatus: s.attendanceStatus }, { actualStart: r.clockIn, actualEnd: r.clockOut }, 'manual-complete:worked', tx);
+        }
+      }
+
+      const shifts = await tx.shift.findMany({
+        where: { jobId: id },
+        select: {
+          id: true,
+          joinRequestStatus: true,
+          assignmentRole: true,
+          attendanceStatus: true,
+          actualStart: true,
+          actualEnd: true,
+          requiresReview: true,
+          workerNameSnapshot: true,
+        },
+      });
+      const result = evaluateJobCompletion(shifts);
+      if (!result.complete) {
+        const unresolved = shifts
+          .filter(
+            (s) =>
+              s.joinRequestStatus === 'APPROVED' &&
+              s.assignmentRole !== 'BACKUP' &&
+              s.attendanceStatus !== 'NO_SHOW' &&
+              (s.actualStart == null || s.actualEnd == null || s.attendanceStatus === 'CLOCKED_IN' || s.requiresReview),
+          )
+          .map((s) => ({ shiftId: s.id, workerName: s.workerNameSnapshot, attendanceStatus: s.attendanceStatus, requiresReview: s.requiresReview }));
+        throw new AppError(409, 'ATTENDANCE_UNRESOLVED', 'יש עובדות ללא נוכחות סופית. יש לקבוע לכל אחת: עבדה או לא עבדה.', {
+          blockingReasons: result.blockingReasons,
+          unresolved,
+        });
+      }
+
+      const upd = await tx.job.update({ where: { id }, data: { status: 'COMPLETED' } });
+      await logAudit(user, 'UPDATE', 'Job', id, { status: job.status }, { status: 'COMPLETED' }, 'manual-complete', tx);
+      return upd;
+    });
+
+    return completed;
   });
 
   // Owner returns a job to reservation (spec §14–15). Workers remain assigned.

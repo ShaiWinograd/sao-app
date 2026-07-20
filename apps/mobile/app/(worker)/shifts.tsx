@@ -26,41 +26,43 @@ export default function ShiftsScreen() {
 
   const clockInMutation = useMutation({
     mutationFn: async (shiftId: string) => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') throw new Error('location_denied');
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      return api.post('/attendance/clock-in', {
-        shiftId,
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-        timestamp: new Date().toISOString(),
-      });
+      // Best-effort location: §16.1 allows clock-in without permission (server
+      // flags it for owner review) — never block on a denied/failed fix.
+      let latitude: number | null = null;
+      let longitude: number | null = null;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+          latitude = loc.coords.latitude;
+          longitude = loc.coords.longitude;
+        }
+      } catch {
+        /* no location — proceed, server marks for review */
+      }
+      return api.post('/attendance/clock-in', { shiftId, latitude, longitude, timestamp: new Date().toISOString() });
     },
-    onSuccess: () => {
-      toast.show('כניסה למשמרת נרשמה בהצלחה');
+    onSuccess: (res: any) => {
+      toast.show(res?.data?.needsReview ? 'הכניסה נרשמה וממתינה לאישור בעל/ת העסק' : 'כניסה למשמרת נרשמה בהצלחה');
       qc.invalidateQueries({ queryKey: ['my-shifts'] });
     },
     onError: (err: any) => {
-      const msg = err.response?.data?.message ?? err.message;
-      if (msg === 'location_denied') {
-        Alert.alert('שגיאה', 'נדרשת הרשאת מיקום. אפשר גישה למיקום בהגדרות.');
-      } else if (err.response?.data?.error === 'outside_radius') {
-        Alert.alert('מחוץ לתחום', HE.messages.locationBlocked);
-      } else {
-        Alert.alert('שגיאה', msg);
-      }
+      Alert.alert('שגיאה', err.response?.data?.message ?? err.response?.data?.error ?? 'לא ניתן לרשום כניסה');
     },
   });
 
   const clockOutMutation = useMutation({
     mutationFn: async (shiftId: string) => {
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      return api.post('/attendance/clock-out', {
-        shiftId,
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-        timestamp: new Date().toISOString(),
-      });
+      let latitude: number | null = null;
+      let longitude: number | null = null;
+      try {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        latitude = loc.coords.latitude;
+        longitude = loc.coords.longitude;
+      } catch {
+        /* proceed without location */
+      }
+      return api.post('/attendance/clock-out', { shiftId, latitude, longitude, timestamp: new Date().toISOString() });
     },
     onSuccess: (_data, shiftId) => {
       setEndFlowShiftId(shiftId);

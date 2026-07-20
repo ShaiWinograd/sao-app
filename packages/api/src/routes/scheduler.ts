@@ -21,11 +21,6 @@ async function getOwnerIds(): Promise<string[]> {
   return owners.map((o) => o.id);
 }
 
-// End of the calendar day AFTER the given date — the end-of-shift form deadline (§21).
-function endOfNextDay(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 2, 0, 0, 0);
-}
-
 function heDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
@@ -89,58 +84,6 @@ async function runAutoClockOut(now: Date): Promise<number> {
   return stuck.length;
 }
 
-// §21 — remind workers (every 3h) to submit missing end-of-shift forms while the
-// edit window is open; flag overdue forms to the owner once the window closes.
-async function runFormReminders(now: Date): Promise<{ reminded: number; overdue: number }> {
-  const candidates = await prisma.shift.findMany({
-    where: {
-      formStatus: 'NOT_SUBMITTED',
-      attendanceStatus: { in: ['CLOCKED_OUT', 'CORRECTED', 'AUTO_CLOCKED_OUT'] },
-      actualEnd: { not: null },
-    },
-    include: { worker: { select: { userId: true } }, job: { select: { date: true } } },
-  });
-
-  let reminded = 0;
-  let overdue = 0;
-  const ownerIds = candidates.length ? await getOwnerIds() : [];
-
-  for (const s of candidates) {
-    const deadline = endOfNextDay(s.actualEnd ?? s.job.date);
-    if (now <= deadline) {
-      // Window open → remind the worker at most once per 3 hours.
-      if (!(await hasRecentNotification(s.worker.userId, 'FORM_REMINDER', 3 * 3_600_000, s.id))) {
-        await prisma.notification.create({
-          data: {
-            userId: s.worker.userId,
-            title: 'תזכורת: טופס סיום משמרת',
-            body: `נותר למלא את טופס סיום המשמרת לעבודה בתאריך ${heDate(s.job.date)}.`,
-            data: { type: 'FORM_REMINDER', shiftId: s.id } as any,
-          },
-        });
-        reminded += 1;
-      }
-    } else {
-      // Window closed → the form is overdue; notify owners once.
-      const alreadyFlagged = ownerIds.length
-        ? await hasRecentNotification(ownerIds[0], 'FORM_OVERDUE', 365 * 24 * 3_600_000, s.id)
-        : true;
-      if (!alreadyFlagged && ownerIds.length) {
-        await prisma.notification.createMany({
-          data: ownerIds.map((userId) => ({
-            userId,
-            title: 'טופס סיום חסר (באיחור)',
-            body: `לא הוגש טופס סיום למשמרת בתאריך ${heDate(s.job.date)}.`,
-            data: { type: 'FORM_OVERDUE', shiftId: s.id } as any,
-          })),
-        });
-        overdue += 1;
-      }
-    }
-  }
-  return { reminded, overdue };
-}
-
 // §19 / §12.3 — one consolidated 19:00 reminder per worker for assignments still
 // awaiting their approval. Repeats daily until resolved.
 async function runDailyApprovalReminders(): Promise<number> {
@@ -187,15 +130,15 @@ export async function schedulerRoutes(app: FastifyInstance) {
 
     const now = new Date();
     const autoClockedOut = await runAutoClockOut(now);
-    const forms = await runFormReminders(now);
+    // End-of-shift form reminders/overdue now run on the every-minute attendance
+    // sweep (POST /internal/sweeps/attendance) using persisted timestamps, so they
+    // are intentionally NOT handled here to avoid duplicate reminders.
     // Daily approval reminders fire only during the 19:00 hour (Israel).
     const dailyReminders = israelHour(now) === 19 ? await runDailyApprovalReminders() : 0;
 
     return {
       ranAt: now.toISOString(),
       autoClockedOut,
-      formReminders: forms.reminded,
-      overdueForms: forms.overdue,
       dailyApprovalReminders: dailyReminders,
     };
   });

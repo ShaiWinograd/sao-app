@@ -93,6 +93,7 @@ enum AssignmentRole {
 
 enum AttendanceStatus {
   SCHEDULED
+  PROPOSED
   CLOCKED_IN
   CLOCKED_OUT
   NO_SHOW
@@ -346,6 +347,11 @@ model Address {
   accessNotes      String?
   parkingNotes     String?
   elevatorNotes    String?
+  // Geocoded coordinates for the 500m attendance geofence (§16.1/§16.4). Nullable
+  // until an address is geocoded; when absent, attendance falls back to the
+  // owner-review flow and the mobile leaving-area watcher stays inactive.
+  latitude         Float?
+  longitude        Float?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
@@ -459,6 +465,15 @@ model Shift {
   isDailyPaymentEligible  Boolean            @default(false)
   workerNameSnapshot      String
   requiresReview          Boolean            @default(false)
+  // ── Persisted time-based state for the attendance sweep (spec §16.2/§16.4/§17.3).
+  // Timers live in the DB (not app/mobile memory) so restarts/downtime never skip
+  // scheduled actions; the sweep re-reads and re-checks these transactionally.
+  proposedClockIn         DateTime?          // §16.2 proposed clock-in time (== scheduledStart) once a missing-clock-in proposal is created
+  areaExitAt              DateTime?          // §16.4 first confirmed exit from the geofence
+  areaExitDeadline        DateTime?          // §16.4 auto-clock-out deadline (areaExitAt + 15m)
+  formDeadline            DateTime?          // §17.3 end-of-next-day deadline for the end form (set at clock-out when a form is enabled)
+  formLastReminderAt      DateTime?          // §17.3 last end-form reminder sent (drives the every-3h cadence)
+  formOverdue             Boolean            @default(false) // §17.3 end form passed its deadline (informational)
   createdAt               DateTime           @default(now())
   updatedAt               DateTime           @updatedAt
 

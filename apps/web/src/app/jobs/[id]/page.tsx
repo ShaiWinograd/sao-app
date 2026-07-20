@@ -24,6 +24,8 @@ type ApiJobShift = {
   joinRequestStatus: string;
   assignmentRole?: string;
   formStatus: string;
+  requiresReview?: boolean;
+  formOverdue?: boolean;
   worker?: { firstName: string; lastName: string } | null;
   replacementRequests?: {
     id: string;
@@ -45,7 +47,7 @@ type ApiJobDetail = {
   addressId: string | null;
   jobNotes: string | null;
   workerVisibleNotes: string | null;
-  address?: { fullAddress: string } | null;
+  address?: { fullAddress: string; latitude?: number | null; longitude?: number | null } | null;
   customer: { firstName: string; lastName: string; phone: string; isSystem?: boolean };
   slots: ApiJobSlot[];
   shifts: ApiJobShift[];
@@ -96,10 +98,12 @@ const JOIN_STATUS_LABELS: Record<string, string> = {
 
 const ATTENDANCE_LABELS: Record<string, string> = {
   SCHEDULED: 'טרם החל',
+  PROPOSED: 'הוצע (ממתין לאישור)',
   CLOCKED_IN: 'נכנס',
   CLOCKED_OUT: 'סיים',
   AUTO_CLOCKED_OUT: 'סיים (אוטומטי)',
-  NO_SHOW: 'לא הגיע',
+  CORRECTED: 'תוקן ידנית',
+  NO_SHOW: 'לא עבד/ה',
 };
 
 function formatDate(value: string | null | undefined): string {
@@ -145,6 +149,10 @@ export default function JobDetailPage() {
   const [capacityValue, setCapacityValue] = useState('');
   const [capacityPicker, setCapacityPicker] = useState<{ newCount: number; needed: number; candidateIds: string[] } | null>(null);
   const [capacitySelected, setCapacitySelected] = useState<Record<string, boolean>>({});
+  // Manual completion resolution (§17.2): the workers still lacking a resolved
+  // attendance outcome, plus the owner's per-worker choice.
+  const [completeResolve, setCompleteResolve] = useState<Array<{ shiftId: string; workerName: string }> | null>(null);
+  const [resolveChoices, setResolveChoices] = useState<Record<string, { outcome: 'WORKED' | 'DID_NOT_WORK'; clockIn?: string; clockOut?: string }>>({});
   const [activity, setActivity] = useState<
     Array<{ id: string; action: string; entityType: string; reason: string | null; createdAt: string; performedBy?: { firstName: string; lastName: string } | null }>
   >([]);
@@ -327,6 +335,58 @@ export default function JobDetailPage() {
       setBusy(false);
     }
   }, [jobId, getToken, load]);
+
+  // §16.5: mark an assigned worker as "Did not work" (a resolved absence).
+  const markDidNotWork = useCallback(
+    async (shiftId: string) => {
+      setBusy(true);
+      setError(null);
+      try {
+        const auth = await authHeaders(getToken);
+        await api.post(`/attendance/${shiftId}/did-not-work`, {}, auth);
+        setNotice('העובד/ת סומנה כלא עבדה.');
+        await load();
+      } catch (err) {
+        const res = (err as { response?: { data?: { error?: string; message?: string } } })?.response;
+        setError(res?.data?.message ?? res?.data?.error ?? 'הפעולה נכשלה');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [getToken, load],
+  );
+
+  // §17.2: manually complete the job. If workers lack a resolved outcome the
+  // backend responds 409 ATTENDANCE_UNRESOLVED; we open the per-worker resolution
+  // screen and resend with the owner's choices.
+  const completeJob = useCallback(
+    async (
+      resolutions?: Array<{ shiftId: string; outcome: 'WORKED' | 'DID_NOT_WORK'; clockIn?: string; clockOut?: string }>,
+    ) => {
+      if (!jobId) return;
+      setBusy(true);
+      setError(null);
+      try {
+        const auth = await authHeaders(getToken);
+        await api.post(`/jobs/${jobId}/complete`, { resolutions: resolutions ?? [] }, auth);
+        setCompleteResolve(null);
+        setResolveChoices({});
+        setNotice('העבודה סומנה כהושלמה.');
+        await load();
+      } catch (err) {
+        const data = (err as { response?: { data?: { error?: string; message?: string; unresolved?: Array<{ shiftId: string; workerName: string }> } } })?.response?.data;
+        if (data?.error === 'ATTENDANCE_UNRESOLVED' && data.unresolved) {
+          setCompleteResolve(data.unresolved);
+          setResolveChoices(Object.fromEntries(data.unresolved.map((u) => [u.shiftId, { outcome: 'DID_NOT_WORK' as const }])));
+        } else {
+          setError(data?.message ?? data?.error ?? 'השלמת העבודה נכשלה');
+        }
+      } finally {
+        setBusy(false);
+      }
+    },
+    [jobId, getToken, load],
+  );
 
   // Apply a required-worker-count change. When the count drops below the number of
   // assigned regular/leader workers the backend returns MUST_SELECT_BACKUPS (with
@@ -1087,17 +1147,65 @@ export default function JobDetailPage() {
 
       {tab === 'attendance' && (
         <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-900 mb-3">נוכחות</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-gray-900">נוכחות</h2>
+            {job.status !== 'COMPLETED' && job.status !== 'ARCHIVED' && (
+              <button
+                onClick={() => void completeJob()}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                סימון כהושלם
+              </button>
+            )}
+          </div>
+          {job.address && (job.address.latitude == null || job.address.longitude == null) && (
+            <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>
+                לכתובת העבודה אין קואורדינטות — ניטור מיקום (כניסה/יציאה מהאזור) אינו פעיל למשמרת זו. הנוכחות אינה מוגנת ע״י כלל 500 מ׳ ותיבדק ידנית לפי הצורך.
+              </span>
+            </div>
+          )}
           {job.shifts.length === 0 ? (
             <p className="text-sm text-gray-400">אין עובדים משובצים לעבודה זו</p>
           ) : (
             <ul className="space-y-2">
-              {job.shifts.map((shift) => (
-                <li key={shift.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2">
-                  <span className="text-sm text-gray-800">{shift.workerNameSnapshot}</span>
-                  <span className="text-xs text-gray-500">{ATTENDANCE_LABELS[shift.attendanceStatus] ?? shift.attendanceStatus}</span>
-                </li>
-              ))}
+              {job.shifts
+                .filter((s) => s.joinRequestStatus === 'APPROVED')
+                .map((shift) => {
+                  const resolvable =
+                    shift.assignmentRole !== 'BACKUP' &&
+                    (shift.attendanceStatus === 'SCHEDULED' || shift.attendanceStatus === 'PROPOSED');
+                  return (
+                    <li key={shift.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 px-3 py-2">
+                      <span className="text-sm text-gray-800">
+                        {shift.workerNameSnapshot}
+                        {shift.assignmentRole === 'BACKUP' && <span className="text-[11px] text-amber-700"> · גיבוי</span>}
+                        {shift.assignmentRole === 'TEAM_LEADER' && <span className="text-[11px] text-emerald-700"> · ראש צוות</span>}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {shift.requiresReview && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
+                            <AlertTriangle className="w-3 h-3" />
+                            לבדיקה
+                          </span>
+                        )}
+                        <span className="text-xs text-gray-500">{ATTENDANCE_LABELS[shift.attendanceStatus] ?? shift.attendanceStatus}</span>
+                        {resolvable && (
+                          <button
+                            onClick={() => void markDidNotWork(shift.id)}
+                            disabled={busy}
+                            className="px-2 py-1 text-[11px] rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            לא עבד/ה
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
             </ul>
           )}
         </section>
@@ -1234,6 +1342,94 @@ export default function JobDetailPage() {
                 className="px-4 py-2 text-sm rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
               >
                 עדכון והעברה לגיבוי
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {completeResolve && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" dir="rtl">
+          <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
+            <h2 className="text-base font-bold text-gray-900 mb-1">השלמת עבודה — סיכום נוכחות</h2>
+            <p className="text-xs text-gray-500 mb-4">יש לקבוע לכל עובד/ת: עבד/ה (עם שעות) או לא עבד/ה.</p>
+            <div className="max-h-72 overflow-auto space-y-3 mb-4">
+              {completeResolve.map((u) => {
+                const choice = resolveChoices[u.shiftId] ?? { outcome: 'DID_NOT_WORK' as const };
+                return (
+                  <div key={u.shiftId} className="rounded-lg border border-gray-100 p-3">
+                    <div className="text-sm font-medium text-gray-800 mb-2">{u.workerName}</div>
+                    <div className="flex items-center gap-4 mb-2 text-sm">
+                      <label className="flex items-center gap-1.5">
+                        <input
+                          type="radio"
+                          name={`o-${u.shiftId}`}
+                          checked={choice.outcome === 'DID_NOT_WORK'}
+                          onChange={() => setResolveChoices((p) => ({ ...p, [u.shiftId]: { outcome: 'DID_NOT_WORK' } }))}
+                        />
+                        לא עבד/ה
+                      </label>
+                      <label className="flex items-center gap-1.5">
+                        <input
+                          type="radio"
+                          name={`o-${u.shiftId}`}
+                          checked={choice.outcome === 'WORKED'}
+                          onChange={() => setResolveChoices((p) => ({ ...p, [u.shiftId]: { outcome: 'WORKED', clockIn: p[u.shiftId]?.clockIn, clockOut: p[u.shiftId]?.clockOut } }))}
+                        />
+                        עבד/ה
+                      </label>
+                    </div>
+                    {choice.outcome === 'WORKED' && (
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <label className="text-gray-500">כניסה</label>
+                        <input
+                          type="datetime-local"
+                          value={choice.clockIn ?? ''}
+                          onChange={(e) => setResolveChoices((p) => ({ ...p, [u.shiftId]: { ...(p[u.shiftId] ?? { outcome: 'WORKED' }), outcome: 'WORKED', clockIn: e.target.value } }))}
+                          className="rounded border border-gray-300 px-2 py-1"
+                        />
+                        <label className="text-gray-500">יציאה</label>
+                        <input
+                          type="datetime-local"
+                          value={choice.clockOut ?? ''}
+                          onChange={(e) => setResolveChoices((p) => ({ ...p, [u.shiftId]: { ...(p[u.shiftId] ?? { outcome: 'WORKED' }), outcome: 'WORKED', clockOut: e.target.value } }))}
+                          className="rounded border border-gray-300 px-2 py-1"
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setCompleteResolve(null); setResolveChoices({}); }}
+                className="px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+              >
+                ביטול
+              </button>
+              <button
+                onClick={() => {
+                  const resolutions = completeResolve.map((u) => {
+                    const c = resolveChoices[u.shiftId] ?? { outcome: 'DID_NOT_WORK' as const };
+                    if (c.outcome === 'WORKED') {
+                      return {
+                        shiftId: u.shiftId,
+                        outcome: 'WORKED' as const,
+                        clockIn: c.clockIn ? new Date(c.clockIn).toISOString() : undefined,
+                        clockOut: c.clockOut ? new Date(c.clockOut).toISOString() : undefined,
+                      };
+                    }
+                    return { shiftId: u.shiftId, outcome: 'DID_NOT_WORK' as const };
+                  });
+                  const missingTimes = resolutions.some((r) => r.outcome === 'WORKED' && (!r.clockIn || !r.clockOut));
+                  if (missingTimes) { setError('יש להזין שעות כניסה ויציאה לכל עובד/ת שעבד/ה.'); return; }
+                  void completeJob(resolutions);
+                }}
+                disabled={busy}
+                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                אישור והשלמה
               </button>
             </div>
           </div>

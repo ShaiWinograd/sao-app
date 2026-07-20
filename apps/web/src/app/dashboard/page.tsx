@@ -52,7 +52,7 @@ type OwnerTasks = {
   pendingAcceptance: number;
   replacementRequests: number;
   swapApprovals: number;
-  missingForms: number;
+  attendanceReview: number;
   reportCorrections: number;
 };
 
@@ -558,6 +558,7 @@ export default function DashboardPage() {
       { key: 'pendingAcceptance', label: 'ממתין לאישור העובד/ת', count: attention.pendingAcceptance, href: '/jobs' },
       { key: 'replacementRequests', label: 'בקשות החלפה', count: attention.replacementRequests, href: '/shifts/swaps' },
       { key: 'swapApprovals', label: 'אישורי החלפת משמרות', count: attention.swapApprovals, href: '/shifts/swaps' },
+      { key: 'attendanceReview', label: 'נוכחות לבדיקה', count: attention.attendanceReview, href: '/attendance' },
       { key: 'reportCorrections', label: 'בקשות תיקון דוח', count: attention.reportCorrections, href: '/payroll' },
     ].filter((i) => i.count > 0);
   }, [attention]);

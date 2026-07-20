@@ -21,12 +21,29 @@ describe('evaluateJobCompletion', () => {
   it('does not complete while a regular worker is still clocked in', () => {
     const result = evaluateJobCompletion([shift(), shift({ attendanceStatus: 'CLOCKED_IN', actualEnd: null })]);
     expect(result.complete).toBe(false);
-    expect(result.blockingReasons).toContain('a regular worker has not clocked out');
+    expect(result.blockingReasons).toContain('a worker has not clocked out');
   });
 
   it('does not complete when no regular worker has worked yet', () => {
     const result = evaluateJobCompletion([shift({ actualStart: null, attendanceStatus: 'SCHEDULED', actualEnd: null })]);
     expect(result.complete).toBe(false);
+  });
+
+  it('blocks completion for an assigned regular with no attendance outcome (§17.1)', () => {
+    const result = evaluateJobCompletion([
+      shift(),
+      shift({ actualStart: null, actualEnd: null, attendanceStatus: 'SCHEDULED' }),
+    ]);
+    expect(result.complete).toBe(false);
+    expect(result.blockingReasons).toContain('a worker has no attendance outcome yet');
+  });
+
+  it('completes when an unclocked regular is explicitly marked Did not work (NO_SHOW)', () => {
+    const result = evaluateJobCompletion([
+      shift(),
+      shift({ actualStart: null, actualEnd: null, attendanceStatus: 'NO_SHOW' }),
+    ]);
+    expect(result.complete).toBe(true);
   });
 
   it('ignores backup workers who did not work', () => {
@@ -67,5 +84,14 @@ describe('evaluateJobCompletion', () => {
   it('treats a team leader as a regular worker', () => {
     const result = evaluateJobCompletion([shift({ assignmentRole: 'TEAM_LEADER', attendanceStatus: 'CLOCKED_IN', actualEnd: null })]);
     expect(result.complete).toBe(false);
+  });
+
+  it('blocks completion for a worked backup who has not clocked out (§16.6)', () => {
+    const result = evaluateJobCompletion([
+      shift(),
+      shift({ assignmentRole: 'BACKUP', attendanceStatus: 'CLOCKED_IN', actualEnd: null }),
+    ]);
+    expect(result.complete).toBe(false);
+    expect(result.blockingReasons).toContain('a worker has not clocked out');
   });
 });

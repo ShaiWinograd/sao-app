@@ -21,6 +21,7 @@ import { api } from '../../lib/api';
 import { colors, fonts, jobTypeColor } from '../../lib/theme';
 import { Screen, ScreenHeader, Card, Pill, Button } from '../../components/ui';
 import { useToast } from '../../components/toast';
+import { useAttendanceMonitor } from '../../hooks/useAttendanceMonitor';
 
 type Completion = 'COMPLETED' | 'PARTIALLY_COMPLETED' | 'NOT_COMPLETED';
 
@@ -39,6 +40,13 @@ function typeLabel(t?: string): string {
 function mapsUrl(address: string): string {
   const q = encodeURIComponent(address);
   return Platform.OS === 'ios' ? `http://maps.apple.com/?q=${q}` : `https://www.google.com/maps/search/?api=1&query=${q}`;
+}
+
+function formatCountdown(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 export default function ShiftDetailScreen() {
@@ -103,17 +111,23 @@ export default function ShiftDetailScreen() {
       .sort((a: any, b: any) => Number(b.lead) - Number(a.lead));
   }, [job]);
 
-  const invalidate = () => {
+  const invalidate = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['shift', id] });
     qc.invalidateQueries({ queryKey: ['my-shifts'] });
     qc.invalidateQueries({ queryKey: ['board'] });
-  };
+  }, [qc, id]);
 
-  const getPosition = async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') throw new Error('location_denied');
-    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-    return { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+  // Best-effort location: §16.1 allows clock-in even without permission (the
+  // server flags it for owner review), so we never block on a denied/failed fix.
+  const getPosition = async (): Promise<{ latitude: number | null; longitude: number | null }> => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return { latitude: null, longitude: null };
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      return { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+    } catch {
+      return { latitude: null, longitude: null };
+    }
   };
 
   const clockIn = useMutation({
@@ -121,14 +135,12 @@ export default function ShiftDetailScreen() {
       const pos = await getPosition();
       return api.post('/attendance/clock-in', { shiftId: id, ...pos, timestamp: new Date().toISOString() });
     },
-    onSuccess: () => {
-      toast.show('כניסה למשמרת נרשמה בהצלחה');
+    onSuccess: (res: any) => {
+      toast.show(res?.data?.needsReview ? 'הכניסה נרשמה וממתינה לאישור בעל/ת העסק' : 'כניסה למשמרת נרשמה בהצלחה');
       invalidate();
     },
     onError: (err: any) => {
-      if (err?.message === 'location_denied') Alert.alert('שגיאה', 'נדרשת הרשאת מיקום. אפשרי גישה בהגדרות.');
-      else if (err?.response?.data?.error === 'outside_radius') Alert.alert('מחוץ לתחום', HE.messages.locationBlocked);
-      else Alert.alert('שגיאה', err?.response?.data?.error ?? 'לא ניתן לרשום כניסה');
+      Alert.alert('שגיאה', err?.response?.data?.message ?? err?.response?.data?.error ?? 'לא ניתן לרשום כניסה');
     },
   });
 
@@ -144,7 +156,27 @@ export default function ShiftDetailScreen() {
       setFormOpen(true);
       invalidate();
     },
-    onError: () => Alert.alert('שגיאה', 'לא ניתן לרשום יציאה'),
+    onError: (err: any) => {
+      // The server sweep may have already auto-clocked-out (race). Reconcile to the
+      // authoritative state instead of showing a hard error.
+      const msg = err?.response?.data?.error;
+      if (msg === 'Already clocked out') {
+        toast.show('המשמרת כבר נסגרה.');
+        invalidate();
+      } else {
+        Alert.alert('שגיאה', 'לא ניתן לרשום יציאה');
+      }
+    },
+  });
+
+  // §16.2: worker confirms the owner-proposed start after a missing clock-in.
+  const confirmProposed = useMutation({
+    mutationFn: async () => api.post(`/attendance/${id}/confirm-proposed`, {}),
+    onSuccess: () => {
+      toast.show('אישרת את שעת ההתחלה. ממתין לאישור בעל/ת העסק.');
+      invalidate();
+    },
+    onError: (err: any) => Alert.alert('שגיאה', err?.response?.data?.error ?? 'הפעולה נכשלה'),
   });
 
   const submitForm = useMutation({
@@ -202,6 +234,19 @@ export default function ShiftDetailScreen() {
       invalidate();
     },
     onError: (err: any) => Alert.alert('שגיאה', err?.response?.data?.error ?? 'שליחת ההצעה נכשלה'),
+  });
+
+  // §16.3/§16.4 leaving-area watcher for this shift (active only while clocked in).
+  const jobCoords =
+    shift?.job?.address?.latitude != null && shift?.job?.address?.longitude != null
+      ? { latitude: shift.job.address.latitude as number, longitude: shift.job.address.longitude as number }
+      : null;
+  const areaMonitor = useAttendanceMonitor({
+    shiftId: id,
+    attendanceStatus: shift?.attendanceStatus ?? '',
+    areaExitDeadline: shift?.areaExitDeadline ?? null,
+    jobCoords,
+    refetch: invalidate,
   });
 
   if (isLoading) {
@@ -329,11 +374,22 @@ export default function ShiftDetailScreen() {
                 color={isActive ? colors.primary : colors.muted}
                 bg={isActive ? colors.primaryLight : '#f1eff4'}
               />
-              {!isActive && !isDone ? (
+              {shift.attendanceStatus === 'PROPOSED' ? (
+                <Button title="אישור שעת התחלה מוצעת" icon="checkmark-circle-outline" style={styles.mt12} loading={confirmProposed.isPending} onPress={() => confirmProposed.mutate()} />
+              ) : !isActive && !isDone ? (
                 <Button title={HE.worker.startShift} icon="log-in-outline" style={styles.mt12} loading={clockIn.isPending} onPress={() => clockIn.mutate()} />
               ) : null}
               {isActive ? (
                 <Button title={HE.worker.endShift} icon="log-out-outline" variant="danger" style={styles.mt12} loading={clockOut.isPending} onPress={() => clockOut.mutate()} />
+              ) : null}
+              {isActive && areaMonitor.pendingExit ? (
+                <View style={styles.exitPrompt}>
+                  <Text style={styles.exitPromptTitle}>עזבת את אזור העבודה</Text>
+                  <Text style={styles.exitPromptBody}>
+                    המשמרת תיסגר אוטומטית בעוד {formatCountdown(areaMonitor.remainingMs)} אם לא תחזרי לאזור. ניתן לסיים כעת.
+                  </Text>
+                  <Button title="סיום משמרת עכשיו" icon="log-out-outline" variant="danger" style={styles.mt8} loading={clockOut.isPending} onPress={() => clockOut.mutate()} />
+                </View>
               ) : null}
               {isDone && !formOpen ? (
                 <Button title="מילוי טופס סיום" icon="document-text-outline" variant="outline" style={styles.mt12} onPress={() => setFormOpen(true)} />
@@ -535,6 +591,9 @@ const styles = StyleSheet.create({
   noteValue: { fontSize: 14, color: colors.text, fontFamily: fonts.regular, textAlign: 'right', marginTop: 1 },
   mt8: { marginTop: 8 },
   mt12: { marginTop: 12 },
+  exitPrompt: { marginTop: 12, borderRadius: 12, borderWidth: 1, borderColor: '#fecaca', backgroundColor: '#fef2f2', padding: 12 },
+  exitPromptTitle: { fontSize: 15, fontWeight: '700', color: '#b91c1c' },
+  exitPromptBody: { fontSize: 13, color: '#7f1d1d', marginTop: 4 },
   field: { marginTop: 12 },
   fieldLabel: { fontSize: 13, color: colors.muted, fontFamily: fonts.semibold, textAlign: 'right', marginBottom: 6 },
   segment: { flexDirection: 'row', gap: 8 },

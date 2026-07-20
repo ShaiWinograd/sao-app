@@ -48,7 +48,7 @@ type OwnerTasks = {
   pendingAcceptance: number;
   replacementRequests: number;
   swapApprovals: number;
-  missingForms: number;
+  attendanceReview: number;
   reportCorrections: number;
 };
 
@@ -58,7 +58,7 @@ function OwnerTasksPanel({ tasks }: { tasks: OwnerTasks }) {
     { key: 'pendingAcceptance', label: 'ממתין לאישור העובד/ת' },
     { key: 'replacementRequests', label: 'בקשות החלפה' },
     { key: 'swapApprovals', label: 'אישורי החלפת משמרות', href: '/shifts/swaps' },
-    { key: 'missingForms', label: 'טפסים חסרים' },
+    { key: 'attendanceReview', label: 'נוכחות לבדיקה', href: '/attendance' },
     { key: 'reportCorrections', label: 'בקשות תיקון דוח', href: '/payroll' },
   ];
   const active = items.filter((i) => tasks[i.key] > 0);
