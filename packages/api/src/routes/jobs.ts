@@ -11,6 +11,8 @@ import { validateCapacityReduction } from '@workforce/shared';
 import { isUnavailableOn } from '@workforce/shared';
 import type { AvailabilityBlock } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
+import { AppError } from '../lib/errors.js';
+import { lockJob } from '../lib/commitment.js';
 import { z } from 'zod';
 
 const JOB_TYPE_HE: Record<string, string> = {
@@ -534,47 +536,49 @@ export async function jobsRoutes(app: FastifyInstance) {
       return reply.status(validationResult.statusCode).send({ error: validationResult.error });
     }
 
-    // §13 capacity change. When the required worker count is reduced below the
-    // number of currently-assigned regular/leader workers, the owner must pick
-    // exactly which of them become backups — the system never auto-selects,
-    // deletes, or rejects anyone. When it is increased, active workers are told
-    // that more positions opened.
+    // §13 capacity change. Handled atomically under a per-job advisory lock so a
+    // concurrent staffing change cannot invalidate the owner's backup selection
+    // between validation and apply. When the required count drops below the number
+    // of assigned regular/leader workers the owner must pick exactly which of them
+    // become backups (MUST_SELECT_BACKUPS) — the system never auto-selects, deletes
+    // or rejects anyone. The team-leader requirement must survive the reduction.
+    // Any invalid selection (including a shift concurrently removed or already
+    // demoted) rolls the whole change back. When the count increases, active
+    // workers are told that more positions opened.
     const newCount = body.requiredWorkerCount;
     let demotedUserIds: string[] = [];
     let capacityIncreased = false;
-    if (typeof newCount === 'number' && newCount !== existingJob.requiredWorkerCount) {
-      const regulars = await prisma.shift.findMany({
-        where: { jobId: id, joinRequestStatus: 'APPROVED', assignmentRole: { in: ['REGULAR', 'TEAM_LEADER'] } },
-        select: { id: true, worker: { select: { userId: true } } },
-      });
-      if (newCount < regulars.length) {
-        const check = validateCapacityReduction({
-          newRequiredCount: newCount,
-          regularShiftIds: regulars.map((r) => r.id),
-          demoteToBackupIds,
-        });
-        if (!check.ok) {
-          return reply.status(409).send({
-            error: check.code,
-            message: check.message,
-            needed: check.needed,
-            regularShiftIds: regulars.map((r) => r.id),
-          });
-        }
-        demotedUserIds = regulars.filter((r) => demoteToBackupIds.includes(r.id)).map((r) => r.worker.userId);
-      } else if (newCount > existingJob.requiredWorkerCount) {
-        capacityIncreased = true;
-      }
-    }
 
     const updated = await prisma.$transaction(async (tx) => {
-      if (demoteToBackupIds.length) {
-        await tx.shift.updateMany({
-          where: { id: { in: demoteToBackupIds }, jobId: id },
-          data: { assignmentRole: 'BACKUP' },
+      if (typeof newCount === 'number' && newCount !== existingJob.requiredWorkerCount) {
+        await lockJob(tx, id);
+        const regulars = await tx.shift.findMany({
+          where: { jobId: id, joinRequestStatus: 'APPROVED', assignmentRole: { in: ['REGULAR', 'TEAM_LEADER'] } },
+          select: { id: true, assignmentRole: true, worker: { select: { userId: true } } },
         });
-        for (const sid of demoteToBackupIds) {
-          await logAudit((req as any).user, 'UPDATE', 'Shift', sid, { assignmentRole: 'REGULAR' }, { assignmentRole: 'BACKUP' }, 'capacity-reduced', tx);
+        if (newCount < regulars.length) {
+          const regularShiftIds = regulars.map((r) => r.id);
+          // Selection validity + exact count. A selected shift that was concurrently
+          // removed or demoted is no longer in regularShiftIds → INVALID_SELECTION.
+          const check = validateCapacityReduction({ newRequiredCount: newCount, regularShiftIds, demoteToBackupIds });
+          if (!check.ok) {
+            throw new AppError(409, check.code, check.message, { needed: check.needed, regularShiftIds });
+          }
+          // The team-leader requirement must remain valid: the only leader may not
+          // be demoted while the job still requires a leader slot.
+          const requiresLeader = (await tx.jobSlot.count({ where: { jobId: id, requiredSkill: MANAGER_SKILL } })) > 0;
+          const demotedSet = new Set(demoteToBackupIds);
+          const leaderRemains = regulars.some((r) => r.assignmentRole === 'TEAM_LEADER' && !demotedSet.has(r.id));
+          if (requiresLeader && !leaderRemains) {
+            throw new AppError(409, 'LEADER_REQUIRED', 'לא ניתן להעביר את ראש הצוות לגיבוי — העבודה דורשת ראש צוות.', { regularShiftIds });
+          }
+          await tx.shift.updateMany({ where: { id: { in: demoteToBackupIds }, jobId: id }, data: { assignmentRole: 'BACKUP' } });
+          for (const sid of demoteToBackupIds) {
+            await logAudit((req as any).user, 'UPDATE', 'Shift', sid, { assignmentRole: 'REGULAR' }, { assignmentRole: 'BACKUP' }, 'capacity-reduced', tx);
+          }
+          demotedUserIds = regulars.filter((r) => demotedSet.has(r.id)).map((r) => r.worker.userId);
+        } else if (newCount > existingJob.requiredWorkerCount) {
+          capacityIncreased = true;
         }
       }
       return tx.job.update({ where: { id }, data: body as any });

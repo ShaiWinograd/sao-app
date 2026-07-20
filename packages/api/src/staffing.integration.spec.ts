@@ -13,7 +13,7 @@
  */
 import { PrismaClient, Prisma } from '@prisma/client';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { decideApproval, nextBackupToPromote } from '@workforce/shared';
+import { decideApproval, nextBackupToPromote, validateCapacityReduction, MANAGER_SKILL } from '@workforce/shared';
 import { assertWorkerFreeOnDate, lockJob, CommitmentConflictError } from './lib/commitment.js';
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
@@ -125,6 +125,35 @@ async function approveInTx(shiftId: string) {
     const role = decision.outcome === 'ASSIGN_BACKUP' ? 'BACKUP' : decision.role;
     await tx.shift.update({ where: { id: shiftId }, data: { joinRequestStatus: 'APPROVED', assignmentRole: role } });
     return role;
+  });
+}
+
+async function seedLeaderSlot(jobId: string) {
+  return prisma.jobSlot.create({ data: { jobId, requiredSkill: MANAGER_SKILL as any } });
+}
+
+// Mirrors the PATCH /jobs/:id capacity-reduction transaction body: under the job
+// lock, re-read the current regulars, validate the owner's backup selection with
+// the shared MUST_SELECT_BACKUPS contract, enforce team-leader preservation, then
+// demote — all atomic so a concurrent change rolls the whole thing back.
+async function reduceCapacityInTx(jobId: string, newCount: number, demoteToBackupIds: string[]) {
+  return prisma.$transaction(async (tx) => {
+    await lockJob(tx, jobId);
+    const regulars = await tx.shift.findMany({
+      where: { jobId, joinRequestStatus: 'APPROVED', assignmentRole: { in: ['REGULAR', 'TEAM_LEADER'] } },
+      select: { id: true, assignmentRole: true },
+    });
+    if (newCount < regulars.length) {
+      const regularShiftIds = regulars.map((r) => r.id);
+      const check = validateCapacityReduction({ newRequiredCount: newCount, regularShiftIds, demoteToBackupIds });
+      if (!check.ok) throw new Error(check.code);
+      const requiresLeader = (await tx.jobSlot.count({ where: { jobId, requiredSkill: MANAGER_SKILL as any } })) > 0;
+      const demotedSet = new Set(demoteToBackupIds);
+      const leaderRemains = regulars.some((r) => r.assignmentRole === 'TEAM_LEADER' && !demotedSet.has(r.id));
+      if (requiresLeader && !leaderRemains) throw new Error('LEADER_REQUIRED');
+      await tx.shift.updateMany({ where: { id: { in: demoteToBackupIds }, jobId }, data: { assignmentRole: 'BACKUP' } });
+    }
+    return tx.job.update({ where: { id: jobId }, data: { requiredWorkerCount: newCount } });
   });
 }
 
@@ -302,5 +331,91 @@ describe.skipIf(!TEST_DB)('§12–13 staffing concurrency (integration)', () => 
     ).rejects.toThrow('audit-failure');
     const count = await prisma.shift.count({ where: { workerId: worker.id } });
     expect(count).toBe(0);
+  });
+
+  it('reduces capacity with exactly the required backup selections', async () => {
+    const job = await seedJob(3);
+    const w1 = await seedWorker();
+    const w2 = await seedWorker();
+    const w3 = await seedWorker();
+    const r1 = await seedShift(job.id, w1.id, 'APPROVED', 'REGULAR');
+    const r2 = await seedShift(job.id, w2.id, 'APPROVED', 'REGULAR');
+    const r3 = await seedShift(job.id, w3.id, 'APPROVED', 'REGULAR');
+
+    await reduceCapacityInTx(job.id, 2, [r1.id]); // excess = 3 - 2 = 1
+
+    const after = await prisma.job.findUniqueOrThrow({ where: { id: job.id } });
+    expect(after.requiredWorkerCount).toBe(2);
+    expect((await prisma.shift.findUniqueOrThrow({ where: { id: r1.id } })).assignmentRole).toBe('BACKUP');
+    expect((await prisma.shift.findUniqueOrThrow({ where: { id: r2.id } })).assignmentRole).toBe('REGULAR');
+    expect((await prisma.shift.findUniqueOrThrow({ where: { id: r3.id } })).assignmentRole).toBe('REGULAR');
+  });
+
+  it('rejects too few or too many backup selections and changes nothing', async () => {
+    const job = await seedJob(3);
+    const w1 = await seedWorker();
+    const w2 = await seedWorker();
+    const w3 = await seedWorker();
+    const r1 = await seedShift(job.id, w1.id, 'APPROVED', 'REGULAR');
+    const r2 = await seedShift(job.id, w2.id, 'APPROVED', 'REGULAR');
+    await seedShift(job.id, w3.id, 'APPROVED', 'REGULAR');
+
+    // excess is 1; zero selections is too few.
+    await expect(reduceCapacityInTx(job.id, 2, [])).rejects.toThrow('MUST_SELECT_BACKUPS');
+    // two selections is too many.
+    await expect(reduceCapacityInTx(job.id, 2, [r1.id, r2.id])).rejects.toThrow('MUST_SELECT_BACKUPS');
+
+    const after = await prisma.job.findUniqueOrThrow({ where: { id: job.id } });
+    expect(after.requiredWorkerCount).toBe(3);
+    const backups = await prisma.shift.count({ where: { jobId: job.id, assignmentRole: 'BACKUP' } });
+    expect(backups).toBe(0);
+  });
+
+  it('preserves a required team leader: rejects demoting the only leader, allows demoting a regular', async () => {
+    const job = await seedJob(2);
+    await seedLeaderSlot(job.id);
+    const leaderW = await seedWorker(['SHIFT_LEADER']);
+    const w1 = await seedWorker();
+    const w2 = await seedWorker();
+    const leader = await seedShift(job.id, leaderW.id, 'APPROVED', 'TEAM_LEADER');
+    const r1 = await seedShift(job.id, w1.id, 'APPROVED', 'REGULAR');
+    await seedShift(job.id, w2.id, 'APPROVED', 'REGULAR'); // 3 regulars, excess 1
+
+    // Demoting the only leader while a leader is required is rejected.
+    await expect(reduceCapacityInTx(job.id, 2, [leader.id])).rejects.toThrow('LEADER_REQUIRED');
+    expect((await prisma.job.findUniqueOrThrow({ where: { id: job.id } })).requiredWorkerCount).toBe(2);
+    expect((await prisma.shift.findUniqueOrThrow({ where: { id: leader.id } })).assignmentRole).toBe('TEAM_LEADER');
+
+    // Demoting a regular keeps the leader assigned and succeeds.
+    await reduceCapacityInTx(job.id, 2, [r1.id]);
+    expect((await prisma.shift.findUniqueOrThrow({ where: { id: leader.id } })).assignmentRole).toBe('TEAM_LEADER');
+    expect((await prisma.shift.findUniqueOrThrow({ where: { id: r1.id } })).assignmentRole).toBe('BACKUP');
+  });
+
+  it('rolls back when a selected assignment is no longer valid due to a concurrent change', async () => {
+    const job = await seedJob(4);
+    const w1 = await seedWorker();
+    const w2 = await seedWorker();
+    const w3 = await seedWorker();
+    const w4 = await seedWorker();
+    const r1 = await seedShift(job.id, w1.id, 'APPROVED', 'REGULAR');
+    const r2 = await seedShift(job.id, w2.id, 'APPROVED', 'REGULAR');
+    const r3 = await seedShift(job.id, w3.id, 'APPROVED', 'REGULAR');
+    const r4 = await seedShift(job.id, w4.id, 'APPROVED', 'REGULAR');
+
+    // A concurrent flow demoted r1 to backup before the owner's reduction applies,
+    // so r1 is no longer one of the job's regular assignments.
+    await prisma.shift.update({ where: { id: r1.id }, data: { assignmentRole: 'BACKUP' } });
+
+    // The owner still wants to drop to 2 and named r1 + r2 (needing 2 demotions of
+    // the original 4). Under the lock only r2/r3/r4 are regular, so naming r1 is an
+    // invalid selection and the whole change rolls back.
+    await expect(reduceCapacityInTx(job.id, 2, [r1.id, r2.id])).rejects.toThrow('INVALID_SELECTION');
+
+    const after = await prisma.job.findUniqueOrThrow({ where: { id: job.id } });
+    expect(after.requiredWorkerCount).toBe(4); // unchanged
+    expect((await prisma.shift.findUniqueOrThrow({ where: { id: r2.id } })).assignmentRole).toBe('REGULAR');
+    expect((await prisma.shift.findUniqueOrThrow({ where: { id: r3.id } })).assignmentRole).toBe('REGULAR');
+    expect((await prisma.shift.findUniqueOrThrow({ where: { id: r4.id } })).assignmentRole).toBe('REGULAR');
   });
 });

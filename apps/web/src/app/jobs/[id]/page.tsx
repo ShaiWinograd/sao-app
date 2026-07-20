@@ -138,6 +138,13 @@ export default function JobDetailPage() {
   // approval awaiting confirmation, plus any leader-slot warning to surface.
   const [backupConfirm, setBackupConfirm] = useState<{ shiftId: string; message: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Editing the required worker count (§13). Reducing below the number of assigned
+  // regular/leader workers opens a backup picker driven by the backend
+  // MUST_SELECT_BACKUPS contract (no auto-selection, leader must be preserved).
+  const [capacityOpen, setCapacityOpen] = useState(false);
+  const [capacityValue, setCapacityValue] = useState('');
+  const [capacityPicker, setCapacityPicker] = useState<{ newCount: number; needed: number; candidateIds: string[] } | null>(null);
+  const [capacitySelected, setCapacitySelected] = useState<Record<string, boolean>>({});
   const [activity, setActivity] = useState<
     Array<{ id: string; action: string; entityType: string; reason: string | null; createdAt: string; performedBy?: { firstName: string; lastName: string } | null }>
   >([]);
@@ -320,6 +327,45 @@ export default function JobDetailPage() {
       setBusy(false);
     }
   }, [jobId, getToken, load]);
+
+  // Apply a required-worker-count change. When the count drops below the number of
+  // assigned regular/leader workers the backend returns MUST_SELECT_BACKUPS (with
+  // the affected shift ids and how many must be demoted); we open the picker and
+  // resend with the owner's explicit selection. INVALID_SELECTION means a
+  // concurrent change moved the goalposts — refresh and let her re-pick.
+  const submitCapacity = useCallback(
+    async (newCount: number, demoteToBackupIds: string[] = []) => {
+      if (!jobId) return;
+      setBusy(true);
+      setError(null);
+      try {
+        const auth = await authHeaders(getToken);
+        await api.patch(`/jobs/${jobId}`, { requiredWorkerCount: newCount, demoteToBackupIds }, auth);
+        setCapacityOpen(false);
+        setCapacityPicker(null);
+        setCapacitySelected({});
+        setNotice('כמות העובדים עודכנה.');
+        await load();
+      } catch (err) {
+        const data = (err as { response?: { data?: { error?: string; message?: string; needed?: number; regularShiftIds?: string[] } } })
+          ?.response?.data;
+        if (data?.error === 'MUST_SELECT_BACKUPS' || data?.error === 'INVALID_SELECTION') {
+          setCapacityPicker({ newCount, needed: data.needed ?? 0, candidateIds: data.regularShiftIds ?? [] });
+          setCapacitySelected({});
+          if (data.error === 'INVALID_SELECTION') {
+            setError('רשימת העובדים המשובצים השתנתה. יש לבחור מחדש.');
+            await load();
+          }
+        } else {
+          // e.g. LEADER_REQUIRED — the only team leader cannot be demoted.
+          setError(data?.message ?? data?.error ?? 'עדכון כמות העובדים נכשל');
+        }
+      } finally {
+        setBusy(false);
+      }
+    },
+    [jobId, getToken, load],
+  );
 
   const changeRole = useCallback(
     async (shiftId: string, role: string) => {
@@ -731,7 +777,53 @@ export default function JobDetailPage() {
               <div><dt className="text-gray-500">שעות</dt><dd className="text-gray-900">{formatTime(job.plannedStart)}–{formatTime(job.plannedEnd)}</dd></div>
               <div><dt className="text-gray-500">כתובת</dt><dd className="text-gray-900">{job.address?.fullAddress ?? '—'}</dd></div>
               <div><dt className="text-gray-500">איש קשר</dt><dd className="text-gray-900">{job.customer.firstName} {job.customer.lastName} · {job.customer.phone}</dd></div>
-              <div><dt className="text-gray-500">עובדים נדרשים</dt><dd className="text-gray-900">{job.requiredWorkerCount}</dd></div>
+              <div>
+                <dt className="text-gray-500">עובדים נדרשים</dt>
+                <dd className="text-gray-900">
+                  {capacityOpen ? (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min={1}
+                        value={capacityValue}
+                        onChange={(e) => setCapacityValue(e.target.value)}
+                        aria-label="כמות עובדים נדרשת"
+                        className="w-16 rounded-lg border border-gray-300 px-2 py-1 text-sm"
+                      />
+                      <button
+                        onClick={() => {
+                          const n = Math.max(1, Math.floor(Number(capacityValue) || 0));
+                          if (n && n !== job.requiredWorkerCount) void submitCapacity(n);
+                          else setCapacityOpen(false);
+                        }}
+                        disabled={busy}
+                        className="px-2 py-1 text-[11px] rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+                      >
+                        שמירה
+                      </button>
+                      <button
+                        onClick={() => setCapacityOpen(false)}
+                        className="px-2 py-1 text-[11px] rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                      >
+                        ביטול
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="inline-flex items-center gap-2">
+                      {job.requiredWorkerCount}
+                      <button
+                        onClick={() => {
+                          setCapacityValue(String(job.requiredWorkerCount));
+                          setCapacityOpen(true);
+                        }}
+                        className="text-[11px] text-primary-700 hover:underline"
+                      >
+                        עריכה
+                      </button>
+                    </span>
+                  )}
+                </dd>
+              </div>
               <div><dt className="text-gray-500">סטטוס</dt><dd className="text-gray-900">{JOB_STATUS_LABELS[job.status] ?? job.status}</dd></div>
             </dl>
           </section>
@@ -1090,6 +1182,58 @@ export default function JobDetailPage() {
                 className="px-4 py-2 text-sm rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
               >
                 שיבוץ כגיבוי
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {capacityPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" dir="rtl">
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+            <h2 className="text-base font-bold text-gray-900 mb-1">בחירת עובדים לגיבוי</h2>
+            <p className="text-xs text-gray-500 mb-4">
+              כמות העובדים הופחתה. יש לבחור {capacityPicker.needed} עובדות שיעברו לתפקיד גיבוי — הן יישארו משובצות אך כגיבוי. ראש צוות חייב להישאר משובץ.
+            </p>
+            <div className="max-h-64 overflow-auto space-y-1.5 mb-3">
+              {job.shifts
+                .filter((s) => capacityPicker.candidateIds.includes(s.id))
+                .map((s) => (
+                  <label key={s.id} className="flex items-center gap-2 rounded-lg border border-gray-100 px-3 py-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={!!capacitySelected[s.id]}
+                      onChange={(e) => setCapacitySelected((prev) => ({ ...prev, [s.id]: e.target.checked }))}
+                    />
+                    <span className="text-gray-800">{s.workerNameSnapshot}</span>
+                    {s.assignmentRole === 'TEAM_LEADER' && <span className="text-[11px] text-emerald-700">· ראש צוות</span>}
+                  </label>
+                ))}
+            </div>
+            <p className="text-[11px] text-gray-500 mb-3">
+              נבחרו {Object.values(capacitySelected).filter(Boolean).length} מתוך {capacityPicker.needed}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setCapacityPicker(null);
+                  setCapacitySelected({});
+                }}
+                className="px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+              >
+                ביטול
+              </button>
+              <button
+                onClick={() =>
+                  void submitCapacity(
+                    capacityPicker.newCount,
+                    Object.keys(capacitySelected).filter((k) => capacitySelected[k]),
+                  )
+                }
+                disabled={busy || Object.values(capacitySelected).filter(Boolean).length !== capacityPicker.needed}
+                className="px-4 py-2 text-sm rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                עדכון והעברה לגיבוי
               </button>
             </div>
           </div>
