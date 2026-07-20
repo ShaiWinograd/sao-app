@@ -148,8 +148,6 @@ export async function workersRoutes(app: FastifyInstance) {
           orderBy: { scheduledStart: 'desc' },
           take: 20,
         },
-        adjustments: { orderBy: { createdAt: 'desc' } },
-        workerPayments: { orderBy: { createdAt: 'desc' } },
       },
     });
     if (!worker) return reply.status(404).send({ error: 'Worker not found' });

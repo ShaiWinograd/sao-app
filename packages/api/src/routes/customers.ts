@@ -52,7 +52,6 @@ export async function customersRoutes(app: FastifyInstance) {
       include: {
         addresses: true,
         cases: { include: { jobs: true }, orderBy: { createdAt: 'desc' } },
-        invoices: { orderBy: { createdAt: 'desc' } },
       },
     });
     if (!customer) return reply.status(404).send({ error: 'Customer not found' });

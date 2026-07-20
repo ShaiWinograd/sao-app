@@ -5,18 +5,17 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
 import {
-  LayoutDashboard, Users, Calendar, BarChart3, Settings, LayoutGrid, Contact, Bug,
+  LayoutDashboard, Users, Calendar, BarChart3, Settings, Contact, Bug,
 } from 'lucide-react';
 import { canViewReports } from '../../lib/viewer-access';
 import { useViewerRole } from '../../lib/use-viewer-role';
 import RoleSwitcher from './RoleSwitcher';
 
-// Spec 02 (navigation): only these seven top-level items. Quotations, Forms,
-// Attendance, Messages, and Payments must NOT be top-level — they live inside
-// projects and surface as dashboard tasks (their routes still exist for deep links).
+// Owner primary navigation (spec §5.1). Projects are an internal grouping
+// entity only (§10) and are not a top-level destination. Worker/monthly reports
+// and the customer report live under Reports and deep links.
 const navItems = [
   { href: '/dashboard', label: 'בית', icon: LayoutDashboard, matchPrefix: '/dashboard' },
-  { href: '/cases/board', label: 'פרויקטים', icon: LayoutGrid, matchPrefix: '/cases' },
   { href: '/jobs', label: 'יומן עבודות', icon: Calendar, matchPrefix: '/jobs' },
   { href: '/workers', label: 'עובדים', icon: Users, matchPrefix: '/workers' },
   { href: '/customers', label: 'לקוחות', icon: Contact, matchPrefix: '/customers' },

@@ -167,7 +167,7 @@ export function formStatusLabel(status: string): string {
 // Open positions on a job = required workers minus non-rejected/cancelled shifts.
 export function openPositions(job: WorkerJob): number {
   const filled = (job.shifts ?? []).filter(
-    (s) => s.joinRequestStatus === 'APPROVED' || s.joinRequestStatus === 'PENDING' || s.joinRequestStatus === 'AWAITING_WORKER' || s.joinRequestStatus === 'WAITLISTED',
+    (s) => s.joinRequestStatus === 'APPROVED' || s.joinRequestStatus === 'PENDING' || s.joinRequestStatus === 'AWAITING_WORKER',
   ).length;
   return Math.max((job.requiredWorkerCount ?? 0) - filled, 0);
 }
@@ -195,5 +195,5 @@ export function missingFormBadge(shift: { attendanceStatus: string; formStatus: 
 
 // A shift is "active" for the worker (shows on the calendar) unless rejected/cancelled.
 export function isActiveShift(status: string): boolean {
-  return status === 'APPROVED' || status === 'PENDING' || status === 'AWAITING_WORKER' || status === 'WAITLISTED';
+  return status === 'APPROVED' || status === 'PENDING' || status === 'AWAITING_WORKER';
 }

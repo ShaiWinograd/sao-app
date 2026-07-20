@@ -91,7 +91,6 @@ const JOIN_STATUS_LABELS: Record<string, string> = {
   AWAITING_WORKER: 'ממתין לאישור העובד/ת',
   APPROVED: 'מאושר',
   REJECTED: 'נדחה',
-  WAITLISTED: 'רשימת המתנה',
   CANCELLED: 'בוטל',
 };
 

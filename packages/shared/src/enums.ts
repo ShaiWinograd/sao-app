@@ -73,7 +73,6 @@ export enum JoinRequestStatus {
   PENDING = 'PENDING',
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
-  WAITLISTED = 'WAITLISTED',
   CANCELLED = 'CANCELLED',
 }
 
@@ -108,29 +107,12 @@ export enum ReplacementStatus {
   REJECTED = 'REJECTED',
 }
 
-// ─── Invoice / Payment ───────────────────────────────────────────────────────
-
-export enum InvoiceStatus {
-  NOT_INVOICED = 'NOT_INVOICED',
-  DRAFT = 'DRAFT',
-  SENT = 'SENT',
-  PARTIALLY_PAID = 'PARTIALLY_PAID',
-  PAID = 'PAID',
-  OVERDUE = 'OVERDUE',
-  CANCELLED = 'CANCELLED',
-}
+// ─── Billing ───────────────────────────────────────────────────────────────
 
 export enum BillingModel {
   HOURLY = 'HOURLY',
   FIXED = 'FIXED',
   CUSTOM = 'CUSTOM',
-}
-
-export enum WorkerPaymentStatus {
-  NOT_PREPARED = 'NOT_PREPARED',
-  READY_FOR_PAYMENT = 'READY_FOR_PAYMENT',
-  PARTIALLY_PAID = 'PARTIALLY_PAID',
-  PAID = 'PAID',
 }
 
 export enum PaymentMethod {
@@ -215,17 +197,6 @@ export enum ExpenseCategory {
   OTHER = 'OTHER',
 }
 
-// ─── Worker Adjustment ───────────────────────────────────────────────────────
-
-export enum AdjustmentCategory {
-  CUSTOMER_REFERRAL = 'CUSTOMER_REFERRAL',
-  SHIFT_LEADER_BONUS = 'SHIFT_LEADER_BONUS',
-  SPECIAL_ASSIGNMENT_BONUS = 'SPECIAL_ASSIGNMENT_BONUS',
-  TRAVEL_REIMBURSEMENT = 'TRAVEL_REIMBURSEMENT',
-  EXTRA_RESPONSIBILITY = 'EXTRA_RESPONSIBILITY',
-  CORRECTION = 'CORRECTION',
-  DEDUCTION = 'DEDUCTION',
-}
 
 // ─── Reporting Basis ─────────────────────────────────────────────────────────
 

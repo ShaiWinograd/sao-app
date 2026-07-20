@@ -13,14 +13,9 @@ export const HE = {
     customers: 'לקוחות',
     customerCase: 'פרוייקט',
     projectBoard: 'לוח פרוייקטים',
-    quotations: 'הצעות מחיר',
     workers: 'עובדים',
     attendance: 'נוכחות',
     forms: 'טפסי סיום משמרת',
-    invoices: 'חשבוניות',
-    customerPayments: 'תשלומי לקוחות',
-    workerPayroll: 'שכר עובדים',
-    workerPayments: 'תשלומי עובדים',
     expenses: 'הוצאות עסקיות',
     reports: 'דוחות חודשיים',
     profitability: 'רווחיות',
@@ -105,7 +100,6 @@ export const HE = {
     PENDING: 'ממתין',
     APPROVED: 'מאושר',
     REJECTED: 'נדחה',
-    WAITLISTED: 'ברשימת המתנה',
     CANCELLED: 'בוטל',
   },
 
@@ -126,16 +120,6 @@ export const HE = {
     GENERAL_WORKER: 'עובד כללי',
   },
 
-  // ─── Invoice status ───────────────────────────────────────────────
-  invoiceStatus: {
-    NOT_INVOICED: 'לא חויב',
-    DRAFT: 'טיוטה',
-    SENT: 'נשלח',
-    PARTIALLY_PAID: 'שולם חלקית',
-    PAID: 'שולם',
-    OVERDUE: 'באיחור',
-    CANCELLED: 'בוטל',
-  },
 
   // ─── Payment method ───────────────────────────────────────────────
   paymentMethod: {
@@ -193,16 +177,6 @@ export const HE = {
     OTHER: 'אחר',
   },
 
-  // ─── Adjustment categories ────────────────────────────────────────
-  adjustmentCategory: {
-    CUSTOMER_REFERRAL: 'הבאת לקוח',
-    SHIFT_LEADER_BONUS: 'תוספת ראש צוות',
-    SPECIAL_ASSIGNMENT_BONUS: 'תוספת משימה מיוחדת',
-    TRAVEL_REIMBURSEMENT: 'החזר נסיעות',
-    EXTRA_RESPONSIBILITY: 'תוספת אחריות',
-    CORRECTION: 'תיקון',
-    DEDUCTION: 'ניכוי',
-  },
 
   // ─── Notifications ────────────────────────────────────────────────
   notifications: {
