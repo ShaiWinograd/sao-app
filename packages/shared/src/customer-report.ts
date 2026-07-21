@@ -145,6 +145,22 @@ export type CustomerReportPdfModel = {
   totals: Array<{ label: string; value: string; emphasis?: boolean }>;
 };
 
+// A summary row split into its two document columns. In the RTL customer PDF the
+// Hebrew label occupies the RIGHT-hand column and the isolated numeric/currency
+// value the LEFT-hand column. Exposed as data so the column order is unit-testable
+// and the renderer stays a thin, position-only consumer.
+export type CustomerReportSummaryColumns = {
+  right: string; // Hebrew label — right-hand column
+  left: string; // value token — left-hand column (kept whole for correct bidi)
+  emphasis: boolean;
+};
+
+export function customerReportSummaryColumns(
+  totals: CustomerReportPdfModel['totals'],
+): CustomerReportSummaryColumns[] {
+  return totals.map((t) => ({ right: t.label, left: t.value, emphasis: Boolean(t.emphasis) }));
+}
+
 const JOB_TYPE_HE_PDF: Record<string, string> = {
   PACKING: 'אריזה',
   UNPACKING: 'פריקה',
@@ -152,8 +168,9 @@ const JOB_TYPE_HE_PDF: Record<string, string> = {
 };
 
 export function formatShekel(n: number): string {
-  // Symbol before the amount so the customer-facing PDF reads "₪ 175".
-  return `₪ ${Number(n).toLocaleString('he-IL')}`;
+  // Amount before the symbol so each value reads "175 ₪"; kept as one isolated
+  // token so the number and ₪ never reorder against each other under bidi.
+  return `${Number(n).toLocaleString('he-IL')} ₪`;
 }
 
 export function formatHours(n: number): string {

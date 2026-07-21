@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import type { CustomerReportPdfModel } from '@workforce/shared';
+import { customerReportSummaryColumns } from '@workforce/shared';
 
 // Hebrew-capable line-based PDF builder shared across report endpoints. pdfkit's
 // built-in fonts have no Hebrew glyphs, so we embed a Hebrew font (Rubik, OFL).
@@ -119,16 +120,19 @@ export async function renderCustomerReportPdf(model: CustomerReportPdfModel): Pr
       y += rowH;
     });
 
-    // Totals block: value in a right-most box, label to its left, both right-aligned.
+    // Totals block (RTL): Hebrew label in the right-hand column, the isolated
+    // numeric/currency value in the left-hand column.
     y += 16;
     const valueBoxW = 160;
     const labelBoxW = contentWidth - valueBoxW;
-    for (const t of model.totals) {
-      const size = t.emphasis ? 13 : 11;
-      doc.fontSize(size).fillColor(t.emphasis ? '#0f172a' : '#334155');
-      doc.text(rtl(t.value), right - valueBoxW + pad, y, { width: valueBoxW - pad * 2, align: 'right', lineBreak: false });
-      doc.text(rtl(t.label), left + pad, y, { width: labelBoxW - pad * 2, align: 'right', lineBreak: false });
-      y += t.emphasis ? 26 : 20;
+    for (const row of customerReportSummaryColumns(model.totals)) {
+      const size = row.emphasis ? 13 : 11;
+      doc.fontSize(size).fillColor(row.emphasis ? '#0f172a' : '#334155');
+      // Label: right-hand column, hugging the right margin.
+      doc.text(rtl(row.right), left + valueBoxW + pad, y, { width: labelBoxW - pad * 2, align: 'right', lineBreak: false });
+      // Value: left-hand column, kept as one isolated run so bidi stays correct.
+      doc.text(rtl(row.left), left + pad, y, { width: valueBoxW - pad * 2, align: 'left', lineBreak: false });
+      y += row.emphasis ? 26 : 20;
     }
 
     doc.end();
