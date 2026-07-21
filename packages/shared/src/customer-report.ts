@@ -152,7 +152,8 @@ const JOB_TYPE_HE_PDF: Record<string, string> = {
 };
 
 export function formatShekel(n: number): string {
-  return `${Number(n).toLocaleString('he-IL')} ₪`;
+  // Symbol before the amount so the customer-facing PDF reads "₪ 175".
+  return `₪ ${Number(n).toLocaleString('he-IL')}`;
 }
 
 export function formatHours(n: number): string {
@@ -164,15 +165,24 @@ function toDisplayDate(isoDay: string): string {
   return parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : isoDay;
 }
 
+// DD.MM.YYYY with leading zeros (e.g. 22.07.2026), matching the table dates.
+function toDisplayDateFromDate(d: Date): string {
+  const iso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  return toDisplayDate(iso);
+}
+
 export function buildCustomerReportPdfModel(args: {
   customerName: string;
   versionNumber: number;
   generatedAt?: string | Date;
   report: CustomerReport;
 }): CustomerReportPdfModel {
-  const { customerName, versionNumber, report } = args;
+  // versionNumber is retained in the signature (and stored in the DB / shown in
+  // the management UI), but it is intentionally NOT rendered into the customer
+  // PDF — the customer-facing document must never expose internal version text.
+  const { customerName, report } = args;
   const generated = args.generatedAt ? new Date(args.generatedAt) : new Date();
-  const dateStr = generated.toLocaleDateString('he-IL');
+  const dateStr = toDisplayDateFromDate(generated);
 
   const headers = ['תאריך', 'סוג עבודה', 'עובדים', 'שעות לחיוב'];
   const rows = report.jobs.map((j) => [
@@ -195,7 +205,7 @@ export function buildCustomerReportPdfModel(args: {
 
   return {
     title: 'דוח לקוח',
-    subtitle: [`לקוח: ${customerName}`, `גרסה ${versionNumber} · ${dateStr}`],
+    subtitle: [`לקוח: ${customerName}`, dateStr],
     table: { headers, rows },
     totals,
   };
