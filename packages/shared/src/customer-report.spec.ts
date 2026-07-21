@@ -190,15 +190,29 @@ describe('customerReportSummaryColumns (RTL summary alignment)', () => {
   it('places the Hebrew label on the right and the value on the left', () => {
     const cols = customerReportSummaryColumns(hourly.totals);
     expect(cols).toEqual([
-      { right: 'סך שעות לחיוב', left: '5 שעות', emphasis: false },
+      { right: 'סך שעות לחיוב', left: '5', emphasis: false },
       { right: 'תעריף שעתי', left: '175 ₪', emphasis: false },
       { right: 'סכום סופי', left: '875 ₪', emphasis: true },
     ]);
   });
 
-  it('keeps each value internally ordered (number then unit / amount then ₪)', () => {
+  it('renders the billable-hours summary value as a bare number (no "שעות")', () => {
     const cols = customerReportSummaryColumns(hourly.totals);
-    expect(cols.map((c) => c.left)).toEqual(['5 שעות', '175 ₪', '875 ₪']);
+    const hoursRow = cols.find((c) => c.right === 'סך שעות לחיוב');
+    expect(hoursRow?.left).toBe('5');
+    expect(hoursRow?.left).not.toContain('שעות');
+    expect(hoursRow?.left).toMatch(/^[\d,.]+$/);
+  });
+
+  it('renders the hourly-rate and final-amount values as "<amount> ₪"', () => {
+    const cols = customerReportSummaryColumns(hourly.totals);
+    expect(cols.find((c) => c.right === 'תעריף שעתי')?.left).toBe('175 ₪');
+    expect(cols.find((c) => c.right === 'סכום סופי')?.left).toBe('875 ₪');
+  });
+
+  it('keeps each value internally ordered (bare number / amount then ₪)', () => {
+    const cols = customerReportSummaryColumns(hourly.totals);
+    expect(cols.map((c) => c.left)).toEqual(['5', '175 ₪', '875 ₪']);
     // The Hebrew label is never mixed into the value column.
     for (const c of cols) expect(c.left).not.toContain(c.right);
   });
@@ -219,7 +233,7 @@ describe('customerReportSummaryColumns (RTL summary alignment)', () => {
     });
     const cols = customerReportSummaryColumns(global.totals);
     // Labels on the right, values on the left, final amount emphasised.
-    expect(cols[0]).toEqual({ right: 'סך שעות לחיוב', left: '5 שעות', emphasis: false });
+    expect(cols[0]).toEqual({ right: 'סך שעות לחיוב', left: '5', emphasis: false });
     expect(cols.at(-1)).toEqual({ right: 'סכום סופי', left: '875 ₪', emphasis: true });
     expect(cols.some((c) => c.right === 'תעריף שעתי')).toBe(false);
   });
