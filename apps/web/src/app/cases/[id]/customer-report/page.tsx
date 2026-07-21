@@ -1,59 +1,38 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
-import { ArrowRight, Download, FileText, Loader2 } from 'lucide-react';
+import { ArrowRight, Download, FileText, Loader2, Plus, Trash2, AlertTriangle, History } from 'lucide-react';
 import { api, authHeaders } from '../../../../lib/api';
 
 type PricingMode = 'HOURLY' | 'GLOBAL';
+type Addition = { description: string; amount: string };
 
-type ReportJobLine = {
-  jobId: string;
-  date: string;
-  jobType: string;
-  workerCount: number;
-  actualHours: number;
-};
-
-type CustomerReportPayload = {
+type ReportableJob = { jobId: string; date: string; jobType: string; workerCount: number; actualHours: number; included: boolean };
+type ReportLine = { jobId: string; date: string; jobType: string; workerCount: number; actualHours: number };
+type Preview = {
+  versionNumber: number;
   customerName: string;
-  projectName: string;
-  generatedAt: string;
-  allJobsCompleted: boolean;
+  caseName: string;
+  caseStatus: 'ACTIVE' | 'CLOSED' | string;
+  reportableJobs: ReportableJob[];
   report: {
-    jobs: ReportJobLine[];
+    jobs: ReportLine[];
     totalActualHours: number;
     mode: PricingMode;
     hourlyRate?: number;
-    manualAdditions: number;
-    discount: number;
+    additions: { description: string; amount: number }[];
+    additionsTotal: number;
     finalAmount: number;
   };
+  readiness: { ready: boolean; reasons: string[] };
 };
+type Version = { id: string; versionNumber: number; status: string; createdAt: string; finalAmount: number | null; isCurrent: boolean };
 
-const JOB_TYPE_LABEL: Record<string, string> = {
-  PACKING: 'אריזה',
-  UNPACKING: 'פריקה',
-  HOME_ORGANIZATION: 'סידור',
-};
-
-function money(n: number): string {
-  return `${Number(n).toLocaleString('he-IL')} ₪`;
-}
-
-function pricingBody(mode: PricingMode, hourlyRate: string, additions: string, discount: string, globalAmount: string) {
-  if (mode === 'GLOBAL') {
-    return { mode: 'GLOBAL' as const, globalAmount: Number(globalAmount) || 0 };
-  }
-  return {
-    mode: 'HOURLY' as const,
-    hourlyRate: Number(hourlyRate) || 0,
-    manualAdditions: Number(additions) || 0,
-    discount: Number(discount) || 0,
-  };
-}
+const JOB_TYPE_LABEL: Record<string, string> = { PACKING: 'אריזה', UNPACKING: 'פריקה', HOME_ORGANIZATION: 'סידור' };
+const money = (n: number | null | undefined) => (n == null ? '—' : `${Number(n).toLocaleString('he-IL')} ₪`);
 
 export default function CustomerReportPage() {
   const params = useParams<{ id: string }>();
@@ -62,13 +41,32 @@ export default function CustomerReportPage() {
 
   const [mode, setMode] = useState<PricingMode>('HOURLY');
   const [hourlyRate, setHourlyRate] = useState('175');
-  const [additions, setAdditions] = useState('0');
-  const [discount, setDiscount] = useState('0');
   const [globalAmount, setGlobalAmount] = useState('0');
+  const [additions, setAdditions] = useState<Addition[]>([]);
+  const [excluded, setExcluded] = useState<Record<string, boolean>>({});
+  const [jobNotes, setJobNotes] = useState<Record<string, string>>({});
 
-  const [preview, setPreview] = useState<CustomerReportPayload | null>(null);
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [versions, setVersions] = useState<Version[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const isClosed = preview?.caseStatus === 'CLOSED';
+
+  const pricingBody = useCallback(() => {
+    if (mode === 'GLOBAL') return { mode: 'GLOBAL' as const, globalAmount: Number(globalAmount) || 0 };
+    return {
+      mode: 'HOURLY' as const,
+      hourlyRate: Number(hourlyRate) || 0,
+      additions: additions.map((a) => ({ description: a.description, amount: Number(a.amount) || 0 })),
+    };
+  }, [mode, hourlyRate, globalAmount, additions]);
+
+  const includedJobIds = useCallback(
+    (reportable: ReportableJob[]) => reportable.filter((j) => !excluded[j.jobId]).map((j) => j.jobId),
+    [excluded],
+  );
 
   const loadPreview = useCallback(async () => {
     if (!caseId) return;
@@ -76,184 +74,246 @@ export default function CustomerReportPage() {
     setError(null);
     try {
       const auth = await authHeaders(getToken);
-      const body = pricingBody(mode, hourlyRate, additions, discount, globalAmount);
-      const res = await api.post<CustomerReportPayload>(`/cases/${caseId}/customer-report`, body, auth);
+      const discovered = preview?.reportableJobs;
+      const body = {
+        pricing: pricingBody(),
+        ...(discovered ? { includedJobIds: includedJobIds(discovered) } : {}),
+        jobNotes,
+      };
+      const res = await api.post<Preview>(`/cases/${caseId}/customer-report/preview`, body, auth);
       setPreview(res.data);
     } catch {
-      setError('יצירת התצוגה המקדימה נכשלה');
+      setError('טעינת התצוגה המקדימה נכשלה');
     } finally {
       setBusy(false);
     }
-  }, [caseId, getToken, mode, hourlyRate, additions, discount, globalAmount]);
+  }, [caseId, getToken, pricingBody, includedJobIds, jobNotes, preview?.reportableJobs]);
 
-  const downloadPdf = useCallback(async () => {
+  const loadVersions = useCallback(async () => {
     if (!caseId) return;
-    setBusy(true);
-    setError(null);
     try {
       const auth = await authHeaders(getToken);
-      const body = pricingBody(mode, hourlyRate, additions, discount, globalAmount);
-      const res = await api.post(`/cases/${caseId}/customer-report.pdf`, body, { ...auth, responseType: 'blob' });
-      const url = URL.createObjectURL(res.data as Blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `customer-report-${caseId}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      const res = await api.get<Version[]>(`/cases/${caseId}/customer-report/versions`, auth);
+      setVersions(res.data ?? []);
     } catch {
-      setError('הורדת ה-PDF נכשלה');
+      setVersions([]);
+    }
+  }, [caseId, getToken]);
+
+  useEffect(() => {
+    void loadPreview();
+    void loadVersions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caseId]);
+
+  // Live-recompute when pricing/inclusion inputs change.
+  useEffect(() => {
+    if (!preview) return;
+    const t = setTimeout(() => void loadPreview(), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, hourlyRate, globalAmount, additions, excluded, jobNotes]);
+
+  const toggleJob = (jobId: string) => setExcluded((prev) => ({ ...prev, [jobId]: !prev[jobId] }));
+
+  const finalize = useCallback(async () => {
+    if (!caseId || !preview) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const auth = await authHeaders(getToken);
+      const body = { pricing: pricingBody(), includedJobIds: includedJobIds(preview.reportableJobs), jobNotes };
+      const path = isClosed ? `/cases/${caseId}/customer-report/versions` : `/cases/${caseId}/customer-report/finalize`;
+      const res = await api.post<{ versionNumber: number }>(path, body, auth);
+      setNotice(isClosed ? `נוצרה גרסה מתוקנת (${res.data.versionNumber})` : `הדוח הופק (גרסה ${res.data.versionNumber})`);
+      await loadPreview();
+      await loadVersions();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string; error?: string } } })?.response?.data;
+      setError(msg?.message || msg?.error || 'הפקת הדוח נכשלה');
     } finally {
       setBusy(false);
     }
-  }, [caseId, getToken, mode, hourlyRate, additions, discount, globalAmount]);
+  }, [caseId, preview, getToken, pricingBody, includedJobIds, jobNotes, isClosed, loadPreview, loadVersions]);
+
+  const downloadVersion = useCallback(
+    async (versionId: string, versionNumber: number) => {
+      if (!caseId) return;
+      try {
+        const auth = await authHeaders(getToken);
+        const res = await api.get(`/cases/${caseId}/customer-report/versions/${versionId}/pdf`, { ...auth, responseType: 'blob' });
+        const url = URL.createObjectURL(res.data as Blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `customer-report-${caseId}-v${versionNumber}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch {
+        setError('הורדת ה-PDF נכשלה');
+      }
+    },
+    [caseId, getToken],
+  );
+
+  const excludedCount = useMemo(
+    () => (preview ? preview.reportableJobs.filter((j) => excluded[j.jobId]).length : 0),
+    [preview, excluded],
+  );
+
+  const canFinalize = isClosed || (preview?.readiness.ready ?? false);
 
   return (
     <div className="p-6 max-w-3xl" dir="rtl">
-      <Link href={`/cases/${caseId}`} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-3">
+      <Link href="/reports/customer" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-3">
         <ArrowRight className="w-4 h-4" />
-        חזרה לפרויקט
+        חזרה לדוחות
       </Link>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+      <h1 className="text-2xl font-bold text-gray-900 mb-1 flex items-center gap-2">
         <FileText className="w-6 h-6 text-primary-600" />
-        דוח לקוח
+        דוח לקוחה{preview ? ` — ${preview.customerName}` : ''}
       </h1>
 
-      {error && (
-        <div className="mb-4 rounded-lg bg-danger-bg border border-danger/30 text-danger text-sm px-4 py-3">{error}</div>
+      {isClosed && (
+        <p className="mb-3 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-800">
+          הדוח כבר הופק. ניתן ליצור גרסה מתוקנת — כל הגרסאות נשמרות.
+        </p>
       )}
 
-      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm mb-5">
-        <h2 className="text-sm font-semibold text-gray-900 mb-3">תמחור</h2>
-        <div className="flex gap-2 mb-4">
-          <button
-            onClick={() => setMode('HOURLY')}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${mode === 'HOURLY' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-          >
-            לפי שעה
-          </button>
-          <button
-            onClick={() => setMode('GLOBAL')}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${mode === 'GLOBAL' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-          >
-            סכום גלובלי
-          </button>
+      {preview && !isClosed && !preview.readiness.ready && (
+        <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <div className="flex items-center gap-1 font-medium"><AlertTriangle className="w-4 h-4" /> הפרויקט עדיין לא מוכן לדוח</div>
+          <ul className="mt-1 list-disc pr-5">{preview.readiness.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
         </div>
+      )}
 
-        {mode === 'HOURLY' ? (
-          <div className="grid grid-cols-3 gap-3">
-            <label className="text-sm">
-              <span className="block text-gray-600 mb-1">תעריף שעתי (₪)</span>
-              <input value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} inputMode="decimal" className="w-full rounded-lg border border-gray-300 px-2.5 py-1.5" />
-            </label>
-            <label className="text-sm">
-              <span className="block text-gray-600 mb-1">תוספות (₪)</span>
-              <input value={additions} onChange={(e) => setAdditions(e.target.value)} inputMode="decimal" className="w-full rounded-lg border border-gray-300 px-2.5 py-1.5" />
-            </label>
-            <label className="text-sm">
-              <span className="block text-gray-600 mb-1">הנחה (₪)</span>
-              <input value={discount} onChange={(e) => setDiscount(e.target.value)} inputMode="decimal" className="w-full rounded-lg border border-gray-300 px-2.5 py-1.5" />
-            </label>
-          </div>
-        ) : (
-          <label className="text-sm block max-w-xs">
-            <span className="block text-gray-600 mb-1">סכום סופי (₪)</span>
-            <input value={globalAmount} onChange={(e) => setGlobalAmount(e.target.value)} inputMode="decimal" className="w-full rounded-lg border border-gray-300 px-2.5 py-1.5" />
-          </label>
+      {error && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+      {notice && <div className="mb-3 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{notice}</div>}
+
+      {/* Included jobs */}
+      <section className="mb-5">
+        <h2 className="text-sm font-semibold text-gray-700 mb-2">עבודות בדוח</h2>
+        {excludedCount > 0 && (
+          <p className="mb-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">
+            {excludedCount} עבודות הוסרו מהדוח. עבודות שהוסרו יישארו זמינות לדוח אחר ולא יסומנו כדווחו.
+          </p>
         )}
-
-        <div className="mt-4 flex gap-2">
-          <button
-            onClick={() => void loadPreview()}
-            disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
-          >
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-            תצוגה מקדימה
-          </button>
-          <button
-            onClick={() => void downloadPdf()}
-            disabled={busy || !preview}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
-            <Download className="w-4 h-4" />
-            הורדת PDF
-          </button>
+        <div className="space-y-2">
+          {preview?.reportableJobs.map((j) => {
+            const off = !!excluded[j.jobId];
+            return (
+              <div key={j.jobId} className={`rounded-lg border px-3 py-2 ${off ? 'border-gray-200 bg-gray-50 opacity-60' : 'border-gray-200 bg-white'}`}>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-900">
+                    {j.date} · {JOB_TYPE_LABEL[j.jobType] ?? j.jobType} · {j.workerCount} עובדים · {j.actualHours} שעות
+                  </div>
+                  {!isClosed && (
+                    <button
+                      type="button"
+                      onClick={() => toggleJob(j.jobId)}
+                      className={`text-xs ${off ? 'text-primary-600' : 'text-red-600'} hover:underline`}
+                    >
+                      {off ? 'החזרה לדוח' : 'הסרה'}
+                    </button>
+                  )}
+                </div>
+                {!off && (
+                  <input
+                    value={jobNotes[j.jobId] ?? ''}
+                    onChange={(e) => setJobNotes((p) => ({ ...p, [j.jobId]: e.target.value }))}
+                    placeholder="הערה פנימית (לא מוצגת ללקוח)"
+                    className="mt-2 w-full rounded border border-gray-200 px-2 py-1 text-xs"
+                  />
+                )}
+              </div>
+            );
+          })}
+          {preview && preview.reportableJobs.length === 0 && <p className="text-sm text-gray-400">אין עבודות זמינות לדוח.</p>}
         </div>
       </section>
 
-      {preview && (
-        <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
+      {/* Billing */}
+      <section className="mb-5">
+        <h2 className="text-sm font-semibold text-gray-700 mb-2">שיטת חיוב</h2>
+        <div className="mb-3 flex gap-2">
+          <button type="button" onClick={() => setMode('HOURLY')} className={`rounded-md px-3 py-1.5 text-sm ${mode === 'HOURLY' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700'}`}>לפי שעה</button>
+          <button type="button" onClick={() => setMode('GLOBAL')} className={`rounded-md px-3 py-1.5 text-sm ${mode === 'GLOBAL' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700'}`}>סכום גלובלי</button>
+        </div>
+
+        {mode === 'HOURLY' ? (
+          <div className="space-y-3">
+            <label className="block text-sm">
+              <span className="text-gray-600">תעריף שעתי (לפרויקט)</span>
+              <input type="number" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} className="mt-1 block w-40 rounded border border-gray-300 px-2 py-1" />
+            </label>
             <div>
-              <p className="text-sm text-gray-500">לקוח</p>
-              <p className="text-base font-semibold text-gray-900">{preview.customerName}</p>
-            </div>
-            <div className="text-left">
-              <p className="text-sm text-gray-500">פרויקט</p>
-              <p className="text-base font-semibold text-gray-900">{preview.projectName}</p>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-sm text-gray-600">תוספות</span>
+                <button type="button" onClick={() => setAdditions((a) => [...a, { description: '', amount: '' }])} className="inline-flex items-center gap-1 text-xs text-primary-600 hover:underline">
+                  <Plus className="w-3 h-3" /> הוספת שורה
+                </button>
+              </div>
+              {additions.map((add, i) => (
+                <div key={i} className="mb-2 flex gap-2">
+                  <input value={add.description} onChange={(e) => setAdditions((a) => a.map((x, xi) => (xi === i ? { ...x, description: e.target.value } : x)))} placeholder="תיאור" className="flex-1 rounded border border-gray-300 px-2 py-1 text-sm" />
+                  <input type="number" value={add.amount} onChange={(e) => setAdditions((a) => a.map((x, xi) => (xi === i ? { ...x, amount: e.target.value } : x)))} placeholder="₪" className="w-28 rounded border border-gray-300 px-2 py-1 text-sm" />
+                  <button type="button" onClick={() => setAdditions((a) => a.filter((_, xi) => xi !== i))} className="text-red-500"><Trash2 className="w-4 h-4" /></button>
+                </div>
+              ))}
             </div>
           </div>
+        ) : (
+          <label className="block text-sm">
+            <span className="text-gray-600">סכום כולל</span>
+            <input type="number" value={globalAmount} onChange={(e) => setGlobalAmount(e.target.value)} className="mt-1 block w-40 rounded border border-gray-300 px-2 py-1" />
+            <span className="mt-1 block text-xs text-gray-400">שעות עבודה בפועל מוצגות ללקוח; תעריף שעתי אינו מוצג.</span>
+          </label>
+        )}
+      </section>
 
-          {!preview.allJobsCompleted && (
-            <div className="mb-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3 py-2">
-              לא כל העבודות בפרויקט הושלמו. ניתן להפיק דוח, אך ייתכן שהנתונים אינם סופיים.
-            </div>
-          )}
-
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-gray-500 border-b border-gray-100">
-                <th className="text-right py-1.5 font-medium">תאריך</th>
-                <th className="text-right py-1.5 font-medium">סוג</th>
-                <th className="text-right py-1.5 font-medium">עובדים</th>
-                <th className="text-right py-1.5 font-medium">שעות בפועל</th>
-              </tr>
-            </thead>
-            <tbody>
-              {preview.report.jobs.map((job) => (
-                <tr key={job.jobId} className="border-b border-gray-50">
-                  <td className="py-1.5 text-gray-800">{job.date}</td>
-                  <td className="py-1.5 text-gray-800">{JOB_TYPE_LABEL[job.jobType] ?? job.jobType}</td>
-                  <td className="py-1.5 text-gray-800">{job.workerCount}</td>
-                  <td className="py-1.5 text-gray-800">{job.actualHours}</td>
-                </tr>
+      {/* Totals */}
+      {preview && (
+        <section className="mb-5 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm">
+          <div className="flex justify-between"><span>סך שעות עבודה בפועל</span><span className="font-medium">{preview.report.totalActualHours}</span></div>
+          {preview.report.mode === 'HOURLY' && (
+            <>
+              <div className="flex justify-between"><span>תעריף שעתי</span><span>{money(preview.report.hourlyRate)}</span></div>
+              {preview.report.additions.map((a, i) => (
+                <div key={i} className="flex justify-between text-gray-500"><span>תוספת · {a.description || 'ללא תיאור'}</span><span>{money(a.amount)}</span></div>
               ))}
-            </tbody>
-          </table>
+            </>
+          )}
+          <div className="mt-2 flex justify-between border-t border-gray-200 pt-2 text-base font-semibold"><span>סכום סופי</span><span>{money(preview.report.finalAmount)}</span></div>
+        </section>
+      )}
 
-          <dl className="mt-4 space-y-1.5 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-gray-600">סך שעות עבודה בפועל</dt>
-              <dd className="font-medium text-gray-900">{preview.report.totalActualHours}</dd>
-            </div>
-            {preview.report.mode === 'HOURLY' && (
-              <>
-                <div className="flex justify-between">
-                  <dt className="text-gray-600">תעריף שעתי</dt>
-                  <dd className="text-gray-900">{money(preview.report.hourlyRate ?? 0)}</dd>
-                </div>
-                {preview.report.manualAdditions > 0 && (
-                  <div className="flex justify-between">
-                    <dt className="text-gray-600">תוספות</dt>
-                    <dd className="text-gray-900">{money(preview.report.manualAdditions)}</dd>
-                  </div>
-                )}
-                {preview.report.discount > 0 && (
-                  <div className="flex justify-between">
-                    <dt className="text-gray-600">הנחה</dt>
-                    <dd className="text-gray-900">−{money(preview.report.discount)}</dd>
-                  </div>
-                )}
-              </>
-            )}
-            <div className="flex justify-between border-t border-gray-100 pt-2 mt-2">
-              <dt className="font-semibold text-gray-900">סכום סופי</dt>
-              <dd className="font-bold text-primary-700 text-base">{money(preview.report.finalAmount)}</dd>
-            </div>
-          </dl>
+      <div className="flex items-center gap-3">
+        <button onClick={() => void loadPreview()} disabled={busy} className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 disabled:opacity-50">
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+          רענון תצוגה
+        </button>
+        <button onClick={() => void finalize()} disabled={busy || !canFinalize} className="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+          {isClosed ? 'יצירת גרסה מתוקנת' : 'הפקת דוח'}
+        </button>
+      </div>
+
+      {/* Version history */}
+      {versions.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1"><History className="w-4 h-4" /> היסטוריית גרסאות</h2>
+          <ul className="space-y-2">
+            {versions.map((v) => (
+              <li key={v.id} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm">
+                <span>גרסה {v.versionNumber}{v.isCurrent ? ' (נוכחית)' : ''} · {money(v.finalAmount)} · {new Date(v.createdAt).toLocaleDateString('he-IL')}</span>
+                <button onClick={() => void downloadVersion(v.id, v.versionNumber)} className="inline-flex items-center gap-1 text-primary-600 hover:underline">
+                  <Download className="w-4 h-4" /> PDF
+                </button>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
     </div>

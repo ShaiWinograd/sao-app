@@ -54,6 +54,7 @@ type OwnerTasks = {
   swapApprovals: number;
   attendanceReview: number;
   reportCorrections: number;
+  customerReportReady: number;
 };
 
 const MOM_OWNER_NAME = 'אורית';
@@ -560,6 +561,7 @@ export default function DashboardPage() {
       { key: 'swapApprovals', label: 'אישורי החלפת משמרות', count: attention.swapApprovals, href: '/shifts/swaps' },
       { key: 'attendanceReview', label: 'נוכחות לבדיקה', count: attention.attendanceReview, href: '/attendance' },
       { key: 'reportCorrections', label: 'בקשות תיקון דוח', count: attention.reportCorrections, href: '/payroll' },
+      { key: 'customerReportReady', label: 'הפרויקט מוכן לדוח לקוחה', count: attention.customerReportReady, href: '/reports/customer' },
     ].filter((i) => i.count > 0);
   }, [attention]);
 

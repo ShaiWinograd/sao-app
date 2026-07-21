@@ -50,6 +50,7 @@ type OwnerTasks = {
   swapApprovals: number;
   attendanceReview: number;
   reportCorrections: number;
+  customerReportReady: number;
 };
 
 function OwnerTasksPanel({ tasks }: { tasks: OwnerTasks }) {
@@ -60,6 +61,7 @@ function OwnerTasksPanel({ tasks }: { tasks: OwnerTasks }) {
     { key: 'swapApprovals', label: 'אישורי החלפת משמרות', href: '/shifts/swaps' },
     { key: 'attendanceReview', label: 'נוכחות לבדיקה', href: '/attendance' },
     { key: 'reportCorrections', label: 'בקשות תיקון דוח', href: '/payroll' },
+    { key: 'customerReportReady', label: 'הפרויקט מוכן לדוח לקוחה', href: '/reports/customer' },
   ];
   const active = items.filter((i) => tasks[i.key] > 0);
   if (active.length === 0) return null;
