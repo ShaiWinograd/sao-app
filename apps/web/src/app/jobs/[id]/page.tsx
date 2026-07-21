@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { ArrowRight, CheckCircle2, RefreshCw, Send, UserCheck, XCircle, Repeat, AlertTriangle, ArrowUpCircle } from 'lucide-react';
-import { evaluateJobPublishReadiness, MANAGER_SKILL, deriveJobStatusBadge } from '@workforce/shared';
+import { evaluateJobPublishReadiness, MANAGER_SKILL, deriveJobStatusBadge, auditReasonLabel } from '@workforce/shared';
 import { api, authHeaders } from '../../../lib/api';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 
@@ -51,7 +51,7 @@ type ApiJobDetail = {
   customer: { firstName: string; lastName: string; phone: string; isSystem?: boolean };
   slots: ApiJobSlot[];
   shifts: ApiJobShift[];
-  reportEntry?: { caseId: string; readyForReport: boolean; isLastJob: boolean };
+  reportEntry?: { caseId: string; readyForReport: boolean; isLastJob: boolean; finalized?: boolean };
 };
 
 type JobTab = 'details' | 'staffing' | 'attendance' | 'forms' | 'notes' | 'activity';
@@ -70,24 +70,7 @@ const JOB_STATUS_LABELS: Record<string, string> = {
 };
 
 // Friendly Hebrew labels for the audit-log `reason` values (spec §16).
-const ACTIVITY_LABELS: Record<string, string> = {
-  'created+published': 'העבודה נוצרה ופורסמה',
-  approve: 'העבודה אושרה',
-  'return-to-reservation': 'הוחזרה לשריון',
-  archive: 'הועברה לארכיון',
-  republish: 'נשלחה שוב לעובדים',
-  update: 'עודכנו פרטים',
-  'material-change': 'שינוי מהותי – נדרש אישור עובדים מחדש',
-  'move-worker': 'עובד הועבר לעבודה זו',
-  'role-change': 'שינוי תפקיד עובד',
-  'join-request': 'עובד ביקש להצטרף',
-  'join-decision': 'הוכרעה בקשת הצטרפות',
-  'join-request-cancelled': 'עובד ביטל בקשת הצטרפות',
-  'direct-assign': 'שיבוץ ישיר של עובד',
-  'assignment-accepted': 'עובד אישר שיבוץ',
-  'assignment-declined': 'עובד דחה שיבוץ',
-  'admin-remove': 'עובד הוסר מהעבודה',
-};
+// Owner-readable event text is centralized in @workforce/shared (auditReasonLabel).
 
 const JOIN_STATUS_LABELS: Record<string, string> = {
   PENDING: 'ממתין לאישור',
@@ -753,6 +736,16 @@ export default function JobDetailPage() {
         </Link>
       )}
 
+      {job.reportEntry?.finalized && (
+        <Link
+          href={`/cases/${job.reportEntry.caseId}/customer-report`}
+          className="mb-4 flex items-center justify-between rounded-lg border border-primary-200 bg-primary-50 px-4 py-2.5 text-sm text-primary-800 hover:border-primary-300"
+        >
+          <span className="font-medium">דוח הלקוחה הופק — צפייה, היסטוריית גרסאות והורדת PDF</span>
+          <ArrowRight className="w-4 h-4 rotate-180" />
+        </Link>
+      )}
+
       <div className="flex items-start justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
@@ -1266,7 +1259,7 @@ export default function JobDetailPage() {
               {activity.map((entry) => (
                 <li key={entry.id} className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2">
                   <div>
-                    <p className="text-sm text-gray-800">{ACTIVITY_LABELS[entry.reason ?? ''] ?? entry.reason ?? entry.action}</p>
+                    <p className="text-sm text-gray-800">{auditReasonLabel(entry.reason)}</p>
                     <p className="text-[11px] text-gray-400">
                       {entry.performedBy ? `${entry.performedBy.firstName} ${entry.performedBy.lastName}` : 'מערכת'}
                       {' · '}

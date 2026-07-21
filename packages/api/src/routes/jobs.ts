@@ -344,7 +344,10 @@ export async function jobsRoutes(app: FastifyInstance) {
     // (latest-dated) job of a case that is ready surfaces a "create report" action.
     const readiness = await getCaseReadiness(prisma, (job as any).caseId);
     const lastJob = await prisma.job.findFirst({ where: { caseId: (job as any).caseId }, orderBy: { date: 'desc' }, select: { id: true } });
-    return { ...job, reportEntry: { caseId: (job as any).caseId, readyForReport: readiness.ready, isLastJob: lastJob?.id === job.id } };
+    // A job is part of a FINALIZED customer-report chain once it has been bound
+    // to a report (reportedAt set at finalize) — surface a link to that report.
+    const finalized = (job as any).reportedAt != null;
+    return { ...job, reportEntry: { caseId: (job as any).caseId, readyForReport: readiness.ready, isLastJob: lastJob?.id === job.id, finalized } };
   });
 
   // Quick job creation from the shift board (spec §6.1). Job-first: the owner
