@@ -313,7 +313,7 @@ model Customer {
   firstName          String
   lastName           String
   phone              String
-  email              String
+  email              String?
   preferredContact   String?
   notes              String?
   parkingInstructions String?
@@ -430,6 +430,7 @@ model Job {
   locationRadiusMeters Int          @default(500)
   status               JobStatus    @default(RESERVATION)
   reportedAt           DateTime?
+  idempotencyKey       String?      @unique
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
 

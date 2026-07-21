@@ -63,10 +63,16 @@ async function build() {
   });
 
   app.setErrorHandler((error, req, reply) => {
-    if (error instanceof ZodError) {
+    // ZodError can arrive from a different module's zod copy (e.g. the schema was
+    // defined in @workforce/shared, which bundles its own zod), so `instanceof`
+    // is unreliable across package boundaries — duck-type it as well.
+    const isZod =
+      error instanceof ZodError ||
+      ((error as { name?: string })?.name === 'ZodError' && Array.isArray((error as { issues?: unknown }).issues));
+    if (isZod) {
       return reply.status(400).send({
         error: 'Invalid request data',
-        issues: error.issues.map((issue) => ({
+        issues: (error as ZodError).issues.map((issue) => ({
           path: issue.path.join('.'),
           message: issue.message,
         })),
@@ -94,8 +100,18 @@ async function build() {
       return reply.status(400).send({ error: 'Database request failed', code: error.code });
     }
 
-    req.log.error({ err: error }, 'Unhandled API error');
-    return reply.status(500).send({ error: 'Unexpected server error' });
+    // Framework/validation errors (e.g. FST_ERR_CTP_EMPTY_JSON_BODY) carry a 4xx
+    // statusCode — honor it instead of masking a client mistake as a 500.
+    const statusCode = (error as { statusCode?: number })?.statusCode;
+    if (typeof statusCode === 'number' && statusCode >= 400 && statusCode < 500) {
+      return reply.status(statusCode).send({ error: (error as { code?: string }).code ?? 'Bad request', message: (error as Error).message });
+    }
+
+    // Truly unexpected: log with a correlation id and return it so the UI can show
+    // a reference for support instead of an opaque 500.
+    const correlationId = req.id;
+    req.log.error({ err: error, correlationId }, 'Unhandled API error');
+    return reply.status(500).send({ error: 'Unexpected server error', correlationId });
   });
 
   const extraOrigins = (process.env.CORS_EXTRA_ORIGINS ?? '')
