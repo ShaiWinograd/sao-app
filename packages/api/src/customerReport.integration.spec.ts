@@ -16,6 +16,7 @@ import {
   getCaseReadiness,
   finalizeCustomerReport,
   createCorrectedVersion,
+  listReportsOverview,
   type ReportEditorInput,
 } from './domain/customerReport.js';
 
@@ -306,5 +307,72 @@ maybe('§18 finalize + versioning + integrity', () => {
     expect(await prisma.customerReportVersion.count({ where: { caseId: kase.id } })).toBe(0);
     expect((await prisma.customerCase.findUnique({ where: { id: kase.id } }))?.status).toBe('ACTIVE');
     expect(await prisma.job.count({ where: { caseId: kase.id, reportedAt: { not: null } } })).toBe(0);
+  });
+});
+
+maybe('§18 billable rounding + snapshot + RTL PDF (integration)', () => {
+  beforeEach(clean);
+  afterAll(async () => { await prisma.$disconnect(); });
+
+  async function readyCaseWithWorkers(hoursArr: number[]) {
+    const customer = await seedCustomer();
+    const kase = await seedCase(customer.id);
+    const address = await prisma.address.create({ data: { customerId: customer.id, fullAddress: 'X', label: 'OTHER' } });
+    const job = await prisma.job.create({
+      data: {
+        caseId: kase.id, customerId: customer.id, addressId: address.id, jobType: 'PACKING',
+        date: at(0), plannedStart: at(0), plannedEnd: at(0), requiredWorkerCount: hoursArr.length, status: 'COMPLETED',
+      },
+    });
+    for (const h of hoursArr) {
+      const w = await seedWorker();
+      await prisma.shift.create({
+        data: {
+          jobId: job.id, workerId: w.id, scheduledStart: at(0), scheduledEnd: at(0),
+          joinRequestStatus: 'APPROVED', assignmentRole: 'REGULAR', attendanceStatus: 'CLOCKED_OUT',
+          approvedHours: new Prisma.Decimal(h), requiresReview: false,
+          hourlyWageSnapshot: new Prisma.Decimal(50), dailyPaymentSnapshot: new Prisma.Decimal(400), workerNameSnapshot: 'T',
+        },
+      });
+    }
+    return { customer, kase, job };
+  }
+
+  const hourly = (rate: number): ReportEditorInput => ({ pricing: { mode: 'HOURLY', hourlyRate: rate, additions: [] } });
+
+  it('immutable snapshot stores BOTH exact and billable hours; billing uses billable', async () => {
+    const { kase } = await readyCaseWithWorkers([4.74, 4.74]); // exact 9.48 → billable 9.0 (per-worker)
+    const version = await finalizeCustomerReport(kase.id, hourly(100), null, prisma);
+    const snap = version.snapshot as any;
+    expect(snap.report.jobs[0].actualHours).toBe(9.48);
+    expect(snap.report.jobs[0].billableHours).toBe(9.0);
+    expect(snap.report.totalActualHours).toBe(9.48);
+    expect(snap.report.totalBillableHours).toBe(9.0);
+    expect(snap.report.finalAmount).toBe(900); // billed on 9.0, not 9.48/9.5
+
+    const stored = await prisma.customerReportVersion.findUniqueOrThrow({ where: { id: version.id } });
+    expect(stored.pdf).toBeTruthy();
+    expect(Buffer.from(stored.pdf as Buffer).subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  });
+
+  it('a historical finalized PDF is unchanged after a later corrected version', async () => {
+    const { kase } = await readyCaseWithWorkers([5]);
+    const v1 = await finalizeCustomerReport(kase.id, hourly(100), null, prisma);
+    const before = Buffer.from((await prisma.customerReportVersion.findUniqueOrThrow({ where: { id: v1.id } })).pdf as Buffer);
+
+    await createCorrectedVersion(kase.id, hourly(150), null, prisma); // v2, re-priced
+
+    const after = Buffer.from((await prisma.customerReportVersion.findUniqueOrThrow({ where: { id: v1.id } })).pdf as Buffer);
+    expect(after.equals(before)).toBe(true);
+  });
+
+  it('reports overview is identical whether fetched globally (direct nav) or customer-scoped (Home)', async () => {
+    const { customer, kase } = await readyCaseWithWorkers([8]);
+    expect((await listReportsOverview(prisma)).ready.some((r) => r.caseId === kase.id)).toBe(true);
+    expect((await listReportsOverview(prisma, customer.id)).ready.some((r) => r.caseId === kase.id)).toBe(true);
+
+    await finalizeCustomerReport(kase.id, hourly(100), null, prisma);
+    expect((await listReportsOverview(prisma)).closed.some((r) => r.caseId === kase.id)).toBe(true);
+    expect((await listReportsOverview(prisma, customer.id)).closed.some((r) => r.caseId === kase.id)).toBe(true);
   });
 });

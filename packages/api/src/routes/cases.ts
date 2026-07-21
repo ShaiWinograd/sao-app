@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { deleteCaseCascade } from '../lib/deleteCase.js';
-import { buildLinesPdf } from '../lib/pdf.js';
+import { renderCustomerReportPdf } from '../lib/pdf.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { CaseStatusSchema, deriveProjectStatus } from '@workforce/shared';
 import {
@@ -10,7 +10,7 @@ import {
   previewCustomerReport,
   finalizeCustomerReport,
   createCorrectedVersion,
-  snapshotToPdfLines,
+  reportPdfModel,
   listReportsOverview,
   type ReportEditorInput,
   type ReportSnapshot,
@@ -256,7 +256,7 @@ export async function casesRoutes(app: FastifyInstance) {
     // Durable artifact (spec §18.8): serve the exact PDF bytes finalized at that
     // time so template/renderer changes never alter an old finalized document.
     // Fall back to snapshot rendering only for legacy rows without stored bytes.
-    const pdf = version.pdf ?? (await buildLinesPdf('דוח לקוח', snapshot.customerName, snapshotToPdfLines(snapshot)));
+    const pdf = version.pdf ?? (await renderCustomerReportPdf(reportPdfModel(snapshot)));
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', `attachment; filename="customer-report-${id}-v${snapshot.versionNumber}.pdf"`);
     return reply.send(pdf);

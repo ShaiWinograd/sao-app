@@ -37,13 +37,20 @@ export type CustomerReportJobLine = {
   date: string; // YYYY-MM-DD
   jobType: string;
   workerCount: number;
+  // Exact aggregate approved hours for the job (attendance truth, preserved).
   actualHours: number;
+  // Customer-billable hours: each worker's approved duration rounded to the
+  // nearest 0.5h individually, then summed (spec §18.4 half-hour rounding).
+  billableHours: number;
   ownerNote?: string | null;
 };
 
 export type CustomerReport = {
   jobs: CustomerReportJobLine[];
+  // Exact total (sum of per-job actualHours) — internal truth, never billed on.
   totalActualHours: number;
+  // Billable total (sum of per-job billableHours) — customer calculations + PDF.
+  totalBillableHours: number;
   mode: 'HOURLY' | 'GLOBAL';
   hourlyRate?: number;
   additions: CustomerReportAddition[];
@@ -53,6 +60,16 @@ export type CustomerReport = {
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Round a single worker's approved duration to the nearest half hour (0.5).
+ * Half rounds up (4.75 → 5.0). Rounding is applied per worker BEFORE aggregating
+ * so the customer is billed on clean half-hour units without distorting the
+ * exact attendance hours kept internally.
+ */
+export function roundToHalfHour(n: number): number {
+  return Math.round((Number(n) || 0) * 2) / 2;
 }
 
 function toDateKey(value: string | Date): string {
@@ -76,15 +93,20 @@ export function computeCustomerReport(
     jobType: j.jobType,
     workerCount: j.workedHours.length,
     actualHours: round2(j.workedHours.reduce((sum, h) => sum + h, 0)),
+    // Round each worker's duration to the nearest 0.5h, then sum (per-worker
+    // rounding before aggregation).
+    billableHours: round2(j.workedHours.reduce((sum, h) => sum + roundToHalfHour(h), 0)),
     ownerNote: j.ownerNote ?? null,
   }));
 
   const totalActualHours = round2(jobLines.reduce((sum, j) => sum + j.actualHours, 0));
+  const totalBillableHours = round2(jobLines.reduce((sum, j) => sum + j.billableHours, 0));
 
   if (pricing.mode === 'GLOBAL') {
     return {
       jobs: jobLines,
       totalActualHours,
+      totalBillableHours,
       mode: 'GLOBAL',
       additions: [],
       additionsTotal: 0,
@@ -94,16 +116,87 @@ export function computeCustomerReport(
 
   const additions = normalizeAdditions(pricing.additions);
   const additionsTotal = round2(additions.reduce((sum, a) => sum + a.amount, 0));
-  const base = totalActualHours * pricing.hourlyRate;
+  // Customer is billed on rounded billable hours, not exact attendance hours.
+  const base = totalBillableHours * pricing.hourlyRate;
   const finalAmount = round2(base + additionsTotal);
 
   return {
     jobs: jobLines,
     totalActualHours,
+    totalBillableHours,
     mode: 'HOURLY',
     hourlyRate: pricing.hourlyRate,
     additions,
     additionsTotal,
     finalAmount,
+  };
+}
+
+// ─── Customer-facing PDF layout model (pure, RTL Hebrew) ──────────────────────
+// The renderer (packages/api/src/lib/pdf.ts) draws this structured model as a
+// right-to-left table; keeping the layout as data makes it unit-testable without
+// parsing the binary PDF.
+
+export type CustomerReportPdfModel = {
+  title: string;
+  subtitle: string[];
+  // Columns are listed right-to-left: index 0 renders at the far right.
+  table: { headers: string[]; rows: string[][] };
+  totals: Array<{ label: string; value: string; emphasis?: boolean }>;
+};
+
+const JOB_TYPE_HE_PDF: Record<string, string> = {
+  PACKING: 'אריזה',
+  UNPACKING: 'פריקה',
+  HOME_ORGANIZATION: 'סידור',
+};
+
+export function formatShekel(n: number): string {
+  return `${Number(n).toLocaleString('he-IL')} ₪`;
+}
+
+export function formatHours(n: number): string {
+  return `${Number(n).toLocaleString('he-IL')} שעות`;
+}
+
+function toDisplayDate(isoDay: string): string {
+  const parts = isoDay.split('-');
+  return parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : isoDay;
+}
+
+export function buildCustomerReportPdfModel(args: {
+  customerName: string;
+  versionNumber: number;
+  generatedAt?: string | Date;
+  report: CustomerReport;
+}): CustomerReportPdfModel {
+  const { customerName, versionNumber, report } = args;
+  const generated = args.generatedAt ? new Date(args.generatedAt) : new Date();
+  const dateStr = generated.toLocaleDateString('he-IL');
+
+  const headers = ['תאריך', 'סוג עבודה', 'עובדים', 'שעות לחיוב'];
+  const rows = report.jobs.map((j) => [
+    toDisplayDate(j.date),
+    JOB_TYPE_HE_PDF[j.jobType] ?? j.jobType,
+    String(j.workerCount),
+    formatHours(j.billableHours),
+  ]);
+
+  const totals: Array<{ label: string; value: string; emphasis?: boolean }> = [
+    { label: 'סך שעות לחיוב', value: formatHours(report.totalBillableHours) },
+  ];
+  if (report.mode === 'HOURLY') {
+    totals.push({ label: 'תעריף שעתי', value: formatShekel(report.hourlyRate ?? 0) });
+    for (const add of report.additions) {
+      totals.push({ label: `תוספת — ${add.description || 'ללא תיאור'}`, value: formatShekel(add.amount) });
+    }
+  }
+  totals.push({ label: 'סכום סופי', value: formatShekel(report.finalAmount), emphasis: true });
+
+  return {
+    title: 'דוח לקוח',
+    subtitle: [`לקוח: ${customerName}`, `גרסה ${versionNumber} · ${dateStr}`],
+    table: { headers, rows },
+    totals,
   };
 }

@@ -7,10 +7,12 @@ import { prisma } from '../lib/prisma.js';
 import { logAudit } from '../lib/audit.js';
 import { lockCase } from '../lib/commitment.js';
 import { AppError } from '../lib/errors.js';
-import { buildLinesPdf } from '../lib/pdf.js';
+import { renderCustomerReportPdf } from '../lib/pdf.js';
 import {
   computeCustomerReport,
   isCaseReadyForReport,
+  buildCustomerReportPdfModel,
+  roundToHalfHour,
   type CustomerReport,
   type CustomerReportPricing,
 } from '@workforce/shared';
@@ -191,7 +193,7 @@ function resolveIncludedJobs(kase: CaseLite, includedJobIds?: string[]): JobLite
 }
 
 /** Non-persisting preview for the editor (ACTIVE case) or a correction (CLOSED). */
-export async function previewCustomerReport(client: DbClient, caseId: string, input: ReportEditorInput): Promise<ReportSnapshot & { excludedJobIds: string[]; reportableJobs: Array<{ jobId: string; date: string; jobType: string; workerCount: number; actualHours: number; included: boolean }>; caseStatus: string }> {
+export async function previewCustomerReport(client: DbClient, caseId: string, input: ReportEditorInput): Promise<ReportSnapshot & { excludedJobIds: string[]; reportableJobs: Array<{ jobId: string; date: string; jobType: string; workerCount: number; actualHours: number; billableHours: number; included: boolean }>; caseStatus: string }> {
   const kase = (await client.customerCase.findUnique({ where: { id: caseId }, include: caseInclude })) as CaseLite | null;
   if (!kase) throw new AppError(404, 'CASE_NOT_FOUND', 'Case not found');
   const included = resolveIncludedJobs(kase, input.includedJobIds);
@@ -208,6 +210,7 @@ export async function previewCustomerReport(client: DbClient, caseId: string, in
       jobType: j.jobType,
       workerCount: hours.length,
       actualHours: Math.round((hours.reduce((s, h) => s + h, 0) + Number.EPSILON) * 100) / 100,
+      billableHours: Math.round((hours.reduce((s, h) => s + roundToHalfHour(h), 0) + Number.EPSILON) * 100) / 100,
       included: includedSet.has(j.id),
     };
   });
@@ -243,7 +246,7 @@ export async function finalizeCustomerReport(caseId: string, input: ReportEditor
     const excludedJobs = completed.filter((j) => !includedSet.has(j.id));
 
     const snapshot = buildSnapshot(kase, includedJobs, input, versionCount + 1);
-    const pdf = await buildLinesPdf('דוח לקוח', snapshot.customerName, snapshotToPdfLines(snapshot));
+    const pdf = await renderCustomerReportPdf(reportPdfModel(snapshot));
     const version = await tx.customerReportVersion.create({
       data: {
         caseId,
@@ -293,7 +296,7 @@ export async function createCorrectedVersion(caseId: string, input: ReportEditor
     // jobs are re-priced. Pricing/additions/notes may change.
     const boundJobs = kase.jobs.filter((j) => j.reportedAt != null);
     const snapshot = buildSnapshot(kase, boundJobs, input, latest.versionNumber + 1);
-    const pdf = await buildLinesPdf('דוח לקוח', snapshot.customerName, snapshotToPdfLines(snapshot));
+    const pdf = await renderCustomerReportPdf(reportPdfModel(snapshot));
 
     const version = await tx.customerReportVersion.create({
       data: {
@@ -315,25 +318,12 @@ export async function createCorrectedVersion(caseId: string, input: ReportEditor
 // Customer-facing lines only: per job date · type · worker count · hours. No
 // worker names, individual attendance, pay, or internal notes (spec §18.7).
 
-export function snapshotToPdfLines(snapshot: ReportSnapshot): string[] {
-  const money = (n: number) => `${Number(n).toLocaleString('he-IL')} ₪`;
-  const r = snapshot.report;
-  const lines: string[] = [];
-  lines.push(`לקוח: ${snapshot.customerName}`);
-  lines.push(`גרסה: ${snapshot.versionNumber}`);
-  lines.push('');
-  lines.push('עבודות:');
-  for (const job of r.jobs) {
-    lines.push(`  ${job.date} · ${JOB_TYPE_HE_LABEL[job.jobType] ?? job.jobType} · ${job.workerCount} עובדים · ${job.actualHours} שעות`);
-  }
-  lines.push('');
-  lines.push(`סך שעות עבודה בפועל: ${r.totalActualHours}`);
-  if (r.mode === 'HOURLY') {
-    lines.push(`תעריף שעתי: ${money(r.hourlyRate ?? 0)}`);
-    for (const add of r.additions) {
-      lines.push(`תוספת - ${add.description || 'ללא תיאור'}: ${money(add.amount)}`);
-    }
-  }
-  lines.push(`סכום סופי: ${money(r.finalAmount)}`);
-  return lines;
+/** Build the RTL PDF layout model for a finalized/preview snapshot. */
+export function reportPdfModel(snapshot: ReportSnapshot) {
+  return buildCustomerReportPdfModel({
+    customerName: snapshot.customerName,
+    versionNumber: snapshot.versionNumber,
+    generatedAt: snapshot.generatedAt,
+    report: snapshot.report,
+  });
 }

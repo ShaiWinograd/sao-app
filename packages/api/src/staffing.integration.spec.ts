@@ -167,6 +167,7 @@ describe.skipIf(!TEST_DB)('§12–13 staffing concurrency (integration)', () => 
   beforeEach(async () => {
     // Order matters for FK constraints.
     await prisma.auditLog.deleteMany();
+    await prisma.customerReportVersion.deleteMany();
     await prisma.shiftSwap.deleteMany();
     await prisma.replacementVolunteer.deleteMany();
     await prisma.replacementRequest.deleteMany();

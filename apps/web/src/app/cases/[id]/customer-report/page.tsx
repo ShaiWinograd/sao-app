@@ -10,8 +10,8 @@ import { api, authHeaders } from '../../../../lib/api';
 type PricingMode = 'HOURLY' | 'GLOBAL';
 type Addition = { description: string; amount: string };
 
-type ReportableJob = { jobId: string; date: string; jobType: string; workerCount: number; actualHours: number; included: boolean };
-type ReportLine = { jobId: string; date: string; jobType: string; workerCount: number; actualHours: number };
+type ReportableJob = { jobId: string; date: string; jobType: string; workerCount: number; actualHours: number; billableHours: number; included: boolean };
+type ReportLine = { jobId: string; date: string; jobType: string; workerCount: number; actualHours: number; billableHours: number };
 type Preview = {
   versionNumber: number;
   customerName: string;
@@ -21,6 +21,7 @@ type Preview = {
   report: {
     jobs: ReportLine[];
     totalActualHours: number;
+    totalBillableHours: number;
     mode: PricingMode;
     hourlyRate?: number;
     additions: { description: string; amount: number }[];
@@ -208,7 +209,7 @@ export default function CustomerReportPage() {
               <div key={j.jobId} className={`rounded-lg border px-3 py-2 ${off ? 'border-gray-200 bg-gray-50 opacity-60' : 'border-gray-200 bg-white'}`}>
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-900">
-                    {j.date} · {JOB_TYPE_LABEL[j.jobType] ?? j.jobType} · {j.workerCount} עובדים · {j.actualHours} שעות
+                    {j.date} · {JOB_TYPE_LABEL[j.jobType] ?? j.jobType} · {j.workerCount} עובדים · {j.billableHours} שעות לחיוב
                   </div>
                   {!isClosed && (
                     <button
@@ -277,7 +278,7 @@ export default function CustomerReportPage() {
       {/* Totals */}
       {preview && (
         <section className="mb-5 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm">
-          <div className="flex justify-between"><span>סך שעות עבודה בפועל</span><span className="font-medium">{preview.report.totalActualHours}</span></div>
+          <div className="flex justify-between"><span>סך שעות לחיוב</span><span className="font-medium">{preview.report.totalBillableHours}</span></div>
           {preview.report.mode === 'HOURLY' && (
             <>
               <div className="flex justify-between"><span>תעריף שעתי</span><span>{money(preview.report.hourlyRate)}</span></div>

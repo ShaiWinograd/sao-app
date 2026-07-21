@@ -15,7 +15,7 @@ function money(n: number | null): string {
 }
 
 export default function CustomerReportsHubPage() {
-  const { getToken } = useAuth();
+  const { getToken, isLoaded, isSignedIn } = useAuth();
   const [data, setData] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -32,9 +32,18 @@ export default function CustomerReportsHubPage() {
     }
   }, [getToken]);
 
+  // Fetch independently once Clerk auth is ready. Gating on isLoaded makes the
+  // page work on DIRECT navigation and a full browser refresh (not only when
+  // arriving via client-side navigation from Home, where auth was already warm).
   useEffect(() => {
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
     void load();
-  }, [load]);
+  }, [isLoaded, isSignedIn, load]);
 
   return (
     <div className="p-6 max-w-3xl" dir="rtl">
