@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma.js';
 import { deleteCaseCascade } from '../lib/deleteCase.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { UserRole, TeamInviteSchema } from '@workforce/shared';
+import { countReadyCases } from '../domain/customerReport.js';
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 
@@ -24,7 +25,7 @@ const DEMO_WORKERS = [
 export async function adminRoutes(app: FastifyInstance) {
   // Aggregated owner action items for the dashboard (integration spec §21).
   app.get('/tasks', { preHandler: [authenticate, requireAdmin] }, async () => {
-    const [joinRequests, pendingAcceptance, replacementRequests, swapApprovals, attendanceReview, reportCorrections] = await Promise.all([
+    const [joinRequests, pendingAcceptance, replacementRequests, swapApprovals, attendanceReview, reportCorrections, customerReportReady] = await Promise.all([
       prisma.shift.count({ where: { joinRequestStatus: 'PENDING' } }),
       prisma.shift.count({ where: { joinRequestStatus: 'AWAITING_WORKER' } }),
       prisma.replacementRequest.count({ where: { status: 'PENDING' } }),
@@ -34,8 +35,10 @@ export async function adminRoutes(app: FastifyInstance) {
       // end forms are intentionally NOT here (they are informational — §17.3).
       prisma.shift.count({ where: { requiresReview: true } }),
       prisma.workerMonthlyReport.count({ where: { status: 'CORRECTION_REQUESTED' } }),
+      // §18.1: cases ready for a customer report (owner action possible).
+      countReadyCases(prisma),
     ]);
-    return { joinRequests, pendingAcceptance, replacementRequests, swapApprovals, attendanceReview, reportCorrections };
+    return { joinRequests, pendingAcceptance, replacementRequests, swapApprovals, attendanceReview, reportCorrections, customerReportReady };
   });
 
   // Invite an owner/admin team member by email (no worker profile). The invited

@@ -4,12 +4,17 @@ import { prisma } from '../lib/prisma.js';
 import { deleteCaseCascade } from '../lib/deleteCase.js';
 import { buildLinesPdf } from '../lib/pdf.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { CaseStatusSchema, deriveProjectStatus } from '@workforce/shared';
 import {
-  CaseStatusSchema,
-  computeCustomerReport,
-  deriveProjectStatus,
-} from '@workforce/shared';
-import { subDays } from 'date-fns';
+  getCaseReadiness,
+  previewCustomerReport,
+  finalizeCustomerReport,
+  createCorrectedVersion,
+  snapshotToPdfLines,
+  listReportsOverview,
+  type ReportEditorInput,
+  type ReportSnapshot,
+} from '../domain/customerReport.js';
 import { z } from 'zod';
 
 // CustomerCase is an internal grouping entity (spec §10): jobs are auto-grouped
@@ -21,70 +26,26 @@ const CasesListQuerySchema = z.object({
   status: CaseStatusSchema.optional(),
 });
 
-// Customer report pricing (spec §18): hourly (rate × total actual worker-hours,
-// with optional manual additions and discount) or a fixed global amount.
-const CustomerReportPricingSchema = z.union([
-  z.object({
-    mode: z.literal('HOURLY'),
-    hourlyRate: z.number().nonnegative(),
-    manualAdditions: z.number().optional(),
-    discount: z.number().optional(),
-  }),
-  z.object({
-    mode: z.literal('GLOBAL'),
-    globalAmount: z.number().nonnegative(),
-  }),
+// Customer report editor input (spec §18): billing mode (hourly with a single
+// case rate + manual addition line items, or a fixed global amount), the jobs to
+// include (default = all completed), and optional INTERNAL per-job owner notes.
+const AdditionSchema = z.object({ description: z.string().default(''), amount: z.number() });
+const PricingSchema = z.union([
+  z.object({ mode: z.literal('HOURLY'), hourlyRate: z.number().nonnegative(), additions: z.array(AdditionSchema).optional() }),
+  z.object({ mode: z.literal('GLOBAL'), globalAmount: z.number().nonnegative() }),
 ]);
-
-const JOB_TYPE_HE_LABEL: Record<string, string> = {
-  PACKING: 'אריזה',
-  UNPACKING: 'פריקה',
-  HOME_ORGANIZATION: 'סידור',
-};
-
-// Build the customer-report payload for a case: per-job worker counts and actual
-// worker-hours (backups who worked included; individual hours never exposed).
-async function buildCustomerReportForCase(
-  caseId: string,
-  pricing: z.infer<typeof CustomerReportPricingSchema>,
-) {
-  const kase = await prisma.customerCase.findUnique({
-    where: { id: caseId },
-    include: {
-      customer: { select: { firstName: true, lastName: true } },
-      jobs: {
-        orderBy: { date: 'asc' },
-        include: {
-          shifts: { select: { joinRequestStatus: true, approvedHours: true } },
-        },
-      },
-    },
-  });
-  if (!kase) return null;
-
-  const jobInputs = kase.jobs.map((job) => ({
-    jobId: job.id,
-    date: job.date,
-    jobType: job.jobType,
-    // A worker counts as having worked when they have approved billable hours.
-    workedHours: job.shifts
-      .filter((s) => s.joinRequestStatus === 'APPROVED' && s.approvedHours != null)
-      .map((s) => Number(s.approvedHours)),
-  }));
-
-  const report = computeCustomerReport(jobInputs, pricing);
-  const allJobsCompleted = kase.jobs.length > 0 && kase.jobs.every((j) => j.status === 'COMPLETED');
-
-  return {
-    customerName: `${kase.customer.firstName} ${kase.customer.lastName}`.trim(),
-    projectName: kase.name,
-    generatedAt: new Date().toISOString(),
-    allJobsCompleted,
-    report,
-  };
-}
+const ReportEditorSchema = z.object({
+  pricing: PricingSchema,
+  includedJobIds: z.array(z.string()).optional(),
+  jobNotes: z.record(z.string()).optional(),
+});
 
 export async function casesRoutes(app: FastifyInstance) {
+  // Customer-report hub (spec §18.2/§18.14): ready ACTIVE cases + finalized ones.
+  app.get('/reports-overview', { preHandler: [authenticate, requireAdmin] }, async () => {
+    return listReportsOverview(prisma);
+  });
+
   // List cases (filtered by customer or status) — supports customer history.
   app.get('/', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const parseResult = CasesListQuerySchema.safeParse(req.query);
@@ -189,12 +150,8 @@ export async function casesRoutes(app: FastifyInstance) {
     const completedOrCancelledJobs = kase.jobs.filter(
       (job: (typeof kase.jobs)[number]) => job.status === 'COMPLETED' || job.status === 'ARCHIVED',
     ).length;
-    const readyForFinalReport =
-      kase.jobs.length > 0 &&
-      completedOrCancelledJobs === kase.jobs.length &&
-      totalShifts > 0 &&
-      closedShifts === totalShifts &&
-      linkedForms.length >= totalShifts;
+    // Readiness is derived (spec §18.1) and does NOT depend on end-of-job forms.
+    const readiness = await getCaseReadiness(prisma, id);
 
     return {
       caseId: kase.id,
@@ -208,7 +165,8 @@ export async function casesRoutes(app: FastifyInstance) {
         closedShifts,
         linkedForms: linkedForms.length,
       },
-      readyForFinalReport,
+      readyForFinalReport: readiness.ready,
+      readinessReasons: readiness.reasons,
       forms: linkedForms.map((form: (typeof linkedForms)[number]) => ({
         id: form.id,
         shiftId: form.shiftId,
@@ -220,34 +178,6 @@ export async function casesRoutes(app: FastifyInstance) {
         shiftDate: form.shift.job.date,
       })),
     };
-  });
-
-  /**
-   * Smart case lookup for new job creation (spec §10.1):
-   * Returns ACTIVE case or recently completed case (within configured days).
-   */
-  app.get('/match-for-customer/:customerId', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
-    const { customerId } = req.params as { customerId: string };
-    const setting = await prisma.appSetting.findUnique({ where: { key: 'CASE_REOPEN_DAYS' } });
-    const days = Number(setting?.value ?? 60);
-
-    const activeCase = await prisma.customerCase.findFirst({
-      where: { customerId, status: 'ACTIVE' },
-      orderBy: { updatedAt: 'desc' },
-    });
-    if (activeCase) return { match: 'ACTIVE', case: activeCase };
-
-    const recentCase = await prisma.customerCase.findFirst({
-      where: {
-        customerId,
-        status: 'COMPLETED',
-        latestActivityDate: { gte: subDays(new Date(), days) },
-      },
-      orderBy: { latestActivityDate: 'desc' },
-    });
-    if (recentCase) return { match: 'RECENT', case: recentCase };
-
-    return { match: 'NONE', case: null };
   });
 
   // Permanently delete a case and all of its dependent records (dev/test only).
@@ -264,47 +194,67 @@ export async function casesRoutes(app: FastifyInstance) {
     return null;
   });
 
-  // Customer report preview (spec §18). Returns computed totals for the editor.
-  app.post('/:id/customer-report', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+  // Customer report preview (spec §18.3/§18.8): compute totals for the editor
+  // WITHOUT persisting. Works for an ACTIVE case (draft) or a CLOSED case
+  // (correction — the same bound jobs re-priced).
+  app.post('/:id/customer-report/preview', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    const pricing = CustomerReportPricingSchema.parse(req.body);
-    const payload = await buildCustomerReportForCase(id, pricing);
-    if (!payload) return reply.status(404).send({ error: 'Case not found' });
-    return payload;
+    const input = ReportEditorSchema.parse(req.body) as ReportEditorInput;
+    const readiness = await getCaseReadiness(prisma, id);
+    const preview = await previewCustomerReport(prisma, id, input);
+    return { ...preview, readiness };
   });
 
-  // Customer report PDF download (spec §18.6).
-  app.post('/:id/customer-report.pdf', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+  // Finalize the customer report (spec §18.9): immutable version + close case +
+  // mark included jobs reported + move excluded completed jobs to a new case.
+  // Fully atomic + per-case advisory lock (concurrent finalize → 409).
+  app.post('/:id/customer-report/finalize', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    const pricing = CustomerReportPricingSchema.parse(req.body);
-    const payload = await buildCustomerReportForCase(id, pricing);
-    if (!payload) return reply.status(404).send({ error: 'Case not found' });
+    const input = ReportEditorSchema.parse(req.body) as ReportEditorInput;
+    const version = await finalizeCustomerReport(id, input, (req as any).user);
+    reply.status(201);
+    return { versionId: version.id, versionNumber: version.versionNumber };
+  });
 
-    const { report } = payload;
-    const money = (n: number) => `${n.toLocaleString('he-IL')} ₪`;
-    const lines: string[] = [];
-    lines.push(`לקוח: ${payload.customerName}`);
-    lines.push(`פרויקט: ${payload.projectName}`);
-    lines.push('');
-    lines.push('עבודות:');
-    for (const job of report.jobs) {
-      lines.push(
-        `  ${job.date} · ${JOB_TYPE_HE_LABEL[job.jobType] ?? job.jobType} · ${job.workerCount} עובדים · ${job.actualHours} שעות`,
-      );
-    }
-    lines.push('');
-    lines.push(`סך שעות עבודה בפועל: ${report.totalActualHours}`);
-    if (report.mode === 'HOURLY') {
-      lines.push(`תעריף שעתי: ${money(report.hourlyRate ?? 0)}`);
-      if (report.manualAdditions) lines.push(`תוספות: ${money(report.manualAdditions)}`);
-      if (report.discount) lines.push(`הנחה: ${money(report.discount)}`);
-    }
-    lines.push(`סכום סופי: ${money(report.finalAmount)}`);
+  // Create a corrected version of an already-finalized report (spec §18.10).
+  // Preserves all previous versions; same bound jobs (no double billing).
+  app.post('/:id/customer-report/versions', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const input = ReportEditorSchema.parse(req.body) as ReportEditorInput;
+    const version = await createCorrectedVersion(id, input, (req as any).user);
+    reply.status(201);
+    return { versionId: version.id, versionNumber: version.versionNumber };
+  });
 
-    const pdf = await buildLinesPdf('דוח לקוח', payload.projectName, lines);
-    const fileName = `customer-report-${id}.pdf`;
+  // Version history (spec §18.10): all finalized versions, latest = current.
+  app.get('/:id/customer-report/versions', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const versions = await prisma.customerReportVersion.findMany({
+      where: { caseId: id },
+      orderBy: { versionNumber: 'desc' },
+      select: { id: true, versionNumber: true, status: true, createdAt: true, snapshot: true },
+    });
+    return versions.map((v, i) => ({
+      id: v.id,
+      versionNumber: v.versionNumber,
+      status: v.status,
+      createdAt: v.createdAt,
+      finalAmount: (v.snapshot as any)?.report?.finalAmount ?? null,
+      isCurrent: i === 0,
+    }));
+  });
+
+  // Download a finalized version's PDF, rendered from the stored snapshot (spec
+  // §18.8) — never regenerated from mutable live job data.
+  app.get('/:id/customer-report/versions/:versionId/pdf', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { id, versionId } = req.params as { id: string; versionId: string };
+    const version = await prisma.customerReportVersion.findFirst({ where: { id: versionId, caseId: id } });
+    if (!version) return reply.status(404).send({ error: 'Report version not found' });
+    const snapshot = version.snapshot as unknown as ReportSnapshot;
+    const lines = snapshotToPdfLines(snapshot);
+    const pdf = await buildLinesPdf('דוח לקוח', snapshot.customerName, lines);
     reply.header('Content-Type', 'application/pdf');
-    reply.header('Content-Disposition', `attachment; filename="${fileName}"`);
+    reply.header('Content-Disposition', `attachment; filename="customer-report-${id}-v${snapshot.versionNumber}.pdf"`);
     return reply.send(pdf);
   });
 }

@@ -31,6 +31,10 @@ export async function lockJob(tx: Prisma.TransactionClient, jobId: string): Prom
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(2, hashtext(${jobId}))`;
 }
 
+export async function lockCase(tx: Prisma.TransactionClient, caseId: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(3, hashtext(${caseId}))`;
+}
+
 const BLOCKING_STATUSES: CommitmentStatus[] = ['PENDING', 'AWAITING_WORKER', 'APPROVED'];
 
 /**
