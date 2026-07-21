@@ -5,6 +5,7 @@
  */
 import { PrismaClient, Prisma } from '@prisma/client';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { lockIdempotencyKey } from './lib/commitment.js';
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const prisma = new PrismaClient(TEST_DB ? { datasources: { db: { url: TEST_DB } } } : undefined);
@@ -57,15 +58,34 @@ maybe('Quick Create hotfix — linkage + idempotency', () => {
     expect(job.customerId).toBe(customer.id);
   });
 
-  it('enforces the idempotency key — a duplicate submission cannot create a second job', async () => {
+  it('idempotency (advisory lock): two CONCURRENT same-key creates make ONE job', async () => {
     const { customer, kase, address } = await seedCustomerCaseAddress('a@b.com');
-    await prisma.job.create({ data: jobData(customer.id, kase.id, address.id, 'idem-key-123') });
-    await expect(
-      prisma.job.create({ data: jobData(customer.id, kase.id, address.id, 'idem-key-123') }),
-    ).rejects.toMatchObject({ code: 'P2002' });
-    // Exactly one job exists for that key.
-    const jobs = await prisma.job.findMany({ where: { idempotencyKey: 'idem-key-123' } });
-    expect(jobs).toHaveLength(1);
+    // Mirrors the /jobs/quick handler: lock the key, re-check, then create.
+    const idempotentCreate = (key: string) =>
+      prisma.$transaction(async (tx) => {
+        await lockIdempotencyKey(tx, key);
+        const existing = await tx.job.findFirst({ where: { idempotencyKey: key } });
+        if (existing) return existing;
+        return tx.job.create({ data: jobData(customer.id, kase.id, address.id, key) });
+      });
+    const [a, b] = await Promise.all([idempotentCreate('k-conc'), idempotentCreate('k-conc')]);
+    expect(a.id).toBe(b.id);
+    expect(await prisma.job.count({ where: { idempotencyKey: 'k-conc' } })).toBe(1);
+  });
+
+  it('idempotency: a sequential replay with the same key returns the original job', async () => {
+    const { customer, kase, address } = await seedCustomerCaseAddress('a@b.com');
+    const idempotentCreate = (key: string) =>
+      prisma.$transaction(async (tx) => {
+        await lockIdempotencyKey(tx, key);
+        const existing = await tx.job.findFirst({ where: { idempotencyKey: key } });
+        if (existing) return existing;
+        return tx.job.create({ data: jobData(customer.id, kase.id, address.id, key) });
+      });
+    const first = await idempotentCreate('k-seq');
+    const second = await idempotentCreate('k-seq');
+    expect(second.id).toBe(first.id);
+    expect(await prisma.job.count({ where: { idempotencyKey: 'k-seq' } })).toBe(1);
   });
 
   it('allows distinct idempotency keys (two real jobs)', async () => {

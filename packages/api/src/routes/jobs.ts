@@ -13,7 +13,7 @@ import { evaluateJobCompletion } from '@workforce/shared';
 import type { AvailabilityBlock } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
 import { AppError } from '../lib/errors.js';
-import { lockJob } from '../lib/commitment.js';
+import { lockJob, lockIdempotencyKey } from '../lib/commitment.js';
 import { resolveOrCreateCaseForJob } from '../domain/caseResolution.js';
 import { getCaseReadiness } from '../domain/customerReport.js';
 import { z } from 'zod';
@@ -378,11 +378,12 @@ export async function jobsRoutes(app: FastifyInstance) {
   app.post('/quick', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const body = QuickJobSchema.parse(req.body);
 
-    // Idempotent replay: a repeated submission with the same key returns the
-    // already-created job instead of creating another one (and before any
-    // customer/case side effects).
+    // Idempotent replay (fast path): a repeated submission with the same key
+    // returns the already-created job instead of creating another one (and before
+    // any customer/case side effects). Race-safety is handled below by an advisory
+    // lock + re-check inside the transaction.
     if (body.idempotencyKey) {
-      const existing = await prisma.job.findUnique({ where: { idempotencyKey: body.idempotencyKey }, include: { slots: true } });
+      const existing = await prisma.job.findFirst({ where: { idempotencyKey: body.idempotencyKey }, include: { slots: true } });
       if (existing) {
         reply.status(200);
         return { job: existing, capacityWarning: false, availableWorkers: 0, idempotentReplay: true };
@@ -422,55 +423,59 @@ export async function jobsRoutes(app: FastifyInstance) {
     const teamLeaderSlots = body.requiresTeamLeader ? 1 : 0;
 
     // 3) Resolve the case (shared §18.12 grouping rule) + create the address and
-    //    the job atomically so grouping is race-safe and nothing is orphaned.
-    let job;
-    try {
-      job = await prisma.$transaction(async (tx) => {
-        const caseId = await resolveOrCreateCaseForJob(tx, {
-          customerId,
-          caseName,
-          newJobDate: parsedDate,
-          actor: (req as any).user,
-        });
-
-        const address = await tx.address.create({
-          data: { customerId, fullAddress: body.cityOrAddress.trim(), label: 'OTHER' },
-        });
-
-        return tx.job.create({
-          data: {
-            caseId,
-            customerId,
-            addressId: address.id,
-            jobType: body.jobType,
-            date: parsedDate,
-            plannedStart,
-            plannedEnd,
-            requiredWorkerCount: body.requiredWorkerCount,
-            jobNotes: body.notes ?? null,
-            formTemplateId: defaultTemplate?.id ?? null,
-            status: body.initialStatus ?? 'RESERVATION',
-            idempotencyKey: body.idempotencyKey ?? null,
-            slots: {
-              create: [
-                ...(teamLeaderSlots ? [{ requiredSkill: MANAGER_SKILL as any }] : []),
-                ...Array.from({ length: Math.max(0, body.requiredWorkerCount - teamLeaderSlots) }, () => ({ requiredSkill: null })),
-              ],
-            },
-          },
-          include: { slots: true },
-        });
-      });
-    } catch (err: any) {
-      // Race: a concurrent identical submit already claimed the key — return it.
-      if (err?.code === 'P2002' && body.idempotencyKey) {
-        const existing = await prisma.job.findUnique({ where: { idempotencyKey: body.idempotencyKey }, include: { slots: true } });
+    //    the job atomically. When an idempotency key is present, take an advisory
+    //    lock on it and re-check inside the transaction so two concurrent submits
+    //    with the same key cannot create two jobs (no DB unique index required).
+    let idempotentReplay = false;
+    const job = await prisma.$transaction(async (tx) => {
+      if (body.idempotencyKey) {
+        await lockIdempotencyKey(tx, body.idempotencyKey);
+        const existing = await tx.job.findFirst({ where: { idempotencyKey: body.idempotencyKey }, include: { slots: true } });
         if (existing) {
-          reply.status(200);
-          return { job: existing, capacityWarning: false, availableWorkers: 0, idempotentReplay: true };
+          idempotentReplay = true;
+          return existing;
         }
       }
-      throw err;
+
+      const caseId = await resolveOrCreateCaseForJob(tx, {
+        customerId,
+        caseName,
+        newJobDate: parsedDate,
+        actor: (req as any).user,
+      });
+
+      const address = await tx.address.create({
+        data: { customerId, fullAddress: body.cityOrAddress.trim(), label: 'OTHER' },
+      });
+
+      return tx.job.create({
+        data: {
+          caseId,
+          customerId,
+          addressId: address.id,
+          jobType: body.jobType,
+          date: parsedDate,
+          plannedStart,
+          plannedEnd,
+          requiredWorkerCount: body.requiredWorkerCount,
+          jobNotes: body.notes ?? null,
+          formTemplateId: defaultTemplate?.id ?? null,
+          status: body.initialStatus ?? 'RESERVATION',
+          idempotencyKey: body.idempotencyKey ?? null,
+          slots: {
+            create: [
+              ...(teamLeaderSlots ? [{ requiredSkill: MANAGER_SKILL as any }] : []),
+              ...Array.from({ length: Math.max(0, body.requiredWorkerCount - teamLeaderSlots) }, () => ({ requiredSkill: null })),
+            ],
+          },
+        },
+        include: { slots: true },
+      });
+    });
+
+    if (idempotentReplay) {
+      reply.status(200);
+      return { job, capacityWarning: false, availableWorkers: 0, idempotentReplay: true };
     }
 
     await logAudit((req as any).user, 'CREATE', 'Job', job.id, null, { status: job.status, quick: true }, 'quick-created');
