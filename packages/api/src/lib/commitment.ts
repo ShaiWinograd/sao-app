@@ -35,6 +35,12 @@ export async function lockCase(tx: Prisma.TransactionClient, caseId: string): Pr
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(3, hashtext(${caseId}))`;
 }
 
+// Serialize concurrent submissions carrying the same idempotency key so a
+// double-submit / retry cannot create two jobs even without a DB unique index.
+export async function lockIdempotencyKey(tx: Prisma.TransactionClient, key: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(4, hashtext(${key}))`;
+}
+
 const BLOCKING_STATUSES: CommitmentStatus[] = ['PENDING', 'AWAITING_WORKER', 'APPROVED'];
 
 /**
