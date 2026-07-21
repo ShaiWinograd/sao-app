@@ -9,6 +9,8 @@ import { AlertTriangle, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, 
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
 import { QuickCreateForm } from '../../components/jobs/QuickCreateForm';
+import { JoinRequestsPanel } from '../../components/owner/JoinRequestsPanel';
+import { SidePanel } from '../../components/ui/SidePanel';
 import { api, authHeaders } from '../../lib/api';
 
 type JobType = 'אריזה' | 'פריקה' | 'סידור';
@@ -190,16 +192,26 @@ function caseBadge(status: CaseStatusValue): { label: string; className: string 
   return { label: caseStatusLabel(status), className: CASE_BADGE_CLASS_BY_TONE[caseStatusTone(status)] };
 }
 
-// Owner-visible job status badge (spec §4, §18): שריון / אושר / בוצע / בארכיון.
-const JOB_STATUS_BADGE: Record<string, { label: string; className: string }> = {
-  RESERVATION: { label: 'שריון', className: 'border-sky-300 bg-sky-100 text-sky-700' },
-  APPROVED: { label: 'אושר', className: 'border-emerald-300 bg-emerald-100 text-emerald-700' },
-  COMPLETED: { label: 'בוצע', className: 'border-gray-300 bg-gray-100 text-gray-700' },
-  ARCHIVED: { label: 'בארכיון', className: 'border-gray-300 bg-gray-100 text-gray-500' },
-};
+// Worker ASSIGNMENT status badge (spec item 7). This describes the worker's own
+// state on a job — never the job status — so a worker row is never labelled with
+// an ambiguous "אושר" that actually means the job was approved.
+function assignmentBadge(w: { joinRequestStatus?: string | null; assignmentRole?: string | null }): {
+  label: string;
+  className: string;
+} {
+  const status = w.joinRequestStatus ?? 'APPROVED';
+  const role = w.assignmentRole ?? null;
+  if (status === 'PENDING') return { label: 'ממתינה לאישור', className: 'border-amber-300 bg-amber-100 text-amber-800' };
+  if (status === 'AWAITING_WORKER') return { label: 'ממתינה לתשובת העובד/ת', className: 'border-sky-300 bg-sky-100 text-sky-700' };
+  if (role === 'TEAM_LEADER') return { label: 'ראש צוות', className: 'border-emerald-300 bg-emerald-100 text-emerald-700' };
+  if (role === 'BACKUP') return { label: 'גיבוי', className: 'border-purple-300 bg-purple-100 text-purple-700' };
+  return { label: 'משובצת', className: 'border-emerald-300 bg-emerald-100 text-emerald-700' };
+}
 
-function jobStatusBadge(status: string): { label: string; className: string } {
-  return JOB_STATUS_BADGE[status] ?? { label: status, className: 'border-gray-300 bg-gray-100 text-gray-700' };
+// Only an APPROVED (non-backup) assignment fills a required staffing slot — a
+// pending join request must never count as approved staffing (spec item 6).
+function fillsRequiredSlot(w: { joinRequestStatus?: string | null; assignmentRole?: string | null }): boolean {
+  return (w.joinRequestStatus ?? 'APPROVED') === 'APPROVED' && (w.assignmentRole ?? null) !== 'BACKUP';
 }
 
 export default function DashboardPage() {
@@ -305,7 +317,7 @@ export default function DashboardPage() {
   const ownerName = user?.firstName?.trim() || user?.fullName?.trim() || 'אורית';
   const greetingText = `${getGreetingByHour(now.getHours())} ${ownerName}!`;
   type WorkStatus = 'done' | 'active' | 'planned';
-  type AssignedWorker = { name: string; isTeamLead: boolean };
+  type AssignedWorker = { name: string; isTeamLead: boolean; joinRequestStatus: string | null; assignmentRole: string | null };
   type ActiveWork = {
     id: number;
     jobId?: string;
@@ -320,6 +332,7 @@ export default function DashboardPage() {
     requiredWorkers: number;
     requiredTeamLeads: number;
     assignedWorkers: AssignedWorker[];
+    approvedWorkers: number;
     actualTeamLeadName: string | null;
     responsibleName: string;
     responsibleRole: 'admin' | 'owner';
@@ -368,6 +381,7 @@ export default function DashboardPage() {
   // grid cell or the primary button, prefilled with the cell's date.
   const [quickCreateDate, setQuickCreateDate] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [joinPanelOpen, setJoinPanelOpen] = useState(false);
   const [attention, setAttention] = useState<OwnerTasks | null>(null);
   const [editingWorkId, setEditingWorkId] = useState<number | null>(null);
   const [createMessage, setCreateMessage] = useState('');
@@ -472,10 +486,17 @@ export default function DashboardPage() {
           const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
           const day = String(date.getDate()).padStart(2, '0');
           const month = String(date.getMonth() + 1).padStart(2, '0');
-          const assignedWorkers = (job.shifts ?? []).map((shift: any) => ({
-            name: shift.worker ? `${shift.worker.firstName ?? ''} ${shift.worker.lastName ?? ''}`.trim() : 'עובדת',
-            isTeamLead: false,
-          }));
+          // Exclude rejected/cancelled requests. Pending requests are shown on the
+          // worker row (with a distinct badge) but do NOT fill a required slot.
+          const assignedWorkers: AssignedWorker[] = (job.shifts ?? [])
+            .filter((shift: any) => shift.joinRequestStatus !== 'REJECTED' && shift.joinRequestStatus !== 'CANCELLED')
+            .map((shift: any) => ({
+              name: shift.worker ? `${shift.worker.firstName ?? ''} ${shift.worker.lastName ?? ''}`.trim() : 'עובדת',
+              isTeamLead: shift.assignmentRole === 'TEAM_LEADER',
+              joinRequestStatus: shift.joinRequestStatus ?? null,
+              assignmentRole: shift.assignmentRole ?? null,
+            }));
+          const approvedWorkers = assignedWorkers.filter(fillsRequiredSlot).length;
           const actualTeamLeadName = assignedWorkers.find((worker: AssignedWorker) => worker.name === 'אורית')?.name ?? null;
           const status: WorkStatus =
             job.status === 'COMPLETED' || job.status === 'ARCHIVED'
@@ -501,6 +522,7 @@ export default function DashboardPage() {
             requiredWorkers: job.requiredWorkerCount ?? 0,
             requiredTeamLeads: (job.slots ?? []).some((slot: any) => slot.requiredSkill === 'SHIFT_LEADER') ? 1 : 0,
             assignedWorkers,
+            approvedWorkers,
             actualTeamLeadName,
             responsibleName: actualTeamLeadName ?? MOM_OWNER_NAME,
             responsibleRole: actualTeamLeadName ? 'admin' : 'owner',
@@ -649,11 +671,11 @@ export default function DashboardPage() {
       const caseWorks = worksByCaseId.get(item.id) ?? [];
       if (caseWorks.length === 0) return false;
       return caseWorks.some(
-        (work) => work.assignedWorkers.length < work.requiredWorkers || (work.requiredTeamLeads > 0 && !work.actualTeamLeadName),
+        (work) => work.approvedWorkers < work.requiredWorkers || (work.requiredTeamLeads > 0 && !work.actualTeamLeadName),
       );
     });
 
-    const jobsWithWorkerShortage = futureWorks.filter((work) => work.assignedWorkers.length < work.requiredWorkers);
+    const jobsWithWorkerShortage = futureWorks.filter((work) => work.approvedWorkers < work.requiredWorkers);
     const jobsMissingManager = futureWorks.filter((work) => work.requiredTeamLeads > 0 && !work.actualTeamLeadName);
     const attendanceExceptions = futureWorks.filter(
       (work) => (work.status === 'active' || work.status === 'done') && work.assignedWorkers.length > 0,
@@ -846,8 +868,8 @@ export default function DashboardPage() {
       const isNonWorkingDay = isWorkCreationBlockedDay(dateKey);
       const dayWorks = displayedWorks.filter((work) => work.dateKey === dateKey);
       const required = dayWorks.reduce((sum, work) => sum + work.requiredWorkers, 0);
-      const assigned = dayWorks.reduce((sum, work) => sum + Math.min(work.assignedWorkers.length, work.requiredWorkers), 0);
-      const unfilledShifts = dayWorks.filter((work) => work.assignedWorkers.length < work.requiredWorkers).length;
+      const assigned = dayWorks.reduce((sum, work) => sum + Math.min(work.approvedWorkers, work.requiredWorkers), 0);
+      const unfilledShifts = dayWorks.filter((work) => work.approvedWorkers < work.requiredWorkers).length;
       const openSlots = Math.max(required - assigned, 0);
       const coverage = required > 0 ? assigned / required : 1;
       const coverageClass = isNonWorkingDay ? 'bg-gray-300' : coverage >= 1 ? 'bg-emerald-500' : coverage >= 0.75 ? 'bg-amber-500' : 'bg-rose-500';
@@ -870,7 +892,7 @@ export default function DashboardPage() {
   const unassignedWorksByDate = useMemo(() => {
     const map = new Map<string, Array<{ work: ActiveWork; open: number }>>();
     displayedWorks.forEach((work) => {
-      const open = Math.max(work.requiredWorkers - work.requiredTeamLeads - work.assignedWorkers.length, 0);
+      const open = Math.max(work.requiredWorkers - work.requiredTeamLeads - work.approvedWorkers, 0);
       if (open > 0) {
         map.set(work.dateKey, [...(map.get(work.dateKey) ?? []), { work, open }]);
       }
@@ -938,16 +960,28 @@ export default function DashboardPage() {
             <AlertTriangle className="h-3.5 w-3.5" />
             דורש טיפול
           </span>
-          {attentionItems.map((item) => (
-            <Link
-              key={item.key}
-              href={item.href}
-              className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
-            >
-              {item.label}
-              <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">{item.count}</span>
-            </Link>
-          ))}
+          {attentionItems.map((item) =>
+            item.key === 'joinRequests' ? (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setJoinPanelOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
+              >
+                {item.label}
+                <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">{item.count}</span>
+              </button>
+            ) : (
+              <Link
+                key={item.key}
+                href={item.href}
+                className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
+              >
+                {item.label}
+                <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">{item.count}</span>
+              </Link>
+            ),
+          )}
         </div>
       )}
 
@@ -1243,6 +1277,9 @@ export default function DashboardPage() {
                                 linkedCaseStatus === 'DRAFT' &&
                                 upcomingDiffDays >= 0 &&
                                 upcomingDiffDays <= 7;
+                              // Badge describes THIS worker's assignment status, not the job status.
+                              const myAssignment = shift.assignedWorkers.find((w) => w.name === worker.name);
+                              const badge = assignmentBadge(myAssignment ?? {});
                               return (
                                 <button
                                   key={`${worker.id}-${shift.id}`}
@@ -1252,15 +1289,11 @@ export default function DashboardPage() {
                                 >
                                   <p className="text-[11px] font-semibold text-gray-900">09:00-{addHoursToTime('09:00', shift.hours)}</p>
                                   <p className="text-[11px] text-gray-600">{shift.customerName}</p>
-                                  <p
-                                    className={`mt-0.5 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
-                                      isUrgentCase ? 'border-rose-300 bg-rose-100 text-rose-700' : jobStatusBadge(shift.jobStatus).className
-                                    }`}
-                                  >
-                                    {isUrgentCase ? 'דחוף: ממתין לאישור לקוח' : jobStatusBadge(shift.jobStatus).label}
+                                  <p className={`mt-0.5 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}>
+                                    {badge.label}
                                   </p>
-                                  {shift.actualTeamLeadName === worker.name && (
-                                    <p className="text-[11px] text-emerald-700 font-medium mt-0.5">ראש צוות</p>
+                                  {isUrgentCase && (
+                                    <p className="text-[10px] text-rose-700 mt-0.5">דחוף: העבודה ממתינה לאישור לקוח</p>
                                   )}
                                 </button>
                               );
@@ -1314,39 +1347,34 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {quickCreateDate !== null && (
-        <div className="fixed inset-0 z-50 flex bg-black/30" onMouseDown={() => setQuickCreateDate(null)}>
-          <div
-            className="ms-auto flex h-full w-full max-w-md flex-col overflow-y-auto bg-gray-50 shadow-xl sm:max-w-lg"
-            onMouseDown={(e) => e.stopPropagation()}
-            dir="rtl"
-          >
-            <div className="flex items-center justify-between border-b border-gray-200 bg-white px-5 py-4">
-              <button
-                type="button"
-                onClick={() => setQuickCreateDate(null)}
-                className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
-              >
-                סגירה
-              </button>
-              <h3 className="flex items-center gap-1.5 font-semibold text-gray-900">
-                <Plus className="h-4 w-4 text-primary-600" />
-                יצירת עבודה
-              </h3>
-            </div>
-            <div className="flex-1 p-5">
-              <QuickCreateForm
-                initialDate={quickCreateDate}
-                onCreated={() => {
-                  setQuickCreateDate(null);
-                  setReloadKey((k) => k + 1);
-                }}
-                onCancel={() => setQuickCreateDate(null)}
-              />
-            </div>
-          </div>
+      <SidePanel
+        open={quickCreateDate !== null}
+        onClose={() => setQuickCreateDate(null)}
+        title={
+          <span className="flex items-center gap-1.5">
+            <Plus className="h-4 w-4 text-primary-600" />
+            יצירת עבודה
+          </span>
+        }
+        widthClassName="sm:max-w-lg"
+      >
+        <div className="flex-1 p-5">
+          <QuickCreateForm
+            initialDate={quickCreateDate ?? undefined}
+            onCreated={() => {
+              setQuickCreateDate(null);
+              setReloadKey((k) => k + 1);
+            }}
+            onCancel={() => setQuickCreateDate(null)}
+          />
         </div>
-      )}
+      </SidePanel>
+
+      <JoinRequestsPanel
+        open={joinPanelOpen}
+        onClose={() => setJoinPanelOpen(false)}
+        onChanged={() => setReloadKey((k) => k + 1)}
+      />
 
     </div>
   );

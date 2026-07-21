@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Mail, MessageCircle, Plus, Search } from 'lucide-react';
 import Link from 'next/link';
-import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
+import type { AddressSelection } from '../../components/forms/AzureMapsAddressInput';
+import { SidePanel } from '../../components/ui/SidePanel';
 import { api } from '../../lib/api';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import type { StatusTone } from '@workforce/shared';
@@ -42,6 +43,7 @@ type RelatedWork = {
   jobType: 'אריזה' | 'פריקה' | 'סידור';
   address: string;
   status: 'בוצע' | 'מתוכנן' | 'בביצוע';
+  rawStatus: 'RESERVATION' | 'APPROVED' | 'COMPLETED' | 'ARCHIVED';
 };
 
 type TemplateKey = 'quote' | 'summary' | 'custom';
@@ -239,10 +241,8 @@ export default function CustomersPage() {
   const [cardPhone, setCardPhone] = useState('');
   const [cardEmail, setCardEmail] = useState('');
   const [cardCaseName, setCardCaseName] = useState('');
-  const [cardCaseStatus, setCardCaseStatus] = useState<Customer['caseStatus']>('planned');
   const [cardAddressLabel, setCardAddressLabel] = useState<CustomerAddress['label']>('דירה חדשה');
   const [cardAddressInput, setCardAddressInput] = useState('');
-  const [cardAddressSelection, setCardAddressSelection] = useState<AddressSelection | null>(null);
   const [cardAddressFloor, setCardAddressFloor] = useState('');
   const [cardAddressApartment, setCardAddressApartment] = useState('');
 
@@ -257,6 +257,13 @@ export default function CustomersPage() {
 
   useEffect(() => {
     if (cardTab === 'reports' && openedCustomerId) void loadCustomerReports(openedCustomerId);
+  }, [cardTab, openedCustomerId]);
+
+  // Load the customer's jobs when the עבודות tab opens. Jobs are queried directly
+  // by the customer relationship (GET /jobs?customerId=), not through legacy
+  // project/case UI — so a job created via Quick Create appears immediately.
+  useEffect(() => {
+    if (cardTab === 'works' && openedCustomerId) void loadRelatedWorks(openedCustomerId);
   }, [cardTab, openedCustomerId]);
 
   useEffect(() => {
@@ -299,6 +306,7 @@ export default function CustomersPage() {
           jobType: mapApiJobTypeToUi(job.jobType),
           address: job.address?.fullAddress ?? '',
           status: mapApiJobStatus(job.status),
+          rawStatus: job.status,
         })),
       );
     } catch {
@@ -329,6 +337,25 @@ export default function CustomersPage() {
     [customers, openedCustomerId],
   );
 
+  // Unsaved-changes detection for the side-panel dismissal confirmation (item 3).
+  const detailsDirty = useMemo(() => {
+    if (isCreatingNew) {
+      return Boolean(
+        cardFirstName.trim() || cardLastName.trim() || cardPhone.trim() || cardEmail.trim() || cardAddressInput.trim(),
+      );
+    }
+    if (openedCustomer) {
+      return (
+        cardFirstName !== openedCustomer.firstName ||
+        cardLastName !== openedCustomer.lastName ||
+        cardPhone !== openedCustomer.phone ||
+        cardEmail !== openedCustomer.email ||
+        Boolean(cardAddressInput.trim())
+      );
+    }
+    return false;
+  }, [isCreatingNew, openedCustomer, cardFirstName, cardLastName, cardPhone, cardEmail, cardAddressInput]);
+
   const filteredCustomers = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     return customers.filter((customer) => {
@@ -355,14 +382,12 @@ export default function CustomersPage() {
     setCardPhone(customer.phone);
     setCardEmail(customer.email);
     setCardAddressInput('');
-    setCardAddressSelection(null);
     setCardAddressFloor('');
     setCardAddressApartment('');
     setCardAddressLabel('דירה חדשה');
     setChannel('email');
     setTemplate('quote');
     setCardCaseName(customer.caseName);
-    setCardCaseStatus(customer.caseStatus);
     setCardNotes(customer.notes ?? '');
     const quote = getTemplateContent('quote', `${customer.firstName} ${customer.lastName}`, customer.caseName);
     setMessageSubject(quote.subject);
@@ -379,11 +404,9 @@ export default function CustomersPage() {
     setCardPhone('');
     setCardEmail('');
     setCardCaseName('');
-    setCardCaseStatus('planned');
     setCardNotes('');
     setCardAddressLabel('דירה חדשה');
     setCardAddressInput('');
-    setCardAddressSelection(null);
     setCardAddressFloor('');
     setCardAddressApartment('');
     setChannel('email');
@@ -459,7 +482,6 @@ export default function CustomersPage() {
       if (customerId) setOpenedCustomerId(customerId);
       setIsCreatingNew(false);
       setCardAddressInput('');
-      setCardAddressSelection(null);
       setCardAddressFloor('');
       setCardAddressApartment('');
       setCardMessage(creating ? 'הלקוח נוצר ונשמר בהצלחה.' : 'פרטי הלקוח נשמרו בהצלחה.');
@@ -591,24 +613,16 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      {(openedCustomer || isCreatingNew) && (
-        <div className="fixed inset-0 z-50 bg-black/30 flex justify-end">
-          <div className="h-full w-full sm:max-w-md bg-white shadow-xl overflow-y-auto flex flex-col">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => {
-                  setOpenedCustomerId(null);
-                  setIsCreatingNew(false);
-                  setCardMessage('');
-                }}
-                className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
-              >
-                סגירה
-              </button>
-              <h3 className="font-semibold text-gray-900">{isCreatingNew ? 'יצירת לקוח חדש' : 'כרטיס לקוח'}</h3>
-            </div>
-
+      <SidePanel
+        open={Boolean(openedCustomer || isCreatingNew)}
+        onClose={() => {
+          setOpenedCustomerId(null);
+          setIsCreatingNew(false);
+          setCardMessage('');
+        }}
+        title={isCreatingNew ? 'יצירת לקוח חדש' : 'כרטיס לקוח'}
+        hasUnsavedChanges={detailsDirty}
+      >
             <div className="px-6 pt-4 pb-2 border-b border-gray-100 flex flex-wrap gap-2">
               <button
                 type="button"
@@ -629,7 +643,7 @@ export default function CustomersPage() {
                 disabled={isCreatingNew}
                 className={`px-3 py-1.5 text-xs rounded-md border ${cardTab === 'works' ? 'bg-primary-50 border-primary-300 text-primary-700' : 'border-gray-300 text-gray-700'} disabled:opacity-50`}
               >
-                פרויקטים
+                עבודות
               </button>
               <button
                 type="button"
@@ -670,55 +684,45 @@ export default function CustomersPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <input value={cardFirstName} onChange={(e) => setCardFirstName(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right" placeholder="שם פרטי" />
                     <input value={cardLastName} onChange={(e) => setCardLastName(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right" placeholder="שם משפחה" />
-                    <input value={cardPhone} onChange={(e) => setCardPhone(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right" placeholder="טלפון" />
-                    <input value={cardEmail} onChange={(e) => setCardEmail(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right" placeholder="אימייל" />
-                    <input value={cardCaseName} onChange={(e) => setCardCaseName(e.target.value)} className="md:col-span-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right" placeholder="שם פרוייקט" />
-                    <select value={cardCaseStatus} onChange={(e) => setCardCaseStatus(e.target.value as Customer['caseStatus'])} className="md:col-span-2 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white">
-                      <option value="planned">סטטוס פרוייקט: משוריין</option>
-                      <option value="in_progress">סטטוס פרוייקט: מאושר לביצוע</option>
-                      <option value="completed_unpaid">סטטוס פרוייקט: עבודה הסתיימה</option>
-                      <option value="completed_paid">סטטוס פרוייקט: עבודה שולמה</option>
-                    </select>
+                    <input value={cardPhone} onChange={(e) => setCardPhone(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right" placeholder="טלפון" inputMode="tel" />
+                    <input value={cardEmail} onChange={(e) => setCardEmail(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right" placeholder="אימייל (אופציונלי)" inputMode="email" />
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                    <select value={cardAddressLabel} onChange={(e) => setCardAddressLabel(e.target.value as CustomerAddress['label'])} className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white">
-                      <option value="דירה ישנה">דירה ישנה</option>
-                      <option value="דירה חדשה">דירה חדשה</option>
-                      <option value="מחסן">מחסן</option>
-                      <option value="משרד">משרד</option>
-                      <option value="אחר">אחר</option>
-                    </select>
-                    <AzureMapsAddressInput
-                      value={cardAddressInput}
-                      onChange={setCardAddressInput}
-                      onSelectionChange={setCardAddressSelection}
-                      className="md:col-span-3 rounded-lg border border-gray-300 px-3 py-2 text-sm text-right"
-                      placeholder={isCreatingNew ? 'כתובת ראשית (חובה)' : 'הוספת כתובת חדשה (אופציונלי)'}
-                    />
-                    <input
-                      value={cardAddressFloor}
-                      onChange={(e) => setCardAddressFloor(e.target.value)}
-                      className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-right"
-                      placeholder="קומה (אופציונלי)"
-                    />
-                    <input
-                      value={cardAddressApartment}
-                      onChange={(e) => setCardAddressApartment(e.target.value)}
-                      className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-right"
-                      placeholder="דירה (אופציונלי)"
-                    />
+                  <div className="space-y-3 rounded-lg border border-gray-100 p-3">
+                    <p className="text-xs font-medium text-gray-700">הוספת כתובת</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <select value={cardAddressLabel} onChange={(e) => setCardAddressLabel(e.target.value as CustomerAddress['label'])} className="sm:col-span-2 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white">
+                        <option value="דירה ישנה">דירה ישנה</option>
+                        <option value="דירה חדשה">דירה חדשה</option>
+                        <option value="מחסן">מחסן</option>
+                        <option value="משרד">משרד</option>
+                        <option value="אחר">אחר</option>
+                      </select>
+                      <div className="sm:col-span-2">
+                        <input
+                          value={cardAddressInput}
+                          onChange={(e) => setCardAddressInput(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right"
+                          placeholder={isCreatingNew ? 'עיר או כתובת מלאה' : 'הוספת כתובת חדשה (אופציונלי)'}
+                        />
+                        <span className="mt-1 block text-[11px] text-amber-700">
+                          חיפוש/אימות כתובת אינו פעיל עדיין — ניטור מיקום לא זמין עד שהכתובת תעודכן (גיאוקוד).
+                        </span>
+                      </div>
+                      <input
+                        value={cardAddressFloor}
+                        onChange={(e) => setCardAddressFloor(e.target.value)}
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-right"
+                        placeholder="קומה (אופציונלי)"
+                      />
+                      <input
+                        value={cardAddressApartment}
+                        onChange={(e) => setCardAddressApartment(e.target.value)}
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-right"
+                        placeholder="דירה (אופציונלי)"
+                      />
+                    </div>
                   </div>
-                  {cardAddressSelection && (
-                    <p className="text-[11px] text-emerald-700">
-                      כתובת מאושרת: {cardAddressSelection.formattedAddress} • {cardAddressSelection.latitude.toFixed(5)}, {cardAddressSelection.longitude.toFixed(5)}
-                    </p>
-                  )}
-                  {!process.env.NEXT_PUBLIC_AZURE_MAPS_KEY && (
-                    <p className="text-[11px] text-amber-700">
-                      כדי לאפשר בחירת כתובת אוטומטית, הגדירי NEXT_PUBLIC_AZURE_MAPS_KEY.
-                    </p>
-                  )}
 
                   {!isCreatingNew && openedCustomer && (
                     <div>
@@ -756,20 +760,34 @@ export default function CustomersPage() {
               )}
 
               {cardTab === 'works' && openedCustomer && (
-                <div className="space-y-2">
-                  <div className="rounded-lg border border-primary-100 bg-primary-50 px-3 py-2">
-                    <p className="text-xs text-primary-700">
-                      עבודות קשורות הן ימי עבודה בתוך הפרוייקט. סטטוס הפרוייקט מייצג את מצב הלקוח הכולל (משוריין/מאושר לביצוע/עבודה הסתיימה/עבודה שולמה).
-                    </p>
-                  </div>
-                  {relatedWorks.length === 0 ? (
-                    <p className="text-sm text-gray-500">אין עבודות קשורות ללקוח זה כרגע.</p>
+                <div className="space-y-4">
+                  {isLoadingWorks ? (
+                    <p className="text-sm text-gray-500">טוען עבודות…</p>
+                  ) : relatedWorks.length === 0 ? (
+                    <p className="text-sm text-gray-500">אין עבודות ללקוח זה כרגע.</p>
                   ) : (
-                    relatedWorks.map((work) => (
-                      <div key={work.id} className="rounded-lg border border-gray-200 px-3 py-2">
-                        <p className="text-sm font-semibold text-gray-900">{work.jobType} • {work.date}</p>
-                        <p className="text-xs text-gray-600 mt-1">{work.address}</p>
-                        <p className="text-xs text-primary-700 mt-1">סטטוס: {work.status}</p>
+                    ([
+                      ['עבודות עתידיות', relatedWorks.filter((w) => w.rawStatus === 'APPROVED')],
+                      ['שריונים', relatedWorks.filter((w) => w.rawStatus === 'RESERVATION')],
+                      ['עבודות שהושלמו', relatedWorks.filter((w) => w.rawStatus === 'COMPLETED' || w.rawStatus === 'ARCHIVED')],
+                    ] as Array<[string, RelatedWork[]]>).map(([heading, items]) => (
+                      <div key={heading} className="space-y-2">
+                        <p className="text-xs font-semibold text-gray-700">{heading} ({items.length})</p>
+                        {items.length === 0 ? (
+                          <p className="text-xs text-gray-400">—</p>
+                        ) : (
+                          items.map((work) => (
+                            <Link
+                              key={work.id}
+                              href={`/jobs/${work.id}`}
+                              className="block rounded-lg border border-gray-200 px-3 py-2 hover:border-primary-300"
+                            >
+                              <p className="text-sm font-semibold text-gray-900">{work.jobType} • {work.date}</p>
+                              {work.address && <p className="text-xs text-gray-600 mt-1">{work.address}</p>}
+                              <p className="text-xs text-primary-700 mt-1">סטטוס: {work.status}</p>
+                            </Link>
+                          ))
+                        )}
                       </div>
                     ))
                   )}
@@ -895,21 +913,13 @@ export default function CustomersPage() {
                 </div>
               )}
 
-              {(openedCustomer || !isCreatingNew) && cardCaseName && (
-                <div className="text-xs">
-                  <p className="text-gray-600">פרוייקט נוכחי: <span className="font-medium text-gray-900">{cardCaseName}</span></p>
-                  <p className="text-gray-600 mt-1">סטטוס: <span className="font-medium">{caseStatusMeta[cardCaseStatus].label}</span></p>
-                </div>
-              )}
               {cardMessage && (
                 <p className={`text-sm ${cardMessage.includes('בהצלחה') || cardMessage.includes('נשלח') || cardMessage.includes('נפתח') ? 'text-emerald-700' : 'text-rose-700'}`}>
                   {cardMessage}
                 </p>
               )}
             </div>
-          </div>
-        </div>
-      )}
+      </SidePanel>
     </div>
   );
 }

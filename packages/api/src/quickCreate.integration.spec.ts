@@ -58,6 +58,28 @@ maybe('Quick Create hotfix — linkage + idempotency', () => {
     expect(job.customerId).toBe(customer.id);
   });
 
+  it('job-first: an inline NEW customer is created and its job appears under that customer immediately', async () => {
+    // Mirrors the /jobs/quick resolver: no customerId, no generalReservation → create the customer.
+    const created = await prisma.customer.create({
+      data: { firstName: 'TEST', lastName: uid('new'), phone: '0501112222', email: null },
+    });
+    const kase = await prisma.customerCase.create({ data: { customerId: created.id, name: 'Case', status: 'ACTIVE' } });
+    const address = await prisma.address.create({ data: { customerId: created.id, fullAddress: 'City', label: 'OTHER' } });
+    const job = await prisma.job.create({ data: jobData(created.id, kase.id, address.id) });
+    // The customer profile queries jobs directly by the customer relationship.
+    const jobsForCustomer = await prisma.job.findMany({ where: { customerId: created.id } });
+    expect(jobsForCustomer.map((j) => j.id)).toEqual([job.id]);
+  });
+
+  it('job-first: selecting an EXISTING customer links the job to that exact id (no new customer row)', async () => {
+    const { customer, kase, address } = await seedCustomerCaseAddress('sel@b.com');
+    const before = await prisma.customer.count();
+    const job = await prisma.job.create({ data: jobData(customer.id, kase.id, address.id) });
+    expect(await prisma.customer.count()).toBe(before); // no extra customer created
+    const jobsForCustomer = await prisma.job.findMany({ where: { customerId: customer.id } });
+    expect(jobsForCustomer.map((j) => j.id)).toContain(job.id);
+  });
+
   it('idempotency (advisory lock): two CONCURRENT same-key creates make ONE job', async () => {
     const { customer, kase, address } = await seedCustomerCaseAddress('a@b.com');
     // Mirrors the /jobs/quick handler: lock the key, re-check, then create.

@@ -347,11 +347,14 @@ export async function jobsRoutes(app: FastifyInstance) {
     return { ...job, reportEntry: { caseId: (job as any).caseId, readyForReport: readiness.ready, isLastJob: lastJob?.id === job.id } };
   });
 
-  // Quick job creation from the shift board (spec §6.1). Reserve workers with a
-  // tentative customer (existing / new / General Reservation), a city or address,
-  // date and hours — the project and address are created/resolved automatically.
+  // Quick job creation from the shift board (spec §6.1). Job-first: the owner
+  // fills a normal customer form; the backend resolves the customer from whichever
+  // is supplied — an existing customerId, an inline newCustomer, or a general
+  // reservation (no real customer yet). No explicit existing/new mode switch. The
+  // project (CustomerCase) and address are created/resolved automatically.
   const QuickJobSchema = z.object({
-    customerMode: z.enum(['EXISTING', 'NEW', 'GENERAL_RESERVATION']),
+    // Deprecated: kept optional for backward compatibility with older clients.
+    customerMode: z.enum(['EXISTING', 'NEW', 'GENERAL_RESERVATION']).optional(),
     customerId: z.string().optional(),
     newCustomer: z
       .object({
@@ -361,6 +364,7 @@ export async function jobsRoutes(app: FastifyInstance) {
         email: z.string().optional(),
       })
       .optional(),
+    generalReservation: z.boolean().optional(),
     jobType: z.enum(['PACKING', 'UNPACKING', 'HOME_ORGANIZATION']),
     date: z.string(),
     startTime: z.string(),
@@ -390,17 +394,19 @@ export async function jobsRoutes(app: FastifyInstance) {
       }
     }
 
-    // 1) Resolve the customer (existing / new / General Reservation).
+    // 1) Resolve the customer. Job-first: prefer an explicit general reservation,
+    //    then a selected existing customer, then an inline new customer. The owner
+    //    never has to pick an existing/new mode — the shape of the payload decides.
     let customerId: string;
-    if (body.customerMode === 'GENERAL_RESERVATION') {
+    const wantsGeneralReservation =
+      body.generalReservation === true || body.customerMode === 'GENERAL_RESERVATION';
+    if (wantsGeneralReservation) {
       customerId = GENERAL_RESERVATION_CUSTOMER_ID;
-    } else if (body.customerMode === 'EXISTING') {
-      if (!body.customerId) return reply.status(400).send({ error: 'customerId required' });
+    } else if (body.customerId) {
       const exists = await prisma.customer.findUnique({ where: { id: body.customerId }, select: { id: true } });
       if (!exists) return reply.status(404).send({ error: 'Customer not found' });
       customerId = body.customerId;
-    } else {
-      if (!body.newCustomer) return reply.status(400).send({ error: 'newCustomer required' });
+    } else if (body.newCustomer?.firstName) {
       const created = await prisma.customer.create({
         data: {
           firstName: body.newCustomer.firstName,
@@ -410,6 +416,8 @@ export async function jobsRoutes(app: FastifyInstance) {
         },
       });
       customerId = created.id;
+    } else {
+      return reply.status(400).send({ error: 'יש לבחור לקוח/ת קיים, למלא לקוח/ת חדש/ה, או לסמן שריון כללי.' });
     }
 
     // 2) Datetimes + default form template.
