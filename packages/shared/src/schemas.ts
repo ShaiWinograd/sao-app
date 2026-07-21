@@ -6,7 +6,9 @@ export const CustomerSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().optional().default(''),
   phone: z.string().min(9),
-  email: z.string().email(),
+  // Email is optional (spec: first name + phone required; last name + email optional).
+  // Treat an empty string as "not provided" so blank form fields validate.
+  email: z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), z.string().email().optional()),
   preferredContact: z.enum(['PHONE', 'EMAIL', 'WHATSAPP']).optional(),
   notes: z.string().optional(),
   parkingInstructions: z.string().optional(),
@@ -114,7 +116,9 @@ export const UpdateJobSchema = JobSchema.partial().omit({ caseId: true, customer
 
 export const JoinRequestSchema = z.object({
   jobId: z.string(),
-  workerId: z.string(),
+  // The worker is derived from the authenticated session server-side; the client
+  // never sends it. Kept optional (ignored) so an old client that sends it is ok.
+  workerId: z.string().optional(),
   slotId: z.string().optional(),
   message: z.string().optional(),
 });

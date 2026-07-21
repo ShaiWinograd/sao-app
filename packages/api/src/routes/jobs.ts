@@ -370,10 +370,24 @@ export async function jobsRoutes(app: FastifyInstance) {
     requiresTeamLeader: z.boolean().optional(),
     initialStatus: z.enum(['RESERVATION', 'APPROVED']).optional(),
     notes: z.string().optional(),
+    // Idempotency key (one per opened form) so a repeated submit / retry cannot
+    // create a second job (spec: duplicate-creation safeguard).
+    idempotencyKey: z.string().min(8).max(200).optional(),
   });
 
   app.post('/quick', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const body = QuickJobSchema.parse(req.body);
+
+    // Idempotent replay: a repeated submission with the same key returns the
+    // already-created job instead of creating another one (and before any
+    // customer/case side effects).
+    if (body.idempotencyKey) {
+      const existing = await prisma.job.findUnique({ where: { idempotencyKey: body.idempotencyKey }, include: { slots: true } });
+      if (existing) {
+        reply.status(200);
+        return { job: existing, capacityWarning: false, availableWorkers: 0, idempotentReplay: true };
+      }
+    }
 
     // 1) Resolve the customer (existing / new / General Reservation).
     let customerId: string;
@@ -391,7 +405,7 @@ export async function jobsRoutes(app: FastifyInstance) {
           firstName: body.newCustomer.firstName,
           lastName: body.newCustomer.lastName ?? '',
           phone: body.newCustomer.phone ?? '-',
-          email: body.newCustomer.email ?? `${Date.now()}@placeholder.local`,
+          email: body.newCustomer.email?.trim() || null,
         },
       });
       customerId = created.id;
@@ -409,41 +423,55 @@ export async function jobsRoutes(app: FastifyInstance) {
 
     // 3) Resolve the case (shared §18.12 grouping rule) + create the address and
     //    the job atomically so grouping is race-safe and nothing is orphaned.
-    const job = await prisma.$transaction(async (tx) => {
-      const caseId = await resolveOrCreateCaseForJob(tx, {
-        customerId,
-        caseName,
-        newJobDate: parsedDate,
-        actor: (req as any).user,
-      });
-
-      const address = await tx.address.create({
-        data: { customerId, fullAddress: body.cityOrAddress.trim(), label: 'OTHER' },
-      });
-
-      return tx.job.create({
-        data: {
-          caseId,
+    let job;
+    try {
+      job = await prisma.$transaction(async (tx) => {
+        const caseId = await resolveOrCreateCaseForJob(tx, {
           customerId,
-          addressId: address.id,
-          jobType: body.jobType,
-          date: parsedDate,
-          plannedStart,
-          plannedEnd,
-          requiredWorkerCount: body.requiredWorkerCount,
-          jobNotes: body.notes ?? null,
-          formTemplateId: defaultTemplate?.id ?? null,
-          status: body.initialStatus ?? 'RESERVATION',
-          slots: {
-            create: [
-              ...(teamLeaderSlots ? [{ requiredSkill: MANAGER_SKILL as any }] : []),
-              ...Array.from({ length: Math.max(0, body.requiredWorkerCount - teamLeaderSlots) }, () => ({ requiredSkill: null })),
-            ],
+          caseName,
+          newJobDate: parsedDate,
+          actor: (req as any).user,
+        });
+
+        const address = await tx.address.create({
+          data: { customerId, fullAddress: body.cityOrAddress.trim(), label: 'OTHER' },
+        });
+
+        return tx.job.create({
+          data: {
+            caseId,
+            customerId,
+            addressId: address.id,
+            jobType: body.jobType,
+            date: parsedDate,
+            plannedStart,
+            plannedEnd,
+            requiredWorkerCount: body.requiredWorkerCount,
+            jobNotes: body.notes ?? null,
+            formTemplateId: defaultTemplate?.id ?? null,
+            status: body.initialStatus ?? 'RESERVATION',
+            idempotencyKey: body.idempotencyKey ?? null,
+            slots: {
+              create: [
+                ...(teamLeaderSlots ? [{ requiredSkill: MANAGER_SKILL as any }] : []),
+                ...Array.from({ length: Math.max(0, body.requiredWorkerCount - teamLeaderSlots) }, () => ({ requiredSkill: null })),
+              ],
+            },
           },
-        },
-        include: { slots: true },
+          include: { slots: true },
+        });
       });
-    });
+    } catch (err: any) {
+      // Race: a concurrent identical submit already claimed the key — return it.
+      if (err?.code === 'P2002' && body.idempotencyKey) {
+        const existing = await prisma.job.findUnique({ where: { idempotencyKey: body.idempotencyKey }, include: { slots: true } });
+        if (existing) {
+          reply.status(200);
+          return { job: existing, capacityWarning: false, availableWorkers: 0, idempotentReplay: true };
+        }
+      }
+      throw err;
+    }
 
     await logAudit((req as any).user, 'CREATE', 'Job', job.id, null, { status: job.status, quick: true }, 'quick-created');
     await notifyJobPublished(job.id);
