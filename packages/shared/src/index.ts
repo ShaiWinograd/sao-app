@@ -29,3 +29,4 @@ export * from './staffing';
 export * from './attendance-sweep';
 export * from './utils';
 export * from './dashboard-issues';
+export * from './owner-grid';
