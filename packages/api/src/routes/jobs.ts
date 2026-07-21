@@ -14,6 +14,8 @@ import type { AvailabilityBlock } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
 import { AppError } from '../lib/errors.js';
 import { lockJob } from '../lib/commitment.js';
+import { resolveOrCreateCaseForJob } from '../domain/caseResolution.js';
+import { getCaseReadiness } from '../domain/customerReport.js';
 import { z } from 'zod';
 
 const JOB_TYPE_HE: Record<string, string> = {
@@ -87,6 +89,11 @@ async function validateProjectJobRules(input: {
 
   if (!kase) {
     return { ok: false as const, statusCode: 404, error: 'Project not found' };
+  }
+
+  // A case closed by a finalized customer report is never reused (spec §18.11).
+  if (kase.status === 'CLOSED') {
+    return { ok: false as const, statusCode: 409, error: 'הפרויקט נסגר בדוח לקוחה ואינו זמין לעבודות חדשות.' };
   }
 
   const siblingJobs = (await prisma.job.findMany({
@@ -333,7 +340,11 @@ export async function jobsRoutes(app: FastifyInstance) {
           : null,
       };
     }
-    return job;
+    // Owner: attach the customer-report entry context (spec §18.2). The last
+    // (latest-dated) job of a case that is ready surfaces a "create report" action.
+    const readiness = await getCaseReadiness(prisma, (job as any).caseId);
+    const lastJob = await prisma.job.findFirst({ where: { caseId: (job as any).caseId }, orderBy: { date: 'desc' }, select: { id: true } });
+    return { ...job, reportEntry: { caseId: (job as any).caseId, readyForReport: readiness.ready, isLastJob: lastJob?.id === job.id } };
   });
 
   // Quick job creation from the shift board (spec §6.1). Reserve workers with a
@@ -386,55 +397,52 @@ export async function jobsRoutes(app: FastifyInstance) {
       customerId = created.id;
     }
 
-    // 2) Reuse the customer's latest open project, or create one, so quick
-    //    reservations don't force the project wizard (spec §3.3, §6).
+    // 2) Datetimes + default form template.
     const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { firstName: true, lastName: true } });
-    let kase = await prisma.customerCase.findFirst({
-      where: { customerId, status: { notIn: ['CANCELLED', 'COMPLETED', 'PAID'] } },
-      orderBy: { updatedAt: 'desc' },
-      select: { id: true },
-    });
-    if (!kase) {
-      kase = await prisma.customerCase.create({
-        data: { customerId, name: `${customer?.firstName ?? ''} ${customer?.lastName ?? ''}`.trim() || 'שריון', status: 'ACTIVE' },
-        select: { id: true },
-      });
-    }
-
-    // 3) Create the address from the city/address text.
-    const address = await prisma.address.create({
-      data: { customerId, fullAddress: body.cityOrAddress.trim(), label: 'OTHER' },
-    });
-
-    // 4) Datetimes + default form template.
     const dateOnly = body.date.slice(0, 10);
     const parsedDate = new Date(`${dateOnly}T00:00:00.000Z`);
     const plannedStart = new Date(`${dateOnly}T${body.startTime}:00.000Z`);
     const plannedEnd = new Date(`${dateOnly}T${body.endTime}:00.000Z`);
     const defaultTemplate = await prisma.formTemplate.findFirst({ where: { jobType: body.jobType, isDefault: true }, select: { id: true } });
-
+    const caseName = `${customer?.firstName ?? ''} ${customer?.lastName ?? ''}`.trim();
     const teamLeaderSlots = body.requiresTeamLeader ? 1 : 0;
-    const job = await prisma.job.create({
-      data: {
-        caseId: kase.id,
+
+    // 3) Resolve the case (shared §18.12 grouping rule) + create the address and
+    //    the job atomically so grouping is race-safe and nothing is orphaned.
+    const job = await prisma.$transaction(async (tx) => {
+      const caseId = await resolveOrCreateCaseForJob(tx, {
         customerId,
-        addressId: address.id,
-        jobType: body.jobType,
-        date: parsedDate,
-        plannedStart,
-        plannedEnd,
-        requiredWorkerCount: body.requiredWorkerCount,
-        jobNotes: body.notes ?? null,
-        formTemplateId: defaultTemplate?.id ?? null,
-        status: body.initialStatus ?? 'RESERVATION',
-        slots: {
-          create: [
-            ...(teamLeaderSlots ? [{ requiredSkill: MANAGER_SKILL as any }] : []),
-            ...Array.from({ length: Math.max(0, body.requiredWorkerCount - teamLeaderSlots) }, () => ({ requiredSkill: null })),
-          ],
+        caseName,
+        newJobDate: parsedDate,
+        actor: (req as any).user,
+      });
+
+      const address = await tx.address.create({
+        data: { customerId, fullAddress: body.cityOrAddress.trim(), label: 'OTHER' },
+      });
+
+      return tx.job.create({
+        data: {
+          caseId,
+          customerId,
+          addressId: address.id,
+          jobType: body.jobType,
+          date: parsedDate,
+          plannedStart,
+          plannedEnd,
+          requiredWorkerCount: body.requiredWorkerCount,
+          jobNotes: body.notes ?? null,
+          formTemplateId: defaultTemplate?.id ?? null,
+          status: body.initialStatus ?? 'RESERVATION',
+          slots: {
+            create: [
+              ...(teamLeaderSlots ? [{ requiredSkill: MANAGER_SKILL as any }] : []),
+              ...Array.from({ length: Math.max(0, body.requiredWorkerCount - teamLeaderSlots) }, () => ({ requiredSkill: null })),
+            ],
+          },
         },
-      },
-      include: { slots: true },
+        include: { slots: true },
+      });
     });
 
     await logAudit((req as any).user, 'CREATE', 'Job', job.id, null, { status: job.status, quick: true }, 'quick-created');

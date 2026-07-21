@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Mail, MessageCircle, Plus, Search } from 'lucide-react';
+import Link from 'next/link';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
 import { api } from '../../lib/api';
 import { StatusBadge } from '../../components/ui/StatusBadge';
@@ -222,9 +223,14 @@ export default function CustomersPage() {
   const [notExecutedCustomers, setNotExecutedCustomers] = useState<Set<string>>(new Set());
   const [openedCustomerId, setOpenedCustomerId] = useState<string | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
-  const [cardTab, setCardTab] = useState<'details' | 'works' | 'communication' | 'notes'>('details');
+  const [cardTab, setCardTab] = useState<'details' | 'works' | 'communication' | 'notes' | 'reports'>('details');
   const [cardMessage, setCardMessage] = useState('');
   const [cardNotes, setCardNotes] = useState('');
+  const [customerReports, setCustomerReports] = useState<{
+    ready: { caseId: string; jobCount: number; latestJobDate: string | null }[];
+    closed: { caseId: string; latestVersion: number; finalAmount: number | null }[];
+  }>({ ready: [], closed: [] });
+  const [isLoadingReports, setIsLoadingReports] = useState(false);
 
   const [cardFirstName, setCardFirstName] = useState('');
   const [cardLastName, setCardLastName] = useState('');
@@ -246,6 +252,10 @@ export default function CustomersPage() {
   useEffect(() => {
     void loadData();
   }, []);
+
+  useEffect(() => {
+    if (cardTab === 'reports' && openedCustomerId) void loadCustomerReports(openedCustomerId);
+  }, [cardTab, openedCustomerId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -293,6 +303,20 @@ export default function CustomersPage() {
       setRelatedWorks([]);
     } finally {
       setIsLoadingWorks(false);
+    }
+  }
+
+  async function loadCustomerReports(customerId: string) {
+    setIsLoadingReports(true);
+    try {
+      const res = await api.get<{ ready: { caseId: string; jobCount: number; latestJobDate: string | null }[]; closed: { caseId: string; latestVersion: number; finalAmount: number | null }[] }>(
+        `/cases/reports-overview?customerId=${customerId}`,
+      );
+      setCustomerReports(res.data ?? { ready: [], closed: [] });
+    } catch {
+      setCustomerReports({ ready: [], closed: [] });
+    } finally {
+      setIsLoadingReports(false);
     }
   }
 
@@ -655,6 +679,17 @@ export default function CustomersPage() {
               >
                 הערות
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCardTab('reports');
+                  setCardMessage('');
+                }}
+                disabled={isCreatingNew}
+                className={`px-3 py-1.5 text-xs rounded-md border ${cardTab === 'reports' ? 'bg-primary-50 border-primary-300 text-primary-700' : 'border-gray-300 text-gray-700'} disabled:opacity-50`}
+              >
+                דוחות
+              </button>
             </div>
 
             <div className="p-6 space-y-4 text-right">
@@ -834,6 +869,52 @@ export default function CustomersPage() {
                     placeholder="הוספת הערה פנימית..."
                   />
                   <p className="text-xs text-gray-500">ההערה נשמרת עם לחיצה על "שמירת שינויים".</p>
+                </div>
+              )}
+
+              {cardTab === 'reports' && (
+                <div className="space-y-4">
+                  {isLoadingReports ? (
+                    <p className="text-sm text-gray-500">טוען דוחות…</p>
+                  ) : (
+                    <>
+                      <div>
+                        <h4 className="mb-1 text-xs font-semibold text-gray-700">מוכנים לדוח</h4>
+                        {customerReports.ready.length === 0 ? (
+                          <p className="text-sm text-gray-400">אין פרויקטים מוכנים לדוח.</p>
+                        ) : (
+                          <ul className="space-y-2">
+                            {customerReports.ready.map((c) => (
+                              <li key={c.caseId}>
+                                <Link href={`/cases/${c.caseId}/customer-report`} className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800 hover:border-green-300">
+                                  <span className="font-medium">יצירת דוח לקוחה</span>
+                                  <span className="text-xs">{c.jobCount} עבודות · עד {c.latestJobDate ?? '—'}</span>
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      <div>
+                        <h4 className="mb-1 text-xs font-semibold text-gray-700">דוחות שהופקו</h4>
+                        {customerReports.closed.length === 0 ? (
+                          <p className="text-sm text-gray-400">עדיין לא הופקו דוחות.</p>
+                        ) : (
+                          <ul className="space-y-2">
+                            {customerReports.closed.map((c) => (
+                              <li key={c.caseId}>
+                                <Link href={`/cases/${c.caseId}/customer-report`} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 hover:border-primary-300">
+                                  <span className="font-medium">גרסה {c.latestVersion} · היסטוריה והורדה</span>
+                                  <span className="text-xs text-gray-500">{c.finalAmount == null ? '—' : `${Number(c.finalAmount).toLocaleString('he-IL')} ₪`}</span>
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-gray-400">כל גרסה סופית זמינה להורדה ולצפייה בהיסטוריית הגרסאות בתוך מסך הדוח.</p>
+                    </>
+                  )}
                 </div>
               )}
 
