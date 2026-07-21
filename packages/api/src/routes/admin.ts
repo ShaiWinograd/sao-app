@@ -41,6 +41,44 @@ export async function adminRoutes(app: FastifyInstance) {
     return { joinRequests, pendingAcceptance, replacementRequests, swapApprovals, attendanceReview, reportCorrections, customerReportReady };
   });
 
+  // Pending worker join requests across all jobs, for the owner's Requires
+  // Attention side panel (spec item 8). Each row carries the shiftId so the panel
+  // can approve/reject inline via POST /shifts/:shiftId/approve — no navigating to
+  // a generic jobs board.
+  app.get('/join-requests', { preHandler: [authenticate, requireAdmin] }, async () => {
+    const shifts = await prisma.shift.findMany({
+      where: { joinRequestStatus: 'PENDING' },
+      select: {
+        id: true,
+        createdAt: true,
+        worker: { select: { firstName: true, lastName: true } },
+        job: {
+          select: {
+            id: true,
+            jobType: true,
+            date: true,
+            plannedStart: true,
+            plannedEnd: true,
+            requiredWorkerCount: true,
+            customer: { select: { firstName: true, lastName: true } },
+            address: { select: { fullAddress: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    return shifts.map((s) => ({
+      shiftId: s.id,
+      requestedAt: s.createdAt,
+      workerName: `${s.worker?.firstName ?? ''} ${s.worker?.lastName ?? ''}`.trim(),
+      jobId: s.job.id,
+      jobType: s.job.jobType,
+      date: s.job.date,
+      customerName: `${s.job.customer?.firstName ?? ''} ${s.job.customer?.lastName ?? ''}`.trim(),
+      address: s.job.address?.fullAddress ?? '',
+    }));
+  });
+
   // Invite an owner/admin team member by email (no worker profile). The invited
   // role is carried in the Clerk invitation metadata and wins over any worker
   // match on first login. Only owners may invite owners.

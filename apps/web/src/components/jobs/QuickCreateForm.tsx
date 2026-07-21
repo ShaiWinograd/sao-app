@@ -15,7 +15,6 @@ function makeIdemKey(): string {
 // selection — the backend auto-resolves or creates the internal case on save
 // (POST /jobs/quick). Reused by the /jobs/new page and the Home side panel.
 
-type CustomerMode = 'EXISTING' | 'NEW' | 'GENERAL_RESERVATION';
 type CustomerMatch = { id: string; firstName: string; lastName: string; phone: string };
 
 export type QuickCreateCapacity = { warning: boolean; available: number };
@@ -41,13 +40,18 @@ export function QuickCreateForm({
 }) {
   const { getToken } = useAuth();
 
-  const [customerMode, setCustomerMode] = useState<CustomerMode>('GENERAL_RESERVATION');
-  const [search, setSearch] = useState('');
+  // Job-first customer form: a normal customer-details form (no existing/new mode
+  // switch). As the owner types any field we surface matching existing customers;
+  // they may select one or keep the typed values to create a new customer. A
+  // customer is never auto-selected or auto-merged. "General reservation" is an
+  // explicit opt-in for reserving workers before a real customer exists.
+  const [custFirst, setCustFirst] = useState('');
+  const [custLast, setCustLast] = useState('');
+  const [custPhone, setCustPhone] = useState('');
+  const [custEmail, setCustEmail] = useState('');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [matches, setMatches] = useState<CustomerMatch[]>([]);
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerMatch | null>(null);
-  const [newFirst, setNewFirst] = useState('');
-  const [newLast, setNewLast] = useState('');
-  const [newPhone, setNewPhone] = useState('');
+  const [generalReservation, setGeneralReservation] = useState(false);
 
   const [jobType, setJobType] = useState('PACKING');
   const [date, setDate] = useState(initialDate || todayKey());
@@ -66,10 +70,8 @@ export function QuickCreateForm({
   const idemKeyRef = useRef<string>(makeIdemKey());
   const [createdJobId, setCreatedJobId] = useState<string | null>(null);
 
-  const runSearch = useCallback(
+  const searchCustomers = useCallback(
     async (term: string) => {
-      setSearch(term);
-      setSelectedCustomer(null);
       if (term.trim().length < 2) {
         setMatches([]);
         return;
@@ -85,15 +87,36 @@ export function QuickCreateForm({
     [getToken],
   );
 
+  // Any edit to a customer field means the owner is no longer pointing at a
+  // previously-selected existing customer.
+  const onCustomerFieldChange = useCallback(
+    (setter: (v: string) => void, value: string) => {
+      setter(value);
+      setSelectedCustomerId(null);
+      void searchCustomers(value);
+    },
+    [searchCustomers],
+  );
+
+  const selectExistingCustomer = useCallback((c: CustomerMatch) => {
+    setSelectedCustomerId(c.id);
+    setCustFirst(c.firstName);
+    setCustLast(c.lastName);
+    setCustPhone(c.phone);
+    setMatches([]);
+  }, []);
+
   const submit = useCallback(async () => {
     setError(null);
-    if (customerMode === 'EXISTING' && !selectedCustomer) {
-      setError('יש לבחור לקוח קיים.');
-      return;
-    }
-    if (customerMode === 'NEW' && !newFirst.trim()) {
-      setError('יש להזין שם לקוח.');
-      return;
+    if (!generalReservation && !selectedCustomerId) {
+      if (!custFirst.trim()) {
+        setError('יש להזין שם פרטי של הלקוח, לבחור לקוח קיים, או לסמן שריון כללי.');
+        return;
+      }
+      if (!custPhone.trim()) {
+        setError('יש להזין טלפון ללקוח חדש.');
+        return;
+      }
     }
     if (!cityOrAddress.trim()) {
       setError('יש להזין עיר או כתובת.');
@@ -102,12 +125,20 @@ export function QuickCreateForm({
     setBusy(true);
     try {
       const auth = await authHeaders(getToken);
+      const customerPart = generalReservation
+        ? { generalReservation: true }
+        : selectedCustomerId
+          ? { customerId: selectedCustomerId }
+          : {
+              newCustomer: {
+                firstName: custFirst.trim(),
+                lastName: custLast.trim(),
+                phone: custPhone.trim(),
+                ...(custEmail.trim() ? { email: custEmail.trim() } : {}),
+              },
+            };
       const payload = {
-        customerMode,
-        ...(customerMode === 'EXISTING' ? { customerId: selectedCustomer!.id } : {}),
-        ...(customerMode === 'NEW'
-          ? { newCustomer: { firstName: newFirst.trim(), lastName: newLast.trim(), phone: newPhone.trim() } }
-          : {}),
+        ...customerPart,
         jobType,
         date,
         startTime,
@@ -136,7 +167,7 @@ export function QuickCreateForm({
     } finally {
       setBusy(false);
     }
-  }, [customerMode, selectedCustomer, newFirst, newLast, newPhone, jobType, date, startTime, endTime, cityOrAddress, workerCount, requiresTeamLeader, initialStatus, notes, getToken, onCreated]);
+  }, [generalReservation, selectedCustomerId, custFirst, custLast, custPhone, custEmail, jobType, date, startTime, endTime, cityOrAddress, workerCount, requiresTeamLeader, initialStatus, notes, getToken, onCreated]);
 
   return (
     <div className="space-y-5" dir="rtl">
@@ -154,64 +185,64 @@ export function QuickCreateForm({
         </div>
       )}
 
-      {/* Customer */}
+      {/* Customer (job-first: a normal customer form with live suggestions) */}
       <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-gray-900 mb-3">לקוח</h2>
-        <div className="flex flex-wrap gap-2 mb-3">
-          {([
-            ['GENERAL_RESERVATION', 'שריון כללי'],
-            ['EXISTING', 'לקוח קיים'],
-            ['NEW', 'לקוח חדש'],
-          ] as Array<[CustomerMode, string]>).map(([mode, label]) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => setCustomerMode(mode)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${customerMode === mode ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-900">לקוח</h2>
+          <label className="inline-flex items-center gap-2 text-xs text-gray-600">
+            <input
+              type="checkbox"
+              checked={generalReservation}
+              onChange={(e) => {
+                setGeneralReservation(e.target.checked);
+                if (e.target.checked) {
+                  setSelectedCustomerId(null);
+                  setMatches([]);
+                  setInitialStatus('RESERVATION');
+                }
+              }}
+            />
+            שריון כללי (ללא לקוח)
+          </label>
         </div>
 
-        {customerMode === 'GENERAL_RESERVATION' && (
+        {generalReservation ? (
           <p className="text-sm text-gray-500">העבודה תשויך לשריון כללי. ניתן לשייך ללקוח אמיתי מאוחר יותר.</p>
-        )}
-
-        {customerMode === 'EXISTING' && (
-          <div>
-            <input
-              value={search}
-              onChange={(e) => void runSearch(e.target.value)}
-              placeholder="חיפוש לפי שם או טלפון…"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
-            {selectedCustomer ? (
-              <p className="mt-2 text-sm text-emerald-700">נבחר: {selectedCustomer.firstName} {selectedCustomer.lastName} · {selectedCustomer.phone}</p>
-            ) : (
-              matches.length > 0 && (
-                <div className="mt-2 max-h-44 overflow-auto rounded-lg border border-gray-100">
-                  {matches.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => { setSelectedCustomer(c); setMatches([]); }}
-                      className="block w-full px-3 py-2 text-right text-sm hover:bg-gray-50"
-                    >
-                      {c.firstName} {c.lastName} · {c.phone}
-                    </button>
-                  ))}
-                </div>
-              )
+        ) : (
+          <div className="space-y-3">
+            {selectedCustomerId && (
+              <div className="flex items-center justify-between rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-800">
+                <span>לקוח קיים נבחר: {custFirst} {custLast}{custPhone ? ` · ${custPhone}` : ''}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCustomerId(null)}
+                  className="text-xs underline text-emerald-700"
+                >
+                  ניקוי בחירה
+                </button>
+              </div>
             )}
-          </div>
-        )}
-
-        {customerMode === 'NEW' && (
-          <div className="grid grid-cols-3 gap-2">
-            <input value={newFirst} onChange={(e) => setNewFirst(e.target.value)} placeholder="שם פרטי" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-            <input value={newLast} onChange={(e) => setNewLast(e.target.value)} placeholder="שם משפחה" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-            <input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="טלפון" inputMode="tel" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            <div className="grid grid-cols-2 gap-2">
+              <input value={custFirst} onChange={(e) => onCustomerFieldChange(setCustFirst, e.target.value)} placeholder="שם פרטי" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <input value={custLast} onChange={(e) => onCustomerFieldChange(setCustLast, e.target.value)} placeholder="שם משפחה" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <input value={custPhone} onChange={(e) => onCustomerFieldChange(setCustPhone, e.target.value)} placeholder="טלפון" inputMode="tel" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <input value={custEmail} onChange={(e) => setCustEmail(e.target.value)} placeholder="אימייל (אופציונלי)" inputMode="email" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </div>
+            {!selectedCustomerId && matches.length > 0 && (
+              <div className="max-h-44 overflow-auto rounded-lg border border-gray-100">
+                <p className="px-3 py-1.5 text-[11px] text-gray-500 bg-gray-50">לקוחות קיימים תואמים — לבחירה, או המשיכו ליצירת לקוח חדש</p>
+                {matches.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => selectExistingCustomer(c)}
+                    className="block w-full px-3 py-2 text-right text-sm hover:bg-gray-50"
+                  >
+                    {c.firstName} {c.lastName} · {c.phone}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -269,8 +300,8 @@ export function QuickCreateForm({
           <button
             type="button"
             onClick={() => setInitialStatus('APPROVED')}
-            disabled={customerMode === 'GENERAL_RESERVATION'}
-            title={customerMode === 'GENERAL_RESERVATION' ? 'לא ניתן לאשר עבודה בשריון כללי' : ''}
+            disabled={generalReservation}
+            title={generalReservation ? 'לא ניתן לאשר עבודה בשריון כללי' : ''}
             className={`rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-40 ${initialStatus === 'APPROVED' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
           >
             אושר

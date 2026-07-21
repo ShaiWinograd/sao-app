@@ -205,7 +205,7 @@ export default function ShiftsScreen() {
 
             return (
               <TouchableOpacity
-                style={styles.card}
+                style={[styles.card, isPending && styles.cardPending]}
                 activeOpacity={0.9}
                 onPress={() => router.push({ pathname: '/(worker)/shift-detail', params: { id: item.id } })}
               >
@@ -236,7 +236,14 @@ export default function ShiftsScreen() {
                     </TouchableOpacity>
                   </>
                 ) : isPending ? (
-                  <Text style={[styles.status, styles.statusAwaiting]}>ממתין לאישור בעל/ת העסק</Text>
+                  <>
+                    <View style={styles.pendingBadge}>
+                      <Text style={styles.pendingBadgeText}>מחכה לאישור</Text>
+                    </View>
+                    <Text style={[styles.status, styles.statusAwaiting]}>
+                      בקשת ההצטרפות נשלחה וממתינה לאישור בעל/ת העסק — זו אינה משמרת מאושרת ולא ניתן להחתים נוכחות.
+                    </Text>
+                  </>
                 ) : (
                   <>
                     <Text style={[styles.status, isActive && styles.statusActive, isDone && styles.statusDone]}>
@@ -402,6 +409,9 @@ const styles = StyleSheet.create({
   swapPending: { flex: 1, fontSize: 13, color: '#b45309', fontFamily: fonts.semibold, textAlign: 'right' },
   swapCancel: { fontSize: 14, color: colors.danger, fontFamily: fonts.semibold },
   card: { backgroundColor: colors.card, borderRadius: 14, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  cardPending: { borderWidth: 1.5, borderColor: '#f59e0b', borderStyle: 'dashed', backgroundColor: '#fffbeb' },
+  pendingBadge: { alignSelf: 'flex-end', marginTop: 8, backgroundColor: '#fef3c7', borderColor: '#f59e0b', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
+  pendingBadgeText: { color: '#b45309', fontFamily: fonts.semibold, fontSize: 12 },
   cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   date: { fontSize: 13, color: colors.muted, textAlign: 'right' },
   customer: { fontSize: 17, fontFamily: fonts.semibold, color: colors.text, marginTop: 2, textAlign: 'right' },
