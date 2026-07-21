@@ -67,6 +67,7 @@ describe.skipIf(!TEST_DB)('attendance sweep (integration)', () => {
   beforeEach(async () => {
     await prisma.notification.deleteMany();
     await prisma.auditLog.deleteMany();
+    await prisma.customerReportVersion.deleteMany();
     await prisma.shiftSwap.deleteMany();
     await prisma.replacementVolunteer.deleteMany();
     await prisma.replacementRequest.deleteMany();
