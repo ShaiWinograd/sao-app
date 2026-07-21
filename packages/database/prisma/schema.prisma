@@ -26,6 +26,7 @@ enum AdminPermission {
 enum CaseStatus {
   DRAFT
   ACTIVE
+  CLOSED
   READY_FOR_REVIEW
   COMPLETED
   CANCELLED
@@ -382,8 +383,30 @@ model CustomerCase {
   customer             Customer   @relation(fields: [customerId], references: [id])
   assignedAdmin        User?      @relation("CaseManager", fields: [assignedAdminId], references: [id])
   jobs                 Job[]
+  reportVersions       CustomerReportVersion[]
 
   @@map("customer_cases")
+}
+
+// ─── Customer report version (spec §18) ───────────────────────────────────────
+// Each finalized customer report is an immutable snapshot. Versions form a chain
+// per case (corrections add a new version; earlier versions are preserved). The
+// PDF is reproducible from `snapshot`, never from mutable live job data.
+model CustomerReportVersion {
+  id            String       @id @default(cuid())
+  caseId        String
+  versionNumber Int
+  status        String       @default("FINALIZED")
+  snapshot      Json
+  createdById   String?
+  supersedesId  String?
+  createdAt     DateTime     @default(now())
+
+  case          CustomerCase @relation(fields: [caseId], references: [id])
+
+  @@unique([caseId, versionNumber])
+  @@index([caseId])
+  @@map("customer_report_versions")
 }
 
 // ─── Job ──────────────────────────────────────────────────────────────────────
@@ -405,6 +428,7 @@ model Job {
   billingRate          Decimal?     @db.Decimal(10, 2)
   locationRadiusMeters Int          @default(500)
   status               JobStatus    @default(RESERVATION)
+  reportedAt           DateTime?
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
 
