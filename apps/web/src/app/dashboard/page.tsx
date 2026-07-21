@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUser, useAuth } from '@clerk/nextjs';
-import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone } from '@workforce/shared';
+import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone, assignmentBadge, fillsRequiredSlot, workerRowAssignments } from '@workforce/shared';
 import { AlertTriangle, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Info, Plus, XCircle } from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
@@ -190,28 +190,6 @@ const CASE_BADGE_CLASS_BY_TONE: Record<StatusTone, string> = {
 
 function caseBadge(status: CaseStatusValue): { label: string; className: string } {
   return { label: caseStatusLabel(status), className: CASE_BADGE_CLASS_BY_TONE[caseStatusTone(status)] };
-}
-
-// Worker ASSIGNMENT status badge (spec item 7). This describes the worker's own
-// state on a job — never the job status — so a worker row is never labelled with
-// an ambiguous "אושר" that actually means the job was approved.
-function assignmentBadge(w: { joinRequestStatus?: string | null; assignmentRole?: string | null }): {
-  label: string;
-  className: string;
-} {
-  const status = w.joinRequestStatus ?? 'APPROVED';
-  const role = w.assignmentRole ?? null;
-  if (status === 'PENDING') return { label: 'ממתינה לאישור', className: 'border-amber-300 bg-amber-100 text-amber-800' };
-  if (status === 'AWAITING_WORKER') return { label: 'ממתינה לתשובת העובד/ת', className: 'border-sky-300 bg-sky-100 text-sky-700' };
-  if (role === 'TEAM_LEADER') return { label: 'ראש צוות', className: 'border-emerald-300 bg-emerald-100 text-emerald-700' };
-  if (role === 'BACKUP') return { label: 'גיבוי', className: 'border-purple-300 bg-purple-100 text-purple-700' };
-  return { label: 'משובצת', className: 'border-emerald-300 bg-emerald-100 text-emerald-700' };
-}
-
-// Only an APPROVED (non-backup) assignment fills a required staffing slot — a
-// pending join request must never count as approved staffing (spec item 6).
-function fillsRequiredSlot(w: { joinRequestStatus?: string | null; assignmentRole?: string | null }): boolean {
-  return (w.joinRequestStatus ?? 'APPROVED') === 'APPROVED' && (w.assignmentRole ?? null) !== 'BACKUP';
 }
 
 export default function DashboardPage() {
@@ -853,7 +831,9 @@ export default function DashboardPage() {
   const shiftsByWorkerDate = useMemo(() => {
     const map = new Map<string, ActiveWork[]>();
     displayedWorks.forEach((work) => {
-      work.assignedWorkers.forEach((assignedWorker) => {
+      // Worker rows show actual assignments only — a PENDING join request appears
+      // in Requires Attention / the join panel / staffing, never as a row card.
+      workerRowAssignments(work.assignedWorkers).forEach((assignedWorker) => {
         const key = `${assignedWorker.name}|${work.dateKey}`;
         map.set(key, [...(map.get(key) ?? []), work]);
       });
@@ -903,7 +883,7 @@ export default function DashboardPage() {
   const shiftCountByWorkerName = useMemo(() => {
     const map = new Map<string, number>();
     displayedWorks.forEach((work) => {
-      work.assignedWorkers.forEach((assignedWorker) => {
+      workerRowAssignments(work.assignedWorkers).forEach((assignedWorker) => {
         map.set(assignedWorker.name, (map.get(assignedWorker.name) ?? 0) + 1);
       });
     });
