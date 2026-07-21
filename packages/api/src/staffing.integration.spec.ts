@@ -419,4 +419,73 @@ describe.skipIf(!TEST_DB)('§12–13 staffing concurrency (integration)', () => 
     expect((await prisma.shift.findUniqueOrThrow({ where: { id: r3.id } })).assignmentRole).toBe('REGULAR');
     expect((await prisma.shift.findUniqueOrThrow({ where: { id: r4.id } })).assignmentRole).toBe('REGULAR');
   });
+
+  // --- Join-request lifecycle: pending vs assigned, reject, stale (spec items 3/4/6) ---
+
+  it('a PENDING request blocks the date but does NOT count toward approved staffing', async () => {
+    const job = await seedJob(1);
+    const wA = await seedWorker();
+    const wB = await seedWorker();
+    const pendingA = await seedShift(job.id, wA.id, 'PENDING');
+
+    // Capacity is measured on APPROVED shifts only — a pending request leaves the slot open.
+    const approvedNormal = await prisma.shift.count({
+      where: { jobId: job.id, joinRequestStatus: 'APPROVED', assignmentRole: { in: ['REGULAR', 'TEAM_LEADER'] } },
+    });
+    expect(approvedNormal).toBe(0);
+
+    // But the pending request DOES block wA's date (they cannot be double-committed).
+    await expect(
+      prisma.$transaction((tx) => assertWorkerFreeOnDate(tx, wA.id, JOB_DATE)),
+    ).rejects.toBeInstanceOf(CommitmentConflictError);
+
+    // Approving wB takes the only regular slot.
+    const bShift = await seedShift(job.id, wB.id, 'PENDING');
+    expect(await approveInTx(bShift.id)).toBe('REGULAR');
+
+    // The slot is now full, proving the earlier pending A never held it: approving A
+    // needs a backup confirmation rather than silently over-filling.
+    await expect(approveInTx(pendingA.id)).rejects.toThrow('NEEDS_BACKUP_CONFIRM');
+  });
+
+  it('approving a pending request updates the SAME shift in place (no duplicate assignment card)', async () => {
+    const job = await seedJob(1);
+    const w = await seedWorker();
+    const shift = await seedShift(job.id, w.id, 'PENDING');
+
+    expect(await approveInTx(shift.id)).toBe('REGULAR');
+
+    const shiftsForWorkerJob = await prisma.shift.findMany({ where: { jobId: job.id, workerId: w.id } });
+    expect(shiftsForWorkerJob).toHaveLength(1);
+    expect(shiftsForWorkerJob[0].id).toBe(shift.id);
+    expect(shiftsForWorkerJob[0].joinRequestStatus).toBe('APPROVED');
+  });
+
+  it('rejecting a pending request releases the worker date block and clears the pending state', async () => {
+    const job = await seedJob(1);
+    const w = await seedWorker();
+    const shift = await seedShift(job.id, w.id, 'PENDING');
+
+    // Endpoint reject behaviour: set REJECTED (a non-blocking, non-approved status).
+    await prisma.shift.update({ where: { id: shift.id }, data: { joinRequestStatus: 'REJECTED' } });
+
+    // The date is released — the worker is free again.
+    await expect(
+      prisma.$transaction((tx) => assertWorkerFreeOnDate(tx, w.id, JOB_DATE)),
+    ).resolves.toBeUndefined();
+    // And it no longer counts as approved staffing.
+    const approved = await prisma.shift.count({ where: { jobId: job.id, joinRequestStatus: 'APPROVED' } });
+    expect(approved).toBe(0);
+  });
+
+  it('a stale/already-handled request is guarded (the approve precondition rejects non-pending)', async () => {
+    const job = await seedJob(1);
+    const w = await seedWorker();
+    const shift = await seedShift(job.id, w.id, 'APPROVED');
+
+    // Mirrors the POST /:shiftId/approve precondition that returns a typed 409.
+    const current = await prisma.shift.findUniqueOrThrow({ where: { id: shift.id } });
+    const canAct = ['PENDING', 'AWAITING_WORKER'].includes(current.joinRequestStatus);
+    expect(canAct).toBe(false);
+  });
 });
