@@ -130,8 +130,9 @@ export function QuickCreateForm({
       idemKeyRef.current = makeIdemKey();
       onCreated(res.data.job.id, { warning: res.data.capacityWarning, available: res.data.availableWorkers });
     } catch (err) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-      setError(msg ?? 'יצירת העבודה נכשלה.');
+      const data = (err as { response?: { data?: { error?: string; message?: string; correlationId?: string } } })?.response?.data;
+      const base = data?.message ?? data?.error ?? 'יצירת העבודה נכשלה.';
+      setError(base + (data?.correlationId ? ` (מזהה: ${data.correlationId})` : ''));
     } finally {
       setBusy(false);
     }
