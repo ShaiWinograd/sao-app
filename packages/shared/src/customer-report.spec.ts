@@ -137,6 +137,21 @@ describe('buildCustomerReportPdfModel (RTL Hebrew layout)', () => {
     expect(model.table.headers).toEqual(['תאריך', 'סוג עבודה', 'עובדים', 'שעות לחיוב']);
   });
 
+  it('never renders internal version text in the customer PDF', () => {
+    const all = [model.title, ...model.subtitle, ...model.totals.map((t) => `${t.label} ${t.value}`)].join(' ');
+    expect(all).not.toContain('גרסה');
+    expect(all).not.toMatch(/version/i);
+    // The subtitle is customer name + a DD.MM.YYYY generation date only.
+    expect(model.subtitle).toHaveLength(2);
+    expect(model.subtitle[0]).toBe('לקוח: דנה כהן');
+    expect(model.subtitle[1]).toMatch(/^\d{2}\.\d{2}\.\d{4}$/);
+  });
+
+  it('formats currency as "₪ <amount>" (symbol first) for the customer', () => {
+    expect(formatShekel(175)).toBe('₪ 175');
+    expect(formatShekel(875)).toBe('₪ 875');
+  });
+
   it('renders rows with BILLABLE hours and DD.MM.YYYY dates', () => {
     expect(model.table.rows[0]).toEqual(['01.08.2026', 'אריזה', '2', formatHours(9.5)]);
   });
