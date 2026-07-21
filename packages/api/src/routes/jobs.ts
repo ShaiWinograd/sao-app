@@ -955,9 +955,21 @@ export async function jobsRoutes(app: FastifyInstance) {
   // (spec §16). Workers never see this.
   app.get('/:id/activity', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    const shifts = await prisma.shift.findMany({ where: { jobId: id }, select: { id: true } });
+    // Resolve each shift's SUBJECT worker name from the durable snapshot first
+    // (so a later-deleted worker still renders), then the live worker relation.
+    const shifts = await prisma.shift.findMany({
+      where: { jobId: id },
+      select: { id: true, workerNameSnapshot: true, worker: { select: { firstName: true, lastName: true } } },
+    });
     const shiftIds = shifts.map((s) => s.id);
-    return prisma.auditLog.findMany({
+    const subjectByShiftId = new Map<string, string | null>(
+      shifts.map((s) => {
+        const snapshot = (s.workerNameSnapshot ?? '').trim();
+        const live = `${s.worker?.firstName ?? ''} ${s.worker?.lastName ?? ''}`.trim();
+        return [s.id, snapshot || live || null];
+      }),
+    );
+    const entries = await prisma.auditLog.findMany({
       where: {
         OR: [
           { entityType: 'Job', entityId: id },
@@ -968,6 +980,11 @@ export async function jobsRoutes(app: FastifyInstance) {
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
+    return entries.map((e) => ({
+      ...e,
+      actorName: e.performedBy ? `${e.performedBy.firstName} ${e.performedBy.lastName}`.trim() : null,
+      subjectName: e.entityType === 'Shift' ? subjectByShiftId.get(e.entityId) ?? null : null,
+    }));
   });
 
   // Move workers between two jobs on the same date (spec §12). Recalculates the
