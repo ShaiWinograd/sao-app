@@ -177,6 +177,13 @@ export function formatHours(n: number): string {
   return `${Number(n).toLocaleString('he-IL')} שעות`;
 }
 
+// Numeric-only hours for the SUMMARY value column. The summary label already
+// says "סך שעות לחיוב", so the value stays a plain number to avoid an
+// unnecessary mixed Hebrew+number (RTL/LTR) token in the value column.
+export function formatHoursValue(n: number): string {
+  return Number(n).toLocaleString('he-IL');
+}
+
 function toDisplayDate(isoDay: string): string {
   const parts = isoDay.split('-');
   return parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : isoDay;
@@ -210,7 +217,7 @@ export function buildCustomerReportPdfModel(args: {
   ]);
 
   const totals: Array<{ label: string; value: string; emphasis?: boolean }> = [
-    { label: 'סך שעות לחיוב', value: formatHours(report.totalBillableHours) },
+    { label: 'סך שעות לחיוב', value: formatHoursValue(report.totalBillableHours) },
   ];
   if (report.mode === 'HOURLY') {
     totals.push({ label: 'תעריף שעתי', value: formatShekel(report.hourlyRate ?? 0) });
