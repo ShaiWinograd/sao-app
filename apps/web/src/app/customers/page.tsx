@@ -65,7 +65,7 @@ type ApiCustomer = {
   firstName: string;
   lastName: string;
   phone: string;
-  email: string;
+  email: string | null;
   cases?: ApiCase[];
   addresses?: ApiAddress[];
 };
@@ -87,7 +87,8 @@ function mapApiCaseStatus(status: ApiCase['status']): Customer['caseStatus'] {
 
 // Emails auto-generated for records without a real address are placeholders and
 // should not be shown to the user.
-function cleanEmail(email: string): string {
+function cleanEmail(email: string | null | undefined): string {
+  if (!email) return '';
   return /@(placeholder|worker)\.local$/i.test(email) ? '' : email;
 }
 
@@ -231,6 +232,7 @@ export default function CustomersPage() {
     closed: { caseId: string; latestVersion: number; finalAmount: number | null }[];
   }>({ ready: [], closed: [] });
   const [isLoadingReports, setIsLoadingReports] = useState(false);
+  const [savingCustomer, setSavingCustomer] = useState(false);
 
   const [cardFirstName, setCardFirstName] = useState('');
   const [cardLastName, setCardLastName] = useState('');
@@ -391,112 +393,82 @@ export default function CustomersPage() {
     setMessageBody(quote.body);
   };
 
-  const saveCustomer = () => {
+  const labelToEnum = (l: string): 'OLD_APARTMENT' | 'NEW_APARTMENT' | 'STORAGE' | 'OFFICE' | 'OTHER' => {
+    switch (l) {
+      case 'דירה ישנה':
+        return 'OLD_APARTMENT';
+      case 'דירה חדשה':
+        return 'NEW_APARTMENT';
+      case 'מחסן':
+        return 'STORAGE';
+      case 'משרד':
+        return 'OFFICE';
+      default:
+        return 'OTHER';
+    }
+  };
+
+  const saveCustomer = async () => {
     setCardMessage('');
 
-    if (!cardFirstName.trim() || !cardLastName.trim()) {
-      setCardMessage('יש למלא שם פרטי ושם משפחה.');
+    if (!cardFirstName.trim()) {
+      setCardMessage('יש למלא שם פרטי.');
       return;
     }
     if (!isValidIsraeliPhone(cardPhone)) {
       setCardMessage('מספר הטלפון לא תקין.');
       return;
     }
-    if (!isValidEmail(cardEmail)) {
+    // Email is optional; only validate when provided.
+    if (cardEmail.trim() && !isValidEmail(cardEmail)) {
       setCardMessage('כתובת האימייל לא תקינה.');
       return;
     }
 
-    if (isCreatingNew) {
-      const duplicate = customers.find(
-        (customer) =>
-          normalizePhone(customer.phone) === normalizePhone(cardPhone) || customer.email.trim().toLowerCase() === cardEmail.trim().toLowerCase(),
-      );
-      if (duplicate) {
-        setCardMessage('נמצא לקוח קיים עם טלפון/אימייל דומה. מומלץ לבחור אותו מהרשימה.');
-        return;
-      }
-      if (!cardAddressInput.trim()) {
-        setCardMessage('ביצירת לקוח חדש יש להזין לפחות כתובת אחת.');
-        return;
-      }
-      if (!cardAddressSelection) {
-        setCardMessage('יש לבחור כתובת מתוך תוצאות Azure Maps (לא טקסט חופשי בלבד).');
-        return;
-      }
-
-      const created: Customer = {
-        id: `c-${Date.now()}`,
+    setSavingCustomer(true);
+    try {
+      const payload = {
         firstName: cardFirstName.trim(),
         lastName: cardLastName.trim(),
         phone: cardPhone.trim(),
-        email: cardEmail.trim(),
-        caseName: cardCaseName.trim() || `${cardFirstName.trim()} ${cardLastName.trim()} - פרוייקט חדש`,
-        caseStatus: cardCaseStatus,
-        notes: cardNotes.trim() || undefined,
-        addresses: [{
-          id: `a-${Date.now()}`,
-          label: cardAddressLabel,
-          fullAddress: buildAddressWithUnit(cardAddressSelection.formattedAddress, cardAddressFloor, cardAddressApartment),
-          floor: cardAddressFloor.trim() || undefined,
-          apartment: cardAddressApartment.trim() || undefined,
-          location: cardAddressSelection,
-        }],
+        ...(cardEmail.trim() ? { email: cardEmail.trim() } : {}),
+        ...(cardNotes.trim() ? { internalNotes: cardNotes.trim() } : {}),
       };
-      setCustomers((prev) => [created, ...prev]);
-      setOpenedCustomerId(created.id);
+
+      const creating = isCreatingNew;
+      let customerId: string | null = openedCustomerId;
+      if (creating) {
+        const res = await api.post<{ id: string }>('/customers', payload);
+        customerId = res.data.id;
+      } else if (customerId) {
+        await api.patch(`/customers/${customerId}`, payload);
+      }
+
+      // Optional free-text address. Address search/geocoding is deferred (issue
+      // #217), so it is stored as typed and location monitoring stays inactive
+      // until the address is geocoded — no Azure Maps validation is implied.
+      if (customerId && cardAddressInput.trim()) {
+        await api.post('/addresses', {
+          customerId,
+          fullAddress: buildAddressWithUnit(cardAddressInput.trim(), cardAddressFloor, cardAddressApartment),
+          label: labelToEnum(cardAddressLabel),
+        });
+      }
+
+      await loadData();
+      if (customerId) setOpenedCustomerId(customerId);
       setIsCreatingNew(false);
       setCardAddressInput('');
+      setCardAddressSelection(null);
       setCardAddressFloor('');
       setCardAddressApartment('');
-      setCardMessage('הלקוח נוצר בהצלחה.');
-      return;
+      setCardMessage(creating ? 'הלקוח נוצר ונשמר בהצלחה.' : 'פרטי הלקוח נשמרו בהצלחה.');
+    } catch (err) {
+      const data = (err as { response?: { data?: { message?: string; error?: string; correlationId?: string } } })?.response?.data;
+      setCardMessage((data?.message ?? data?.error ?? 'שמירת הלקוח נכשלה.') + (data?.correlationId ? ` (מזהה: ${data.correlationId})` : ''));
+    } finally {
+      setSavingCustomer(false);
     }
-
-    if (cardAddressInput.trim() && !cardAddressSelection) {
-      setCardMessage('כדי להוסיף כתובת חדשה יש לבחור אותה מתוצאות Azure Maps.');
-      return;
-    }
-
-    setCustomers((prev) =>
-      prev.map((customer) =>
-        customer.id === openedCustomerId
-          ? {
-              ...customer,
-              firstName: cardFirstName.trim(),
-              lastName: cardLastName.trim(),
-              phone: cardPhone.trim(),
-              email: cardEmail.trim(),
-              caseName: cardCaseName.trim() || customer.caseName,
-              caseStatus: cardCaseStatus,
-              notes: cardNotes.trim() || undefined,
-              addresses:
-                cardAddressInput.trim()
-                  ? [
-                      ...customer.addresses,
-                      {
-                        id: `a-${Date.now()}`,
-                        label: cardAddressLabel,
-                        fullAddress: buildAddressWithUnit(
-                          cardAddressSelection?.formattedAddress ?? cardAddressInput.trim(),
-                          cardAddressFloor,
-                          cardAddressApartment,
-                        ),
-                        floor: cardAddressFloor.trim() || undefined,
-                        apartment: cardAddressApartment.trim() || undefined,
-                        location: cardAddressSelection ?? undefined,
-                      },
-                    ]
-                  : customer.addresses,
-            }
-          : customer,
-      ),
-    );
-    setCardAddressInput('');
-    setCardAddressSelection(null);
-    setCardAddressFloor('');
-    setCardAddressApartment('');
-    setCardMessage('פרטי הלקוח נשמרו בהצלחה.');
   };
 
   const applyTemplate = (nextTemplate: TemplateKey) => {
@@ -620,8 +592,8 @@ export default function CustomersPage() {
       </div>
 
       {(openedCustomer || isCreatingNew) && (
-        <div className="fixed inset-0 z-50 bg-black/30 flex items-start justify-center overflow-y-auto p-4 py-6">
-          <div className="w-full max-w-xl rounded-lg border border-gray-200 bg-white shadow-xl max-h-[84vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-black/30 flex justify-end">
+          <div className="h-full w-full sm:max-w-md bg-white shadow-xl overflow-y-auto flex flex-col">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <button
                 type="button"
@@ -772,8 +744,13 @@ export default function CustomersPage() {
                     </div>
                   )}
 
-                  <button type="button" onClick={saveCustomer} className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700">
-                    {isCreatingNew ? 'יצירת לקוח' : 'שמירת שינויים'}
+                  <button
+                    type="button"
+                    onClick={() => void saveCustomer()}
+                    disabled={savingCustomer}
+                    className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+                  >
+                    {savingCustomer ? 'שומר…' : isCreatingNew ? 'יצירת לקוח' : 'שמירת שינויים'}
                   </button>
                 </>
               )}

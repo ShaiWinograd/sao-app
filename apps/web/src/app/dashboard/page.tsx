@@ -1177,8 +1177,15 @@ export default function DashboardPage() {
                               onClick={() => work.jobId && router.push(`/jobs/${work.jobId}`)}
                               className={`w-full rounded-md border px-2 py-1 text-right ${getShiftTypeCardClasses(work.jobType)}`}
                             >
-                              <p className="text-[11px] font-semibold text-gray-900">{work.customerName}</p>
-                              <p className="text-[11px] font-medium text-amber-700">חסרים {open} עובדים</p>
+                              <div className="flex items-center justify-between gap-1.5">
+                                <p className="text-[11px] font-semibold text-gray-900 truncate">{work.customerName}</p>
+                                <span
+                                  title={`חסרים ${open} עובדים`}
+                                  className="shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-blue-100 text-blue-700 text-[11px] font-semibold px-1"
+                                >
+                                  {open}
+                                </span>
+                              </div>
                             </button>
                           ))}
                           {openWorks.length > 2 && (

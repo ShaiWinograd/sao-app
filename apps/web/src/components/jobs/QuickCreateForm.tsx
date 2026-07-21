@@ -1,9 +1,15 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
-import { Loader2, Plus, AlertTriangle } from 'lucide-react';
+import Link from 'next/link';
+import { Loader2, Plus, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { api, authHeaders } from '../../lib/api';
+
+function makeIdemKey(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
+  return `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 // Job-first Quick Create (spec §8). Intentionally exposes NO project/CustomerCase
 // selection — the backend auto-resolves or creates the internal case on save
@@ -55,6 +61,10 @@ export function QuickCreateForm({
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // One idempotency key per opened form so a repeated/retried submit cannot
+  // create a second job. Regenerated after a successful create.
+  const idemKeyRef = useRef<string>(makeIdemKey());
+  const [createdJobId, setCreatedJobId] = useState<string | null>(null);
 
   const runSearch = useCallback(
     async (term: string) => {
@@ -107,12 +117,17 @@ export function QuickCreateForm({
         requiresTeamLeader,
         initialStatus,
         notes: notes.trim() || undefined,
+        idempotencyKey: idemKeyRef.current,
       };
       const res = await api.post<{ job: { id: string }; capacityWarning: boolean; availableWorkers: number }>(
         '/jobs/quick',
         payload,
         auth,
       );
+      // Show a durable success + link so a slow/failed view refresh never invites
+      // a second submission; regenerate the key so the next job is distinct.
+      setCreatedJobId(res.data.job.id);
+      idemKeyRef.current = makeIdemKey();
       onCreated(res.data.job.id, { warning: res.data.capacityWarning, available: res.data.availableWorkers });
     } catch (err) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
@@ -128,6 +143,13 @@ export function QuickCreateForm({
         <div className="flex items-center gap-2 rounded-lg bg-danger-bg border border-danger/30 text-danger text-sm px-4 py-3">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           {error}
+        </div>
+      )}
+
+      {createdJobId && (
+        <div className="flex items-center justify-between gap-2 rounded-lg bg-green-50 border border-green-200 text-green-800 text-sm px-4 py-3">
+          <span className="inline-flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> העבודה נוצרה בהצלחה.</span>
+          <Link href={`/jobs/${createdJobId}`} className="font-medium underline">מעבר לעבודה</Link>
         </div>
       )}
 
@@ -216,6 +238,7 @@ export function QuickCreateForm({
         <label className="text-sm col-span-2">
           <span className="block text-gray-600 mb-1">עיר או כתובת</span>
           <input value={cityOrAddress} onChange={(e) => setCityOrAddress(e.target.value)} placeholder="לדוגמה: תל אביב, או הרצל 10 תל אביב" className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
+          <span className="mt-1 block text-[11px] text-amber-700">חיפוש/אימות כתובת אינו פעיל עדיין — ניטור מיקום לא זמין עד שהכתובת תעודכן (גיאוקוד).</span>
         </label>
         <label className="text-sm">
           <span className="block text-gray-600 mb-1">מספר עובדים</span>
