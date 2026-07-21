@@ -30,3 +30,4 @@ export * from './attendance-sweep';
 export * from './utils';
 export * from './dashboard-issues';
 export * from './owner-grid';
+export * from './audit-labels';

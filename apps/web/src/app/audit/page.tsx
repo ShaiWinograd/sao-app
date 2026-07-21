@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Filter, History, Shield } from 'lucide-react';
+import { auditReasonLabel } from '@workforce/shared';
 import { api } from '../../lib/api';
 
 type AuditEntry = {
@@ -144,7 +145,7 @@ export default function AuditPage() {
                   <td className="px-2 py-2">{entry.entityType} / {entry.entityId}</td>
                   <td className="px-2 py-2 text-xs">{JSON.stringify(entry.previousValue ?? '-')}</td>
                   <td className="px-2 py-2 text-xs">{JSON.stringify(entry.newValue ?? '-')}</td>
-                  <td className="px-2 py-2">{entry.reason ?? '-'}</td>
+                  <td className="px-2 py-2">{auditReasonLabel(entry.reason)}</td>
                 </tr>
               );
             })}
