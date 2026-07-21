@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUser, useAuth } from '@clerk/nextjs';
-import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone, assignmentBadge, fillsRequiredSlot, workerRowAssignments } from '@workforce/shared';
+import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone, workerRowBadge, fillsRequiredSlot, workerRowAssignments } from '@workforce/shared';
 import { AlertTriangle, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Info, Plus, XCircle } from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
@@ -1258,8 +1258,9 @@ export default function DashboardPage() {
                                 upcomingDiffDays >= 0 &&
                                 upcomingDiffDays <= 7;
                               // Badge describes THIS worker's assignment status, not the job status.
+                              // A regular approved assignment shows no badge — the card already says "assigned".
                               const myAssignment = shift.assignedWorkers.find((w) => w.name === worker.name);
-                              const badge = assignmentBadge(myAssignment ?? {});
+                              const badge = workerRowBadge(myAssignment ?? {});
                               return (
                                 <button
                                   key={`${worker.id}-${shift.id}`}
@@ -1269,9 +1270,11 @@ export default function DashboardPage() {
                                 >
                                   <p className="text-[11px] font-semibold text-gray-900">09:00-{addHoursToTime('09:00', shift.hours)}</p>
                                   <p className="text-[11px] text-gray-600">{shift.customerName}</p>
-                                  <p className={`mt-0.5 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}>
-                                    {badge.label}
-                                  </p>
+                                  {badge && (
+                                    <p className={`mt-0.5 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}>
+                                      {badge.label}
+                                    </p>
+                                  )}
                                   {isUrgentCase && (
                                     <p className="text-[10px] text-rose-700 mt-0.5">דחוף: העבודה ממתינה לאישור לקוח</p>
                                   )}

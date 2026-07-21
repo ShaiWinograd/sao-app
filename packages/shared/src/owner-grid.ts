@@ -48,3 +48,28 @@ export function assignmentBadge(a: GridAssignment): AssignmentBadge {
   if (role === 'BACKUP') return { label: 'גיבוי', className: 'border-purple-300 bg-purple-100 text-purple-700' };
   return { label: 'משובצת', className: 'border-emerald-300 bg-emerald-100 text-emerald-700' };
 }
+
+/**
+ * The badge for an owner Shifts-grid card. A regular approved assignment gets NO
+ * badge — the card's presence in the worker row already communicates "assigned",
+ * so the generic "משובצת" would be redundant noise. Only states that carry extra
+ * meaning are labelled: team leader, backup, and a direct assignment still
+ * awaiting the worker's response. Returns null when no badge should be shown.
+ */
+export function workerRowBadge(a: GridAssignment): AssignmentBadge | null {
+  const status = a.joinRequestStatus ?? 'APPROVED';
+  const role = a.assignmentRole ?? null;
+  if (status === 'AWAITING_WORKER') {
+    return { label: 'ממתינה לאישור העובדת', className: 'border-sky-300 bg-sky-100 text-sky-700' };
+  }
+  if (status === 'APPROVED' && role === 'TEAM_LEADER') {
+    return { label: 'ראש צוות', className: 'border-emerald-300 bg-emerald-100 text-emerald-700' };
+  }
+  if (status === 'APPROVED' && role === 'BACKUP') {
+    return { label: 'גיבוי', className: 'border-purple-300 bg-purple-100 text-purple-700' };
+  }
+  // Regular approved assignment → no badge (the card already communicates it).
+  if (status === 'APPROVED') return null;
+  // Any other lingering state keeps the full badge so nothing is silently unlabelled.
+  return assignmentBadge(a);
+}
