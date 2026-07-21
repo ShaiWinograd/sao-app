@@ -1,5 +1,10 @@
+# Flex Consumption runs the app straight from the deployed package with no remote
+# build, so the runtime dependencies MUST ship inside node_modules — in the Node
+# v4 model, @azure/functions is runtime code (a production dependency). Do NOT add
+# `node_modules` here: excluding it produces a package where the timer function is
+# never registered. Build locally (`npm run build` -> dist) and ship prod-only deps
+# (`npm prune --omit=dev`) before `func azure functionapp publish`.
 .git*
-node_modules
 dist/**/*.map
 local.settings.json
 tsconfig.json

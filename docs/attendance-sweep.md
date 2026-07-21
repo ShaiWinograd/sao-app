@@ -64,13 +64,19 @@ Land the endpoint + domain logic **before** enabling the schedule:
 ### Create + deploy the Function App
 
 ```bash
-# One-time: a Linux consumption Function App (Node 20) + its storage account.
+# One-time: a dedicated StorageV2 account + a Flex Consumption Function App.
+# Node 20 is end-of-life — use Node 22 (Functions v4). Flex is always Linux.
+az storage account create \
+  --name saoschedstore01 --resource-group workforce-rg \
+  --location israelcentral --sku Standard_LRS --kind StorageV2 \
+  --min-tls-version TLS1_2 --allow-blob-public-access false
+
 az functionapp create \
   --resource-group workforce-rg \
   --name spaceorder-attendance-scheduler \
-  --consumption-plan-location israelcentral \
-  --runtime node --runtime-version 20 --functions-version 4 \
-  --storage-account <storage-account> --os-type Linux
+  --flexconsumption-location israelcentral \
+  --runtime node --runtime-version 22 \
+  --storage-account saoschedstore01 --instance-memory 512
 
 az functionapp config appsettings set \
   --resource-group workforce-rg --name spaceorder-attendance-scheduler \
@@ -79,9 +85,12 @@ az functionapp config appsettings set \
     INTERNAL_SWEEP_SECRET="<same-secret-as-api>"
 
 # Build + publish from the scheduler/ folder.
+# Flex runs from the package with NO remote build, so the runtime deps must be in
+# the package: build to dist, prune to prod-only deps (keeps @azure/functions),
+# then publish the prebuilt output. See scheduler/.funcignore.
 cd scheduler
-npm ci && npm run build
-func azure functionapp publish spaceorder-attendance-scheduler
+npm ci && npm run build && npm prune --omit=dev
+func azure functionapp publish spaceorder-attendance-scheduler --javascript --no-build
 ```
 
 ## Disable / re-enable quickly (no API redeploy)
