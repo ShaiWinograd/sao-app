@@ -69,3 +69,91 @@ export function auditReasonLabel(reason?: string | null): string {
   if (!reason) return AUDIT_REASON_FALLBACK;
   return AUDIT_REASON_LABELS[reason] ?? AUDIT_REASON_FALLBACK;
 }
+
+/**
+ * Actor-aware, full-sentence Hebrew description of an audit event. Centralized so
+ * pages never hardcode names or sentence templates. `actorName` is who performed
+ * the action; `subjectName` is the affected worker/customer (resolved by the API
+ * from durable snapshot names). When a needed name is missing it degrades to a
+ * safe subject-less sentence rather than an incorrect generic subject, and an
+ * unknown reason still never exposes the raw event code.
+ */
+export function formatAuditEvent(input: {
+  reason?: string | null;
+  actorName?: string | null;
+  subjectName?: string | null;
+}): string {
+  const actor = (input.actorName ?? '').trim() || null;
+  const subject = (input.subjectName ?? '').trim() || null;
+  const reason = input.reason ?? '';
+
+  switch (reason) {
+    case 'quick-created':
+      return actor ? `${actor} יצרה את העבודה` : 'העבודה נוצרה';
+    case 'created+published':
+      return actor ? `${actor} יצרה ופרסמה את העבודה` : 'העבודה נוצרה ופורסמה';
+    case 'approve':
+      return actor ? `${actor} אישרה את העבודה` : 'העבודה אושרה';
+    case 'republish':
+      return actor ? `${actor} שלחה את העבודה שוב לעובדות` : 'העבודה נשלחה שוב לעובדות';
+    case 'return-to-reservation':
+      return actor ? `${actor} החזירה את העבודה לשריון` : 'העבודה הוחזרה לשריון';
+    case 'archive':
+      return actor ? `${actor} העבירה את העבודה לארכיון` : 'העבודה הועברה לארכיון';
+
+    case 'join-request':
+      return subject ? `${subject} ביקשה להצטרף לעבודה` : 'בקשת הצטרפות נשלחה';
+    case 'approved':
+      if (actor && subject) return `${actor} אישרה את בקשת ההצטרפות של ${subject}`;
+      if (subject) return `בקשת ההצטרפות של ${subject} אושרה`;
+      return 'בקשת ההצטרפות אושרה';
+    case 'approved-as-backup':
+      if (actor && subject) return `${actor} שיבצה את ${subject} כגיבוי`;
+      if (subject) return `${subject} שובצה כגיבוי`;
+      return 'העובדת שובצה כגיבוי';
+    case 'join-rejected':
+      if (actor && subject) return `${actor} דחתה את בקשת ההצטרפות של ${subject}`;
+      if (subject) return `בקשת ההצטרפות של ${subject} נדחתה`;
+      return 'בקשת ההצטרפות נדחתה';
+    case 'direct-assign':
+      if (actor && subject) return `${actor} שיבצה את ${subject} לעבודה`;
+      if (subject) return `${subject} שובצה לעבודה`;
+      return 'בוצע שיבוץ לעבודה';
+    case 'assignment-accepted':
+      return subject ? `${subject} אישרה את השיבוץ` : 'השיבוץ אושר';
+    case 'assignment-declined':
+      return subject ? `${subject} דחתה את השיבוץ` : 'השיבוץ נדחה';
+    case 'join-request-cancelled':
+      return subject ? `${subject} ביטלה את בקשת ההצטרפות` : 'בקשת ההצטרפות בוטלה';
+    case 'admin-remove':
+      if (actor && subject) return `${actor} הסירה את ${subject} מהעבודה`;
+      if (subject) return `${subject} הוסרה מהעבודה`;
+      return 'העובדת הוסרה מהעבודה';
+    case 'role-change':
+      return subject ? `תפקיד של ${subject} עודכן` : 'תפקיד העובדת עודכן';
+
+    case 'manual-complete:worked':
+      if (actor && subject) return `${actor} סימנה ש${subject} עבדה`;
+      if (subject) return `${subject} סומנה כמי שעבדה`;
+      return 'סומן שהעובדת עבדה';
+    case 'manual-complete:did-not-work':
+      if (actor && subject) return `${actor} סימנה ש${subject} לא עבדה`;
+      if (subject) return `${subject} סומנה כמי שלא עבדה`;
+      return 'סומן שהעובדת לא עבדה';
+    case 'manual-complete':
+      return actor ? `${actor} סימנה את העבודה כבוצעה` : 'העבודה סומנה כבוצעה';
+    case 'auto-complete':
+      return 'העבודה הושלמה אוטומטית';
+
+    case 'customer-report:finalized':
+    case 'report-finalized':
+      return actor ? `${actor} הפיקה את דוח הלקוחה` : 'דוח הלקוחה הופק';
+    case 'customer-report:corrected':
+    case 'report-corrected':
+      return actor ? `${actor} יצרה גרסה מתוקנת לדוח` : 'נוצרה גרסה מתוקנת לדוח';
+
+    default:
+      // Never expose the raw code — fall back to the plain localized label.
+      return auditReasonLabel(reason);
+  }
+}
