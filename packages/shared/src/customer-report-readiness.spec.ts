@@ -39,6 +39,29 @@ describe('isCaseReadyForReport (§18.1)', () => {
     expect(isCaseReadyForReport({ caseStatus: 'ACTIVE', hasFinalizedReport: true, jobs: [completed] })).toBe(false);
   });
 
+  it('is not ready when every completed job is already reported (empty eligible set)', () => {
+    expect(
+      isCaseReadyForReport({ caseStatus: 'ACTIVE', hasFinalizedReport: false, jobs: [{ status: 'COMPLETED', hasUnresolvedAttendance: false, reported: true }] }),
+    ).toBe(false);
+  });
+
+  it('is ready only when at least one completed job is unreported', () => {
+    expect(
+      isCaseReadyForReport({
+        caseStatus: 'ACTIVE',
+        hasFinalizedReport: false,
+        jobs: [
+          { status: 'COMPLETED', hasUnresolvedAttendance: false, reported: true },
+          { status: 'COMPLETED', hasUnresolvedAttendance: false, reported: false },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it('is not ready when all jobs were moved out / none remain', () => {
+    expect(isCaseReadyForReport({ caseStatus: 'ACTIVE', hasFinalizedReport: false, jobs: [] })).toBe(false);
+  });
+
   it('is not ready with no jobs', () => {
     expect(isCaseReadyForReport({ caseStatus: 'ACTIVE', hasFinalizedReport: false, jobs: [] })).toBe(false);
   });

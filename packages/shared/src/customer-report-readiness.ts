@@ -14,6 +14,8 @@ export type ReadinessJob = {
   status: string;
   // True when the job has any shift still awaiting owner attendance review.
   hasUnresolvedAttendance: boolean;
+  // True when the job is already bound to a finalized report chain (reportedAt set).
+  reported?: boolean;
 };
 
 export function isCaseReadyForReport(input: {
@@ -30,8 +32,15 @@ export function isCaseReadyForReport(input: {
   // Nothing may still be in flight — every non-archived job must be Completed.
   if (relevant.some((j) => j.status !== 'COMPLETED')) return false;
 
-  // Attendance for every completed job must be resolved (forms are NOT checked).
-  if (relevant.some((j) => j.hasUnresolvedAttendance)) return false;
+  // Readiness is based on the ELIGIBLE reportable set, not merely on the presence
+  // of any historical Completed job: there must be ≥1 completed, UNREPORTED job.
+  // Guards the empty-set cases (all archived / all already reported / jobs moved
+  // out / nothing left to include).
+  const eligible = relevant.filter((j) => j.status === 'COMPLETED' && !j.reported);
+  if (eligible.length === 0) return false;
+
+  // Attendance for every eligible job must be resolved (forms are NOT checked).
+  if (eligible.some((j) => j.hasUnresolvedAttendance)) return false;
 
   return true;
 }

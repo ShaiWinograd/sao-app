@@ -7,6 +7,7 @@ import { prisma } from '../lib/prisma.js';
 import { logAudit } from '../lib/audit.js';
 import { lockCase } from '../lib/commitment.js';
 import { AppError } from '../lib/errors.js';
+import { buildLinesPdf } from '../lib/pdf.js';
 import {
   computeCustomerReport,
   isCaseReadyForReport,
@@ -78,16 +79,20 @@ function jobHasUnresolvedAttendance(job: JobLite): boolean {
 export function evaluateReadiness(kase: CaseLite, hasFinalizedReport: boolean): { ready: boolean; reasons: string[] } {
   const reasons: string[] = [];
   const relevant = kase.jobs.filter((j) => j.status !== 'ARCHIVED');
+  const eligible = relevant.filter((j) => j.status === 'COMPLETED' && j.reportedAt == null);
   if (kase.status !== 'ACTIVE') reasons.push('הפרויקט אינו פעיל');
   if (hasFinalizedReport) reasons.push('כבר קיים דוח לקוחה סופי');
   if (relevant.length === 0) reasons.push('אין עבודות בפרויקט');
   if (relevant.some((j) => j.status !== 'COMPLETED')) reasons.push('לא כל העבודות הושלמו');
-  if (relevant.some((j) => jobHasUnresolvedAttendance(j))) reasons.push('נוכחות ממתינה לאישור');
+  if (relevant.length > 0 && relevant.every((j) => j.status === 'COMPLETED') && eligible.length === 0) {
+    reasons.push('אין עבודות זמינות לדוח');
+  }
+  if (eligible.some((j) => jobHasUnresolvedAttendance(j))) reasons.push('נוכחות ממתינה לאישור');
 
   const ready = isCaseReadyForReport({
     caseStatus: kase.status,
     hasFinalizedReport,
-    jobs: kase.jobs.map((j) => ({ status: j.status, hasUnresolvedAttendance: jobHasUnresolvedAttendance(j) })),
+    jobs: kase.jobs.map((j) => ({ status: j.status, hasUnresolvedAttendance: jobHasUnresolvedAttendance(j), reported: j.reportedAt != null })),
   });
   return { ready, reasons: ready ? [] : reasons };
 }
@@ -112,8 +117,8 @@ export type ReportsOverview = {
 };
 
 /** Ready ACTIVE cases + recently CLOSED cases with a finalized report (spec §18.2/§18.14). */
-export async function listReportsOverview(client: DbClient = prisma): Promise<ReportsOverview> {
-  const active = (await client.customerCase.findMany({ where: { status: 'ACTIVE' }, include: caseInclude })) as CaseLite[];
+export async function listReportsOverview(client: DbClient = prisma, customerId?: string): Promise<ReportsOverview> {
+  const active = (await client.customerCase.findMany({ where: { status: 'ACTIVE', ...(customerId ? { customerId } : {}) }, include: caseInclude })) as CaseLite[];
   const ready = active
     .filter((k) => evaluateReadiness(k, false).ready)
     .map((k) => {
@@ -127,7 +132,7 @@ export async function listReportsOverview(client: DbClient = prisma): Promise<Re
     });
 
   const closedCases = await client.customerCase.findMany({
-    where: { status: 'CLOSED' },
+    where: { status: 'CLOSED', ...(customerId ? { customerId } : {}) },
     include: {
       customer: { select: { firstName: true, lastName: true } },
       reportVersions: { orderBy: { versionNumber: 'desc' }, take: 1 },
@@ -238,12 +243,14 @@ export async function finalizeCustomerReport(caseId: string, input: ReportEditor
     const excludedJobs = completed.filter((j) => !includedSet.has(j.id));
 
     const snapshot = buildSnapshot(kase, includedJobs, input, versionCount + 1);
+    const pdf = await buildLinesPdf('דוח לקוח', snapshot.customerName, snapshotToPdfLines(snapshot));
     const version = await tx.customerReportVersion.create({
       data: {
         caseId,
         versionNumber: versionCount + 1,
         status: 'FINALIZED',
         snapshot: snapshot as unknown as Prisma.InputJsonValue,
+        pdf,
         createdById: actor?.id ?? null,
       },
     });
@@ -286,6 +293,7 @@ export async function createCorrectedVersion(caseId: string, input: ReportEditor
     // jobs are re-priced. Pricing/additions/notes may change.
     const boundJobs = kase.jobs.filter((j) => j.reportedAt != null);
     const snapshot = buildSnapshot(kase, boundJobs, input, latest.versionNumber + 1);
+    const pdf = await buildLinesPdf('דוח לקוח', snapshot.customerName, snapshotToPdfLines(snapshot));
 
     const version = await tx.customerReportVersion.create({
       data: {
@@ -293,6 +301,7 @@ export async function createCorrectedVersion(caseId: string, input: ReportEditor
         versionNumber: latest.versionNumber + 1,
         status: 'FINALIZED',
         snapshot: snapshot as unknown as Prisma.InputJsonValue,
+        pdf,
         createdById: actor?.id ?? null,
         supersedesId: latest.id,
       },

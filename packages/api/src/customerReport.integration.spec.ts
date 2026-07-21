@@ -215,23 +215,33 @@ maybe('§18 finalize + versioning + integrity', () => {
     expect((stored!.snapshot as any).report.totalActualHours).toBe(8); // unchanged
   });
 
-  it('excluded completed jobs stay eligible (moved to a new ACTIVE case)', async () => {
+  it('excluded completed jobs stay eligible (moved atomically to a new same-customer ACTIVE case)', async () => {
     const c = await seedCustomer();
     const kase = await seedCase(c.id);
     const j1 = await addJob(kase.id, c.id, at(0), { status: 'COMPLETED', completedWithHours: 5 });
     const j2 = await addJob(kase.id, c.id, at(1), { status: 'COMPLETED', completedWithHours: 6 });
     await finalizeCustomerReport(kase.id, { ...HOURLY, includedJobIds: [j1.id] }, null, prisma);
+
     const job2 = await prisma.job.findUnique({ where: { id: j2.id } });
     expect(job2?.caseId).not.toBe(kase.id);
     expect(job2?.reportedAt).toBeNull();
     const newCase = await prisma.customerCase.findUnique({ where: { id: job2!.caseId } });
     expect(newCase?.status).toBe('ACTIVE');
+    expect(newCase?.customerId).toBe(c.id); // same customer
+
+    // Grouping range for the new case is derived from its moved job (day 1).
+    expect((await decideCaseForNewJob(prisma, c.id, at(2))).caseId).toBe(newCase!.id);
+    // And the new case can itself become ready for its own report.
+    expect((await getCaseReadiness(prisma, newCase!.id)).ready).toBe(true);
   });
 
-  it('a reported job cannot enter another final report chain', async () => {
-    const { kase, job } = await seedReadyCase(8);
-    await prisma.job.update({ where: { id: job.id }, data: { reportedAt: new Date() } });
-    await expect(finalizeCustomerReport(kase.id, HOURLY, null, prisma)).rejects.toMatchObject({ code: 'JOB_ALREADY_REPORTED' });
+  it('cannot include a job already bound to another finalized chain', async () => {
+    const { kase, customer, job } = await seedReadyCase(8);
+    const j2 = await addJob(kase.id, customer.id, at(1), { status: 'COMPLETED', completedWithHours: 4 });
+    await prisma.job.update({ where: { id: j2.id }, data: { reportedAt: new Date() } });
+    // Case is still ready via the unreported job; explicitly including the already
+    // reported job is rejected.
+    await expect(finalizeCustomerReport(kase.id, { ...HOURLY, includedJobIds: [job.id, j2.id] }, null, prisma)).rejects.toMatchObject({ code: 'JOB_ALREADY_REPORTED' });
   });
 
   it('a new job after finalization creates a NEW case (closed case never reused)', async () => {
@@ -253,23 +263,48 @@ maybe('§18 finalize + versioning + integrity', () => {
     expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
   });
 
-  it('corrected version preserves history and does not double-count jobs', async () => {
+  it('finalize persists a durable PDF artifact (spec §18.8)', async () => {
     const { kase } = await seedReadyCase(8);
-    await finalizeCustomerReport(kase.id, HOURLY, null, prisma);
+    const version = await finalizeCustomerReport(kase.id, HOURLY, null, prisma);
+    const stored = await prisma.customerReportVersion.findUnique({ where: { id: version.id } });
+    expect(stored?.pdf).toBeTruthy();
+    const bytes = Buffer.from(stored!.pdf as Buffer);
+    expect(bytes.length).toBeGreaterThan(100);
+    expect(bytes.subarray(0, 4).toString('latin1')).toBe('%PDF'); // real PDF header
+  });
+
+  it('corrected version: same chain, preserves history, does not re-mark jobs or touch v1', async () => {
+    const { kase, job } = await seedReadyCase(8);
+    const v1 = await finalizeCustomerReport(kase.id, HOURLY, null, prisma);
+    const v1SnapshotBefore = JSON.stringify((await prisma.customerReportVersion.findUnique({ where: { id: v1.id } }))!.snapshot);
+    const reportedAtBefore = (await prisma.job.findUnique({ where: { id: job.id } }))!.reportedAt;
+
     const v2 = await createCorrectedVersion(kase.id, { pricing: { mode: 'HOURLY', hourlyRate: 200, additions: [] } }, null, prisma);
     expect(v2.versionNumber).toBe(2);
+    expect(v2.supersedesId).toBe(v1.id); // same chain
     expect((v2.snapshot as any).report.finalAmount).toBe(1600); // 8h × 200, same single job
+    expect((v2.snapshot as any).includedJobIds).toEqual([job.id]); // same jobs, not re-added
+
+    // v1 snapshot is immutable; jobs are not re-marked; case stays CLOSED.
+    const v1After = await prisma.customerReportVersion.findUnique({ where: { id: v1.id } });
+    expect(JSON.stringify(v1After!.snapshot)).toBe(v1SnapshotBefore);
+    expect((await prisma.job.findUnique({ where: { id: job.id } }))!.reportedAt).toEqual(reportedAtBefore);
+    expect((await prisma.customerCase.findUnique({ where: { id: kase.id } }))?.status).toBe('CLOSED');
+
     const all = await prisma.customerReportVersion.findMany({ where: { caseId: kase.id } });
     expect(all).toHaveLength(2); // both preserved
-    const kaseAfter = await prisma.customerCase.findUnique({ where: { id: kase.id } });
-    expect(kaseAfter?.status).toBe('CLOSED'); // correction does not reopen
   });
 
   it('rejects finalize on a not-ready case and correction on an active case', async () => {
     const c = await seedCustomer();
     const kase = await seedCase(c.id);
-    await addJob(kase.id, c.id, at(0), { status: 'APPROVED' }); // in flight
+    await addJob(kase.id, c.id, at(0), { status: 'COMPLETED', completedWithHours: 8 });
+    await addJob(kase.id, c.id, at(1), { status: 'APPROVED' }); // in flight
     await expect(finalizeCustomerReport(kase.id, HOURLY, null, prisma)).rejects.toMatchObject({ code: 'CASE_NOT_READY' });
     await expect(createCorrectedVersion(kase.id, HOURLY, null, prisma)).rejects.toMatchObject({ code: 'CASE_NOT_CLOSED' });
+    // Atomic: the rejected finalize left NO partial state.
+    expect(await prisma.customerReportVersion.count({ where: { caseId: kase.id } })).toBe(0);
+    expect((await prisma.customerCase.findUnique({ where: { id: kase.id } }))?.status).toBe('ACTIVE');
+    expect(await prisma.job.count({ where: { caseId: kase.id, reportedAt: { not: null } } })).toBe(0);
   });
 });

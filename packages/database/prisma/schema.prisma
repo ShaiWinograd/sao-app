@@ -398,6 +398,7 @@ model CustomerReportVersion {
   versionNumber Int
   status        String       @default("FINALIZED")
   snapshot      Json
+  pdf           Bytes?
   createdById   String?
   supersedesId  String?
   createdAt     DateTime     @default(now())

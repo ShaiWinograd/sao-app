@@ -42,8 +42,10 @@ const ReportEditorSchema = z.object({
 
 export async function casesRoutes(app: FastifyInstance) {
   // Customer-report hub (spec §18.2/§18.14): ready ACTIVE cases + finalized ones.
-  app.get('/reports-overview', { preHandler: [authenticate, requireAdmin] }, async () => {
-    return listReportsOverview(prisma);
+  // Optional ?customerId= scopes it to a single customer (customer-details entry).
+  app.get('/reports-overview', { preHandler: [authenticate, requireAdmin] }, async (req) => {
+    const { customerId } = (req.query ?? {}) as { customerId?: string };
+    return listReportsOverview(prisma, customerId);
   });
 
   // List cases (filtered by customer or status) — supports customer history.
@@ -251,8 +253,10 @@ export async function casesRoutes(app: FastifyInstance) {
     const version = await prisma.customerReportVersion.findFirst({ where: { id: versionId, caseId: id } });
     if (!version) return reply.status(404).send({ error: 'Report version not found' });
     const snapshot = version.snapshot as unknown as ReportSnapshot;
-    const lines = snapshotToPdfLines(snapshot);
-    const pdf = await buildLinesPdf('דוח לקוח', snapshot.customerName, lines);
+    // Durable artifact (spec §18.8): serve the exact PDF bytes finalized at that
+    // time so template/renderer changes never alter an old finalized document.
+    // Fall back to snapshot rendering only for legacy rows without stored bytes.
+    const pdf = version.pdf ?? (await buildLinesPdf('דוח לקוח', snapshot.customerName, snapshotToPdfLines(snapshot)));
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', `attachment; filename="customer-report-${id}-v${snapshot.versionNumber}.pdf"`);
     return reply.send(pdf);
