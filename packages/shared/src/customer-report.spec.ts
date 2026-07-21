@@ -3,6 +3,7 @@ import {
   computeCustomerReport,
   roundToHalfHour,
   buildCustomerReportPdfModel,
+  customerReportSummaryColumns,
   formatShekel,
   formatHours,
   type CustomerReportJobInput,
@@ -147,9 +148,9 @@ describe('buildCustomerReportPdfModel (RTL Hebrew layout)', () => {
     expect(model.subtitle[1]).toMatch(/^\d{2}\.\d{2}\.\d{4}$/);
   });
 
-  it('formats currency as "₪ <amount>" (symbol first) for the customer', () => {
-    expect(formatShekel(175)).toBe('₪ 175');
-    expect(formatShekel(875)).toBe('₪ 875');
+  it('formats currency as "<amount> ₪" (amount first) as one isolated token', () => {
+    expect(formatShekel(175)).toBe('175 ₪');
+    expect(formatShekel(875)).toBe('875 ₪');
   });
 
   it('renders rows with BILLABLE hours and DD.MM.YYYY dates', () => {
@@ -170,5 +171,63 @@ describe('buildCustomerReportPdfModel (RTL Hebrew layout)', () => {
     });
     expect(g.totals.some((t) => t.label === 'תעריף שעתי')).toBe(false);
     expect(g.totals.find((t) => t.label === 'סכום סופי')?.value).toBe(formatShekel(500));
+  });
+});
+
+describe('customerReportSummaryColumns (RTL summary alignment)', () => {
+  // One worker, 5 billable hours at ₪175 → final ₪875, no additions, so the
+  // summary is exactly the example from the report spec.
+  const hourly = buildCustomerReportPdfModel({
+    customerName: 'נסיון',
+    versionNumber: 3,
+    generatedAt: '2026-07-21T09:00:00.000Z',
+    report: computeCustomerReport(
+      [{ jobId: 'j', date: '2026-07-22', jobType: 'PACKING', workedHours: [5] }],
+      { mode: 'HOURLY', hourlyRate: 175 },
+    ),
+  });
+
+  it('places the Hebrew label on the right and the value on the left', () => {
+    const cols = customerReportSummaryColumns(hourly.totals);
+    expect(cols).toEqual([
+      { right: 'סך שעות לחיוב', left: '5 שעות', emphasis: false },
+      { right: 'תעריף שעתי', left: '175 ₪', emphasis: false },
+      { right: 'סכום סופי', left: '875 ₪', emphasis: true },
+    ]);
+  });
+
+  it('keeps each value internally ordered (number then unit / amount then ₪)', () => {
+    const cols = customerReportSummaryColumns(hourly.totals);
+    expect(cols.map((c) => c.left)).toEqual(['5 שעות', '175 ₪', '875 ₪']);
+    // The Hebrew label is never mixed into the value column.
+    for (const c of cols) expect(c.left).not.toContain(c.right);
+  });
+
+  it('emphasises only the final-amount row', () => {
+    const cols = customerReportSummaryColumns(hourly.totals);
+    expect(cols.filter((c) => c.emphasis).map((c) => c.right)).toEqual(['סכום סופי']);
+  });
+
+  it('uses the same label-right/value-left orientation for GLOBAL reports', () => {
+    const global = buildCustomerReportPdfModel({
+      customerName: 'נסיון',
+      versionNumber: 3,
+      report: computeCustomerReport(
+        [{ jobId: 'j', date: '2026-07-22', jobType: 'PACKING', workedHours: [5] }],
+        { mode: 'GLOBAL', globalAmount: 875 },
+      ),
+    });
+    const cols = customerReportSummaryColumns(global.totals);
+    // Labels on the right, values on the left, final amount emphasised.
+    expect(cols[0]).toEqual({ right: 'סך שעות לחיוב', left: '5 שעות', emphasis: false });
+    expect(cols.at(-1)).toEqual({ right: 'סכום סופי', left: '875 ₪', emphasis: true });
+    expect(cols.some((c) => c.right === 'תעריף שעתי')).toBe(false);
+  });
+
+  it('never leaks version text into the summary columns', () => {
+    const cols = customerReportSummaryColumns(hourly.totals);
+    const all = cols.map((c) => `${c.right} ${c.left}`).join(' ');
+    expect(all).not.toContain('גרסה');
+    expect(all).not.toMatch(/version/i);
   });
 });
