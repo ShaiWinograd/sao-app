@@ -131,7 +131,10 @@ export default function ReportsScreen() {
                     <Text style={styles.lineMeta}>
                       {fmtDate(s.date)}
                       {s.clockIn && s.clockOut ? ` · ${s.clockIn}–${s.clockOut}` : ''}
-                      {s.paidHours != null ? ` · נוכחות ${s.approvedHours} · לתשלום ${s.paidHours} שעות` : ` · ${s.approvedHours} שעות`}
+                    </Text>
+                    <Text style={styles.lineMeta}>
+                      שעות נוכחות {s.approvedHours}
+                      {s.paidHours != null ? ` · שעות לתשלום ${s.paidHours}` : ''}
                     </Text>
                   </View>
                 </Card>

@@ -101,3 +101,56 @@ export function projectWorkerFacingReport(payload: any) {
     },
   };
 }
+
+// ─── Worker-facing PDF text ───────────────────────────────────────────────────
+// Build the text lines for the worker monthly-report PDF from a stored/computed
+// snapshot. Included: worker name, month, publication date, each work line with
+// approved clock-in/out and amounts, workday count, total exact hours, total
+// paid hours, and the monthly total. EXCLUDED: hourly rate, daily-rate breakdown,
+// payment status, paidAt, internal owner notes, and any other worker's data.
+
+export interface WorkerReportPdfMeta {
+  workerName: string;
+  month: number;
+  year: number;
+  version: number | null;
+  publishedAt?: string | Date | null;
+}
+
+function pdfDay(isoDay: string): string {
+  const parts = String(isoDay).slice(0, 10).split('-');
+  return parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : String(isoDay);
+}
+
+function pdfDateTime(value: string | Date): string {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const iso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  return pdfDay(iso);
+}
+
+export function buildWorkerReportPdfLines(
+  meta: WorkerReportPdfMeta,
+  projected: ReturnType<typeof projectWorkerFacingReport>,
+): string[] {
+  const nis = (n: unknown) => `${Number(n).toLocaleString('he-IL')} ₪`;
+  const lines: string[] = [];
+  lines.push(`עובד/ת: ${meta.workerName}`);
+  const versionText = meta.version ? ` · גרסה ${meta.version}` : '';
+  const publishedText = meta.publishedAt ? ` · פורסם: ${pdfDateTime(meta.publishedAt)}` : '';
+  lines.push(`חודש: ${meta.month}/${meta.year}${versionText}${publishedText}`);
+  lines.push('');
+  for (const s of projected.shifts) {
+    const role = s.roleLabel ? ` · ${s.roleLabel}` : '';
+    lines.push(`${pdfDay(s.date)} · ${s.customerName || 'לקוח/ה'} · ${s.jobTypeLabel}${role}`);
+    lines.push(`  כניסה: ${s.clockIn ?? '—'} · יציאה: ${s.clockOut ?? '—'}`);
+    const paid = s.paidHours != null ? ` · שעות לתשלום: ${s.paidHours}` : '';
+    lines.push(`  שעות נוכחות: ${s.approvedHours}${paid} · סכום: ${nis(s.dayTotal)}`);
+    lines.push('');
+  }
+  lines.push(`ימי עבודה: ${projected.summary.workdays}`);
+  lines.push(`סה"כ שעות נוכחות: ${projected.summary.totalApprovedHours}`);
+  if (projected.summary.totalPaidHours != null) lines.push(`סה"כ שעות לתשלום: ${projected.summary.totalPaidHours}`);
+  lines.push(`סה"כ לחודש: ${nis(projected.summary.total)}`);
+  return lines;
+}

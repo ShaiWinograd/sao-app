@@ -4,6 +4,7 @@ import {
   computeWorkerPayLine,
   summarizeWorkerPay,
   projectWorkerFacingReport,
+  buildWorkerReportPdfLines,
   type WorkerPayLine,
 } from './worker-report-math';
 
@@ -106,5 +107,56 @@ describe('projectWorkerFacingReport (immutable snapshot rendering)', () => {
     expect(view.shifts[0].paidHours).toBe(5.0); // rounded hours surfaced
     expect(view.shifts[0].dayTotal).toBe('450.00'); // amount from paid hours
     expect(view.summary.totalPaidHours).toBe(5.0);
+  });
+
+  it('preserves approved clock-in/out on each work line', () => {
+    const view = projectWorkerFacingReport({
+      shifts: [{ shiftId: 's1', date: '2026-07-22', customerName: 'נסיון', shiftLabel: 'אריזה', clockIn: '12:00', clockOut: '16:53', approvedHours: '4.88', paidHours: 5, pay: '450.00' }],
+      summary: { shiftsCount: 1, totalApprovedHours: '4.88', totalPaidHours: 5, total: '450.00' },
+    });
+    expect(view.shifts[0].clockIn).toBe('12:00');
+    expect(view.shifts[0].clockOut).toBe('16:53');
+  });
+});
+
+describe('buildWorkerReportPdfLines', () => {
+  const projected = projectWorkerFacingReport({
+    shifts: [
+      { shiftId: 's1', date: '2026-07-22', customerName: 'נסיון', shiftLabel: 'אריזה', roleLabel: 'עובדת', clockIn: '12:00', clockOut: '16:53', approvedHours: '4.88', paidHours: 5, pay: '450.00' },
+    ],
+    summary: { shiftsCount: 1, totalApprovedHours: '4.88', totalPaidHours: 5, total: '450.00' },
+  });
+  const text = buildWorkerReportPdfLines(
+    { workerName: 'נועה וינוגרד', month: 7, year: 2026, version: 2, publishedAt: '2026-07-22T09:00:00.000Z' },
+    projected,
+  ).join('\n');
+
+  it('includes worker name, month, publication date, clock-in/out, hours and totals', () => {
+    expect(text).toContain('עובד/ת: נועה וינוגרד');
+    expect(text).toContain('חודש: 7/2026');
+    expect(text).toContain('פורסם:');
+    expect(text).toContain('כניסה: 12:00');
+    expect(text).toContain('יציאה: 16:53');
+    expect(text).toContain('שעות נוכחות: 4.88');
+    expect(text).toContain('שעות לתשלום: 5');
+    expect(text).toContain('סכום: 450 ₪');
+    expect(text).toContain('ימי עבודה: 1');
+    expect(text).toContain('סה"כ שעות נוכחות: 4.88');
+    expect(text).toContain('סה"כ שעות לתשלום: 5');
+    expect(text).toContain('סה"כ לחודש: 450 ₪');
+  });
+
+  it('excludes hourly rate, payment status, paidAt and internal notes', () => {
+    expect(text).not.toMatch(/תעריף|שכר שעתי|hourlyRate/i);
+    expect(text).not.toMatch(/paidAt|PAID|שולם|תשלום סטטוס/i);
+    expect(text).not.toMatch(/הערה פנימית|internal/i);
+  });
+
+  it('renders an unresolved clock time as a dash rather than scheduled hours', () => {
+    const t = buildWorkerReportPdfLines(
+      { workerName: 'x', month: 7, year: 2026, version: 1 },
+      projectWorkerFacingReport({ shifts: [{ shiftId: 's', date: '2026-07-01', customerName: 'a', shiftLabel: 'אריזה', clockIn: null, clockOut: null, approvedHours: '0', paidHours: 0, pay: '0' }], summary: {} }),
+    ).join('\n');
+    expect(t).toContain('כניסה: — · יציאה: —');
   });
 });
