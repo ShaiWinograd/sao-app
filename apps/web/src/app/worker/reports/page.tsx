@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { ChevronRight, ChevronLeft, CalendarDays, Clock, Wallet, CheckCircle2, MessageSquareWarning, MessageSquarePlus, Trash2, Download } from 'lucide-react';
 import { api, authHeaders } from '../../../lib/api';
+import { workerReportStatusLabel } from '@workforce/shared';
 
 type EarningsLine = {
   shiftId: string;
@@ -39,14 +40,6 @@ type Earnings = {
 };
 
 const MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
-
-const STATUS_LABEL: Record<string, string> = {
-  DRAFT: 'טרם פורסם',
-  PUBLISHED: 'פורסם – ממתין לאישורך',
-  REVISED: 'עודכן – ממתין לאישורך',
-  CORRECTION_REQUESTED: 'בקשת תיקון',
-  WORKER_APPROVED: 'אושר',
-};
 
 const STATUS_CLASS: Record<string, string> = {
   DRAFT: 'border-gray-200 bg-gray-50 text-gray-500',
@@ -267,8 +260,7 @@ export default function WorkerReportsPage() {
                   </button>
                 )}
                 <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${STATUS_CLASS[data.status] ?? STATUS_CLASS.DRAFT}`}>
-                  {STATUS_LABEL[data.status] ?? data.status}
-                  {data.version ? ` · v${data.version}` : ''}
+                  {workerReportStatusLabel(data.status)}
                 </span>
               </div>
             </div>

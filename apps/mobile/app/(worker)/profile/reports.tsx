@@ -7,6 +7,7 @@ import { api } from '../../../lib/api';
 import { colors, fonts } from '../../../lib/theme';
 import { Screen, ScreenHeader, Card, Pill, Button } from '../../../components/ui';
 import { useToast } from '../../../components/toast';
+import { workerReportStatusLabel } from '@workforce/shared';
 
 const ils = (n: number) => '₪' + (n ?? 0).toLocaleString('he-IL');
 
@@ -95,21 +96,26 @@ export default function ReportsScreen() {
             <Card>
               {!isPublished ? (
                 <Text style={styles.muted}>הדוח החודשי טרם פורסם.</Text>
-              ) : status === 'WORKER_APPROVED' ? (
-                <Pill label="הדוח אושר על ידך" color={colors.primary} bg={colors.primaryLight} />
-              ) : status === 'CORRECTION_REQUESTED' ? (
-                <Pill label="נשלחה בקשת תיקון" color="#b45309" bg="#fef3c7" />
               ) : (
                 <>
-                  <Text style={styles.approveHint}>בדקי את הדוח ואשרי אותו, או בקשי תיקון.</Text>
-                  <Button title="אישור הדוח" icon="checkmark-done" style={styles.mt10} loading={approve.isPending} onPress={() => approve.mutate({ action: 'APPROVE' })} />
-                  {disputeOpen ? (
+                  <Pill
+                    label={workerReportStatusLabel(status)}
+                    color={status === 'WORKER_APPROVED' ? colors.primary : '#b45309'}
+                    bg={status === 'WORKER_APPROVED' ? colors.primaryLight : '#fef3c7'}
+                  />
+                  {status !== 'WORKER_APPROVED' && status !== 'CORRECTION_REQUESTED' && (
                     <>
-                      <TextInput value={disputeNote} onChangeText={setDisputeNote} placeholder="מה נדרש לתקן?" placeholderTextColor={colors.muted} style={styles.textArea} multiline textAlignVertical="top" />
-                      <Button title="שליחת בקשת תיקון" variant="outline" style={styles.mt8} loading={approve.isPending} onPress={() => approve.mutate({ action: 'REQUEST_CHANGES', note: disputeNote.trim() || undefined })} />
+                      <Text style={styles.approveHint}>בדקי את הדוח ואשרי אותו, או בקשי תיקון.</Text>
+                      <Button title="אישור הדוח" icon="checkmark-done" style={styles.mt10} loading={approve.isPending} onPress={() => approve.mutate({ action: 'APPROVE' })} />
+                      {disputeOpen ? (
+                        <>
+                          <TextInput value={disputeNote} onChangeText={setDisputeNote} placeholder="מה נדרש לתקן?" placeholderTextColor={colors.muted} style={styles.textArea} multiline textAlignVertical="top" />
+                          <Button title="שליחת בקשת תיקון" variant="outline" style={styles.mt8} loading={approve.isPending} onPress={() => approve.mutate({ action: 'REQUEST_CHANGES', note: disputeNote.trim() || undefined })} />
+                        </>
+                      ) : (
+                        <Button title="בקשת תיקון" variant="outline" style={styles.mt8} onPress={() => setDisputeOpen(true)} />
+                      )}
                     </>
-                  ) : (
-                    <Button title="בקשת תיקון" variant="outline" style={styles.mt8} onPress={() => setDisputeOpen(true)} />
                   )}
                 </>
               )}

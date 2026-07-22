@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { ChevronRight, ChevronLeft, Loader2, Send, FileText, Download } from 'lucide-react';
 import { api, authHeaders } from '../../lib/api';
@@ -74,13 +75,44 @@ function fmtDate(iso: string): string {
 }
 
 export default function OwnerWorkerReportsPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-gray-400">טוען…</div>}>
+      <OwnerWorkerReportsInner />
+    </Suspense>
+  );
+}
+
+function OwnerWorkerReportsInner() {
   const { getToken } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const now = new Date();
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year, setYear] = useState(now.getFullYear());
+
+  // The view lives in the URL so a refresh restores it and browser back/forward
+  // step predictably through: worker selection → editor / תצוגת טיוטה / a
+  // published version. No draft view ever depends on a version id.
+  const month = Number(searchParams.get('month')) || now.getMonth() + 1;
+  const year = Number(searchParams.get('year')) || now.getFullYear();
+  const selected = searchParams.get('worker');
+  const draftPreview = searchParams.get('view') === 'draft';
+  const urlVersionId = searchParams.get('version');
+
+  const setView = useCallback(
+    (next: Record<string, string | number | null>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [k, v] of Object.entries(next)) {
+        if (v === null || v === '') params.delete(k);
+        else params.set(k, String(v));
+      }
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [searchParams, router, pathname],
+  );
+
   const [rows, setRows] = useState<SummaryRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<WorkerReport | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -118,17 +150,44 @@ export default function OwnerWorkerReportsPage() {
     [getToken, month, year],
   );
 
+  // Summary follows the month/year.
   useEffect(() => {
     void loadSummary();
-    setSelected(null);
-    setDetail(null);
-    setVersionView(null);
   }, [loadSummary]);
 
+  // Live draft follows the selected worker.
   useEffect(() => {
-    setVersionView(null);
     if (selected) void loadDetail(selected);
+    else setDetail(null);
   }, [selected, loadDetail]);
+
+  // The published-version view is driven entirely by the URL (?version=...), so
+  // it survives refresh and reads only the immutable stored snapshot.
+  useEffect(() => {
+    if (!selected || !urlVersionId) {
+      setVersionView(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setVersionBusy(urlVersionId);
+      try {
+        const auth = await authHeaders(getToken);
+        const res = await api.get<VersionView & { version: number; publishedAt: string; status: string }>(
+          `/payroll/worker/${selected}/version/${urlVersionId}`,
+          auth,
+        );
+        if (!cancelled) setVersionView({ ...res.data, versionId: urlVersionId });
+      } catch {
+        if (!cancelled) setError('טעינת הגרסה נכשלה.');
+      } finally {
+        if (!cancelled) setVersionBusy(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, urlVersionId, getToken]);
 
   const publish = useCallback(async () => {
     if (!selected) return;
@@ -139,34 +198,13 @@ export default function OwnerWorkerReportsPage() {
       await api.post(`/payroll/worker/${selected}/publish`, { month, year }, auth);
       await loadDetail(selected);
       await loadSummary();
+      setView({ view: null, version: null });
     } catch (e) {
       setError((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'פרסום הדוח נכשל.');
     } finally {
       setPublishing(false);
     }
-  }, [selected, getToken, month, year, loadDetail, loadSummary]);
-
-  const openVersion = useCallback(
-    async (versionId: string) => {
-      if (!selected) return;
-      setVersionBusy(versionId);
-      try {
-        const auth = await authHeaders(getToken);
-        const res = await api.get<VersionView & { version: number; publishedAt: string; status: string }>(
-          `/payroll/worker/${selected}/version/${versionId}`,
-          auth,
-        );
-        setVersionView({ ...res.data, versionId });
-      } catch {
-        setError('טעינת הגרסה נכשלה.');
-      } finally {
-        setVersionBusy(null);
-      }
-    },
-    [selected, getToken],
-  );
-
-  const closeVersion = useCallback(() => setVersionView(null), []);
+  }, [selected, getToken, month, year, loadDetail, loadSummary, setView]);
 
   const downloadVersionPdf = useCallback(
     async (versionId: string, version: number) => {
@@ -202,9 +240,10 @@ export default function OwnerWorkerReportsPage() {
       m = 1;
       y += 1;
     }
-    setMonth(m);
-    setYear(y);
+    setView({ month: m, year: y, worker: null, view: null, version: null });
   }
+
+  const selectedWorker = rows.find((r) => r.id === selected) ?? null;
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-4">
@@ -238,7 +277,8 @@ export default function OwnerWorkerReportsPage() {
               {rows.map((row) => (
                 <li key={row.id}>
                   <button
-                    onClick={() => setSelected(row.id)}
+                    type="button"
+                    onClick={() => setView({ worker: row.id, view: null, version: null })}
                     className={`flex w-full items-center justify-between gap-2 px-2 py-3 text-right hover:bg-gray-50 ${selected === row.id ? 'bg-primary-50' : ''}`}
                   >
                     <div>
@@ -271,28 +311,52 @@ export default function OwnerWorkerReportsPage() {
             <div className="flex items-center justify-center py-10 text-gray-400">
               <Loader2 className="h-5 w-5 animate-spin" />
             </div>
+          ) : urlVersionId && !versionView ? (
+            <div className="flex items-center justify-center py-10 text-gray-400">
+              <Loader2 className="h-5 w-5 animate-spin" />
+            </div>
           ) : versionView ? (
             <VersionViewPanel
               view={versionView}
-              onClose={closeVersion}
+              onClose={() => setView({ version: null })}
               onDownload={() => void downloadVersionPdf(versionView.versionId, versionView.version)}
               busy={versionBusy === versionView.versionId}
             />
+          ) : draftPreview ? (
+            <DraftPreviewPanel
+              workerName={selectedWorker ? `${selectedWorker.firstName} ${selectedWorker.lastName}`.trim() : ''}
+              month={month}
+              year={year}
+              detail={detail}
+              publishing={publishing}
+              onBack={() => setView({ view: null })}
+              onPublish={() => void publish()}
+            />
           ) : (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${STATUS_CLASS[detail.reportStatus] ?? STATUS_CLASS.DRAFT}`}>
                   {STATUS_LABEL[detail.reportStatus] ?? detail.reportStatus}
                   {detail.version ? ` · גרסה ${detail.version}` : ''}
                 </span>
-                <button
-                  onClick={() => void publish()}
-                  disabled={publishing || detail.summary.shiftsCount === 0}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-primary-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
-                >
-                  {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  {detail.version ? 'פרסום גרסה מעודכנת' : 'פרסום הדוח'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setView({ view: 'draft', version: null })}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    <FileText className="h-4 w-4" /> תצוגת טיוטה
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void publish()}
+                    disabled={publishing || detail.summary.shiftsCount === 0}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-primary-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+                  >
+                    {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    {detail.version ? 'פרסום גרסה מעודכנת' : 'פרסום הדוח'}
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
@@ -320,10 +384,10 @@ export default function OwnerWorkerReportsPage() {
                           גרסה {v.version} · {STATUS_LABEL[v.status] ?? v.status} · {fmtDate(v.publishedAt)}
                         </span>
                         <span className="flex items-center gap-2">
-                          <button onClick={() => void openVersion(v.id)} disabled={versionBusy === v.id} className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                          <button type="button" onClick={() => setView({ version: v.id, view: null })} disabled={versionBusy === v.id} className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50">
                             <FileText className="h-3 w-3" /> צפייה בדוח
                           </button>
-                          <button onClick={() => void downloadVersionPdf(v.id, v.version)} disabled={versionBusy === v.id} className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                          <button type="button" onClick={() => void downloadVersionPdf(v.id, v.version)} disabled={versionBusy === v.id} className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50">
                             <Download className="h-3 w-3" /> הורדת PDF
                           </button>
                         </span>
@@ -396,14 +460,15 @@ function VersionViewPanel({
         </span>
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={onDownload}
             disabled={busy}
             className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
           >
             <Download className="h-3.5 w-3.5" /> הורדת PDF
           </button>
-          <button onClick={onClose} className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50">
-            חזרה לטיוטה
+          <button type="button" onClick={onClose} className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50">
+            חזרה לעריכה
           </button>
         </div>
       </div>
@@ -418,6 +483,68 @@ function VersionViewPanel({
           <p className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-500">אין משמרות בגרסה זו.</p>
         ) : (
           view.shifts.map((s) => <ReportLineRow key={s.shiftId} s={s} />)
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Read-only preview of the LIVE draft — exactly what will be snapshotted on
+// publish. Computed from current approved data (not a stored version), with no
+// version-history actions. State-only (no routing).
+function DraftPreviewPanel({
+  workerName,
+  month,
+  year,
+  detail,
+  publishing,
+  onBack,
+  onPublish,
+}: {
+  workerName: string;
+  month: number;
+  year: number;
+  detail: WorkerReport;
+  publishing: boolean;
+  onBack: () => void;
+  onPublish: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">תצוגת טיוטה</p>
+          <p className="text-xs text-gray-500">
+            {workerName ? `${workerName} · ` : ''}
+            {MONTHS[month - 1]} {year}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={onBack} className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50">
+            חזרה לעריכה
+          </button>
+          <button
+            type="button"
+            onClick={onPublish}
+            disabled={publishing || detail.summary.shiftsCount === 0}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-primary-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+          >
+            {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            {detail.version ? 'פרסום גרסה מעודכנת' : 'פרסום הדוח'}
+          </button>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+        <Stat label="ימי עבודה" value={String(detail.summary.shiftsCount)} />
+        <Stat label="שעות נוכחות" value={String(detail.summary.totalApprovedHours)} />
+        <Stat label="שעות לתשלום" value={detail.summary.totalPaidHours != null ? String(detail.summary.totalPaidHours) : '—'} />
+        <Stat label="סכום חודשי" value={ils(detail.summary.total)} strong />
+      </div>
+      <div className="space-y-2">
+        {detail.shifts.length === 0 ? (
+          <p className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-500">אין משמרות שהושלמו בחודש זה.</p>
+        ) : (
+          detail.shifts.map((s) => <ReportLineRow key={s.shiftId} s={s} />)
         )}
       </div>
     </div>
