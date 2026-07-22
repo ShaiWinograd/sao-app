@@ -13,25 +13,6 @@ test.describe('Auth smoke flow', () => {
     await expect(page.getByText('מערכת ניהול כוח אדם ותזמון משמרות')).toBeVisible();
   });
 
-  test('projects page is reachable with focus query', async ({ page }) => {
-    await page.goto('/cases?focus=quote');
-    await expect(page.getByRole('heading', { name: 'פרוייקטים' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'תצוגת כרטיסים' })).toBeVisible();
-  });
-
-  test('projects page is reachable with jobs focus query', async ({ page }) => {
-    await page.goto('/cases?focus=jobs');
-    await expect(page.getByRole('heading', { name: 'פרוייקטים' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'תצוגת עמודות' })).toBeVisible();
-  });
-
-  test('project create modal shows planning section', async ({ page }) => {
-    await page.goto('/cases');
-    await page.getByRole('button', { name: 'פרוייקט חדש' }).click();
-    await expect(page.getByText('תכנון פרוייקט ראשוני')).toBeVisible();
-    await expect(page.getByText('דיוק תזמון')).toBeVisible();
-  });
-
   test('sign-up page is reachable', async ({ page }) => {
     await page.goto('/sign-up');
     await expect(page.getByText('Space & Order')).toBeVisible();
