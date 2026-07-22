@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireOwner, requireAnyRole } from '../middleware/auth.js';
 import { WorkerReportApprovalSchema, WorkerReportNoteSchema } from '@workforce/shared';
-import { UserRole } from '@workforce/shared';
+import { UserRole, presentWorkerReportStatus } from '@workforce/shared';
 import { money, round2 } from '../lib/money.js';
 import { buildLinesPdf } from '../lib/pdf.js';
 import { latestWorkerReport as latestReport } from '../lib/workerReport.js';
@@ -158,7 +158,7 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
       ...body,
       month: m,
       year: y,
-      status: report?.status ?? 'DRAFT',
+      status: presentWorkerReportStatus(report?.status),
       version: report?.version ?? null,
       isPublished: Boolean(report),
       workerNote: report?.workerNote ?? null,
@@ -340,7 +340,7 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
           firstName: w.firstName,
           lastName: w.lastName,
           summary: draft.summary,
-          reportStatus: current?.status ?? 'DRAFT',
+          reportStatus: presentWorkerReportStatus(current?.status),
           version: current?.version ?? null,
         };
       }),
@@ -370,10 +370,10 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
     return {
       workerId,
       ...draft,
-      reportStatus: current?.status ?? 'DRAFT',
+      reportStatus: presentWorkerReportStatus(current?.status),
       version: current?.version ?? null,
       workerNote: current?.workerNote ?? null,
-      versions: versions.map((v) => ({ id: v.id, version: v.version, status: v.status, publishedAt: v.publishedAt, workerApprovedAt: v.workerApprovedAt })),
+      versions: versions.map((v) => ({ id: v.id, version: v.version, status: presentWorkerReportStatus(v.status), publishedAt: v.publishedAt, workerApprovedAt: v.workerApprovedAt })),
       notes: notes.map((n) => ({ id: n.id, shiftId: n.shiftId, type: n.type, message: n.message, createdAt: n.createdAt })),
     };
   });
