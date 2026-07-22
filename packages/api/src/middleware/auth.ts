@@ -2,6 +2,7 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { createClerkClient } from '@clerk/clerk-sdk-node';
 import { prisma } from '../lib/prisma.js';
 import { UserRole } from '@workforce/shared';
+import { decideAuthorizedRole, shouldLogAuthorizationDenied } from '../lib/authorize.js';
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 const shouldEnforceApiAuth = process.env.ENABLE_API_AUTH === 'true';
@@ -37,22 +38,27 @@ export async function authenticate(req: FastifyRequest, reply: FastifyReply) {
         const email = clerkUser.emailAddresses[0]?.emailAddress ?? '';
         // If an admin already created a worker profile with this email, onboard
         // this login as that worker (role WORKER + link the profile to the Clerk
-        // user so `/workers/me` resolves). Otherwise fall back to Clerk metadata
-        // (default OWNER). This only runs on first login, so it never changes an
-        // existing user's role.
+        // user so `/workers/me` resolves).
         const matchedWorker = email
           ? await prisma.worker.findUnique({ where: { email }, select: { id: true, userId: true } })
           : null;
         const metaRole = clerkUser.publicMetadata?.role as UserRole | undefined;
-        // An explicit owner/admin invitation always wins over a worker email
-        // match, so a business owner is never demoted to a worker just because a
-        // worker profile happens to exist for their email.
-        const role =
-          metaRole === UserRole.OWNER || metaRole === UserRole.ADMIN
-            ? metaRole
-            : matchedWorker
-              ? UserRole.WORKER
-              : metaRole ?? UserRole.OWNER;
+        // Authorization comes ONLY from trusted data: an explicit owner/admin
+        // role set in Clerk metadata by an admin, or a pre-registered Worker
+        // match. There is no fallback role — an unknown first login is blocked.
+        const role = decideAuthorizedRole({ metaRole, hasWorkerMatch: Boolean(matchedWorker) });
+        if (!role) {
+          // Authenticated but not authorized: never create a User/Worker record
+          // and never expose data — respond 403. Log the bootstrap denial once
+          // per user (rate-limited) with no token or personal data.
+          if (shouldLogAuthorizationDenied(payload.sub)) {
+            req.log.warn(
+              { event: 'authorization_denied', userId: payload.sub },
+              'Authenticated user is not authorized to use the system',
+            );
+          }
+          return reply.status(403).send({ error: 'Not authorized' });
+        }
 
         // A worker added via the admin page has a placeholder user holding this
         // email (User.email is unique). Free that email so the real Clerk account
