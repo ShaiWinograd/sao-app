@@ -35,6 +35,7 @@ type Earnings = {
     totalPaidHours: number | null;
     total: number;
   };
+  versions?: Array<{ id: string; version: number; status: string; publishedAt: string }>;
 };
 
 const MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
@@ -144,6 +145,26 @@ export default function WorkerReportsPage() {
       /* ignore */
     }
   }, [getToken, month, year]);
+
+  const downloadVersionPdf = useCallback(
+    async (versionId: string, version: number) => {
+      try {
+        const auth = await authHeaders(getToken);
+        const res = await api.get(`/payroll/me/version/${versionId}/report.pdf`, { ...auth, responseType: 'blob' });
+        const url = URL.createObjectURL(res.data as Blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `worker-report-${year}-${String(month).padStart(2, '0')}-v${version}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch {
+        /* ignore */
+      }
+    },
+    [getToken, month, year],
+  );
 
   const isCurrentOrFuture = useMemo(() => {
     const first = new Date(year, month - 1, 1);
@@ -294,8 +315,11 @@ export default function WorkerReportsPage() {
                       </p>
                       <p className="text-xs text-gray-500 mt-0.5">
                         {fmtDate(s.date)}
-                        {s.clockIn && s.clockOut ? ` · ${s.clockIn}–${s.clockOut}` : ''}
-                        {s.paidHours != null ? ` · נוכחות ${s.approvedHours} · לתשלום ${s.paidHours} שעות` : ` · ${s.approvedHours} שעות`}
+                        {s.clockIn && s.clockOut ? ` · כניסה ${s.clockIn} · יציאה ${s.clockOut}` : ''}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        שעות נוכחות {s.approvedHours}
+                        {s.paidHours != null ? ` · שעות לתשלום ${s.paidHours}` : ''}
                       </p>
                     </div>
                     <span className="shrink-0 text-sm font-semibold text-gray-900">{ils(s.dayTotal)}</span>
@@ -304,6 +328,29 @@ export default function WorkerReportsPage() {
               </div>
             )}
           </section>
+
+          {/* Version history — older published versions remain downloadable */}
+          {data.versions && data.versions.length > 1 && (
+            <section className="no-print">
+              <h2 className="text-sm font-semibold text-gray-900 mb-2">היסטוריית גרסאות</h2>
+              <ul className="space-y-1.5 text-xs text-gray-600">
+                {data.versions.map((v) => (
+                  <li key={v.id} className="flex items-center justify-between gap-2 rounded-lg border border-gray-100 bg-white px-2.5 py-1.5">
+                    <span>
+                      גרסה {v.version} · {new Date(v.publishedAt).toLocaleDateString('he-IL', { dateStyle: 'short' })}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void downloadVersionPdf(v.id, v.version)}
+                      className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50"
+                    >
+                      <Download className="w-3 h-3" /> הורדת PDF
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           {/* Comments & missing-shift reports */}
           <div className="no-print">

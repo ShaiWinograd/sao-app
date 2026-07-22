@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireOwner, requireAnyRole } from '../middleware/auth.js';
 import { WorkerReportApprovalSchema, WorkerReportNoteSchema } from '@workforce/shared';
-import { UserRole, presentWorkerReportStatus, computeWorkerPayLine, summarizeWorkerPay, projectWorkerFacingReport } from '@workforce/shared';
+import { UserRole, presentWorkerReportStatus, computeWorkerPayLine, summarizeWorkerPay, projectWorkerFacingReport, buildWorkerReportPdfLines } from '@workforce/shared';
 import { money, round2 } from '../lib/money.js';
 import { buildLinesPdf } from '../lib/pdf.js';
 import { latestWorkerReport as latestReport } from '../lib/workerReport.js';
@@ -101,6 +101,16 @@ async function computeMonthlyReport(workerId: string, m: number, y: number) {
 // Latest (current) published version of a worker's monthly report.
 async function publishReportVersion(workerId: string, m: number, y: number, publishedById?: string) {
   const payload = await computeMonthlyReport(workerId, m, y);
+  // Every included work line must have final owner-approved clock-in AND
+  // clock-out before a report can be published as final (spec §19).
+  const unresolved = (payload.shifts as Array<{ clockIn: string | null; clockOut: string | null }>).filter(
+    (s) => !s.clockIn || !s.clockOut,
+  );
+  if (unresolved.length > 0) {
+    const err = new Error('יש משמרות ללא שעון כניסה/יציאה מאושר — לא ניתן לפרסם דוח סופי');
+    (err as any).statusCode = 409;
+    throw err;
+  }
   const latest = await latestReport(workerId, m, y);
   const version = (latest?.version ?? 0) + 1;
   const status = version === 1 ? 'PUBLISHED' : 'REVISED';
@@ -114,6 +124,21 @@ async function publishReportVersion(workerId: string, m: number, y: number, publ
 // spec §19.3 line and summary. Delegates to the shared, unit-tested projection,
 // which reads a stored snapshot verbatim (published versions stay immutable).
 const toWorkerFacingReport = projectWorkerFacingReport;
+
+// Render a worker monthly-report PDF from a stored (or freshly computed) report
+// snapshot. Worker-facing content only — no hourly rate, subtotals, payment
+// status, paidAt, internal notes, or any other worker's data.
+async function renderWorkerReportPdf(
+  report: { snapshot: unknown; month: number; year: number; version: number; publishedAt: Date | null },
+  workerName: string,
+): Promise<Buffer> {
+  const projected = projectWorkerFacingReport(report.snapshot as any);
+  const pdfLines = buildWorkerReportPdfLines(
+    { workerName, month: report.month, year: report.year, version: report.version, publishedAt: report.publishedAt },
+    projected,
+  );
+  return buildLinesPdf('דוח חודשי', `${workerName} · ${report.month}/${report.year}`, pdfLines);
+}
 
 export async function workerPayrollRoutes(app: FastifyInstance) {
   // Worker: their own monthly report — the published immutable snapshot, or the
@@ -135,6 +160,11 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
       where: { workerId: worker.id, month: m, year: y },
       orderBy: { createdAt: 'desc' },
     });
+    const versions = await prisma.workerMonthlyReport.findMany({
+      where: { workerId: worker.id, month: m, year: y },
+      orderBy: { version: 'desc' },
+      select: { id: true, version: true, status: true, publishedAt: true, workerApprovedAt: true },
+    });
 
     return {
       ...body,
@@ -145,6 +175,7 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
       isPublished: Boolean(report),
       workerNote: report?.workerNote ?? null,
       notes: notes.map((n) => ({ id: n.id, shiftId: n.shiftId, type: n.type, message: n.message, createdAt: n.createdAt })),
+      versions: versions.map((v) => ({ id: v.id, version: v.version, status: presentWorkerReportStatus(v.status), publishedAt: v.publishedAt })),
     };
   });
 
@@ -219,31 +250,24 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
     const report = await latestReport(worker.id, m, y);
     if (!report) return reply.status(404).send({ error: 'אין דוח שפורסם לחודש זה' });
 
-    // Worker-facing PDF: no hourly rate, subtotals, or payment status (spec §19.3/§19.6).
-    const snap = toWorkerFacingReport(report.snapshot as any);
-    const nis = (n: number) => `${Number(n).toLocaleString('he-IL')} ₪`;
-    const heDate = (d: string) => new Date(d).toISOString().slice(0, 10);
-    const lines: string[] = [];
-    lines.push(`עובד/ת: ${worker.firstName} ${worker.lastName}`);
-    lines.push(`חודש: ${m}/${y} · גרסה ${report.version} · ${report.status}`);
-    lines.push('');
-    for (const s of snap.shifts) {
-      const clock = s.clockIn && s.clockOut ? `${s.clockIn}–${s.clockOut}` : '—';
-      const role = s.roleLabel ? ` · ${s.roleLabel}` : '';
-      // Show the paid (rounded) hours used for the amount; fall back to exact
-      // hours on legacy snapshots that predate paid-hour rounding.
-      const hoursText = s.paidHours != null ? `${s.paidHours} שעות לתשלום` : `${s.approvedHours} שעות`;
-      lines.push(`  ${heDate(s.date)} · ${s.customerName} · ${s.jobTypeLabel}${role} · ${clock} · ${hoursText} · ${nis(s.dayTotal)}`);
-    }
-    lines.push('');
-    lines.push(`ימי עבודה: ${snap.summary.workdays}`);
-    lines.push(`שעות נוכחות מאושרות: ${snap.summary.totalApprovedHours}`);
-    if (snap.summary.totalPaidHours != null) lines.push(`שעות לתשלום: ${snap.summary.totalPaidHours}`);
-    lines.push(`סה"כ לחודש: ${nis(snap.summary.total)}`);
-
-    const pdf = await buildLinesPdf('דוח חודשי', `${worker.firstName} ${worker.lastName} · ${m}/${y}`, lines);
+    const pdf = await renderWorkerReportPdf(report, `${worker.firstName} ${worker.lastName}`);
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', `attachment; filename="worker-report-${y}-${String(m).padStart(2, '0')}.pdf"`);
+    return reply.send(pdf);
+  });
+
+  // Worker: download a specific published version of their OWN report as a PDF.
+  app.get('/me/version/:versionId/report.pdf', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!worker) return reply.status(404).send({ error: 'Worker profile not found' });
+    const { versionId } = req.params as { versionId: string };
+    const report = await prisma.workerMonthlyReport.findUnique({ where: { id: versionId } });
+    // Ownership guard: a worker may only access their OWN report versions.
+    if (!report || report.workerId !== worker.id) return reply.status(404).send({ error: 'Report not found' });
+    const pdf = await renderWorkerReportPdf(report, `${worker.firstName} ${worker.lastName}`);
+    reply.header('Content-Type', 'application/pdf');
+    reply.header('Content-Disposition', `attachment; filename="worker-report-${report.year}-${String(report.month).padStart(2, '0')}-v${report.version}.pdf"`);
     return reply.send(pdf);
   });
 
@@ -364,6 +388,38 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
     };
   });
 
+  // Owner: view a specific published version from its immutable stored snapshot
+  // (not the live draft), so what was issued is exactly what is shown (spec §19).
+  app.get('/worker/:workerId/version/:versionId', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { workerId, versionId } = req.params as { workerId: string; versionId: string };
+    const report = await prisma.workerMonthlyReport.findUnique({ where: { id: versionId } });
+    if (!report || report.workerId !== workerId) return reply.status(404).send({ error: 'Report not found' });
+    const body = projectWorkerFacingReport(report.snapshot as any);
+    return {
+      ...body,
+      workerId,
+      version: report.version,
+      status: presentWorkerReportStatus(report.status),
+      publishedAt: report.publishedAt,
+      workerApprovedAt: report.workerApprovedAt,
+      month: report.month,
+      year: report.year,
+    };
+  });
+
+  // Owner: download a specific published version as a PDF (from its stored snapshot).
+  app.get('/worker/:workerId/version/:versionId/report.pdf', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { workerId, versionId } = req.params as { workerId: string; versionId: string };
+    const report = await prisma.workerMonthlyReport.findUnique({ where: { id: versionId } });
+    if (!report || report.workerId !== workerId) return reply.status(404).send({ error: 'Report not found' });
+    const worker = await prisma.worker.findUnique({ where: { id: workerId }, select: { firstName: true, lastName: true } });
+    if (!worker) return reply.status(404).send({ error: 'Worker not found' });
+    const pdf = await renderWorkerReportPdf(report, `${worker.firstName} ${worker.lastName}`);
+    reply.header('Content-Type', 'application/pdf');
+    reply.header('Content-Disposition', `attachment; filename="worker-report-${report.year}-${String(report.month).padStart(2, '0')}-v${report.version}.pdf"`);
+    return reply.send(pdf);
+  });
+
   // Owner: publish (or re-publish a corrected) monthly report as a new version.
   app.post('/worker/:workerId/publish', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const user = (req as any).user as { id?: string; role: UserRole };
@@ -374,7 +430,14 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
     const worker = await prisma.worker.findUnique({ where: { id: workerId }, select: { userId: true, firstName: true, lastName: true } });
     if (!worker) return reply.status(404).send({ error: 'Worker not found' });
 
-    const published = await publishReportVersion(workerId, month, year, user.id);
+    let published;
+    try {
+      published = await publishReportVersion(workerId, month, year, user.id);
+    } catch (e: any) {
+      // Unresolved clock-in/out (or month closed) → cannot publish a final report.
+      if (e?.statusCode === 409) return reply.status(409).send({ error: e.message });
+      throw e;
+    }
     await prisma.notification.create({
       data: {
         userId: worker.userId,
