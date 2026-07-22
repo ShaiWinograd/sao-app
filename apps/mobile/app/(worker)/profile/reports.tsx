@@ -82,7 +82,8 @@ export default function ReportsScreen() {
             <Card>
               <View style={styles.statsRow}>
                 <Stat label="ימי עבודה" value={String(summary?.workdays ?? 0)} />
-                <Stat label="שעות מאושרות" value={String(summary?.totalApprovedHours ?? 0)} />
+                <Stat label="שעות נוכחות" value={String(summary?.totalApprovedHours ?? 0)} />
+                <Stat label="שעות לתשלום" value={String(summary?.totalPaidHours ?? summary?.totalApprovedHours ?? 0)} />
               </View>
               <View style={styles.divider} />
               <View style={styles.outstandingRow}>
@@ -130,7 +131,7 @@ export default function ReportsScreen() {
                     <Text style={styles.lineMeta}>
                       {fmtDate(s.date)}
                       {s.clockIn && s.clockOut ? ` · ${s.clockIn}–${s.clockOut}` : ''}
-                      {` · ${s.approvedHours} שעות`}
+                      {s.paidHours != null ? ` · נוכחות ${s.approvedHours} · לתשלום ${s.paidHours} שעות` : ` · ${s.approvedHours} שעות`}
                     </Text>
                   </View>
                 </Card>

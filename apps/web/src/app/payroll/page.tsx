@@ -26,6 +26,7 @@ const STATUS_CLASS: Record<string, string> = {
 type ReportSummary = {
   shiftsCount: number;
   totalApprovedHours: number;
+  totalPaidHours: number | null;
   hourlyPay: number;
   dailyPay: number;
   total: number;
@@ -40,7 +41,7 @@ type SummaryRow = {
   version: number | null;
 };
 
-type ReportLine = { shiftId: string; date: string; customerName: string; approvedHours: number; pay: number };
+type ReportLine = { shiftId: string; date: string; customerName: string; approvedHours: number; paidHours: number | null; pay: number };
 type ReportVersion = { id: string; version: number; status: string; publishedAt: string; workerApprovedAt: string | null };
 type WorkerReport = {
   workerId: string;
@@ -229,8 +230,8 @@ export default function OwnerWorkerReportsPage() {
 
               <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
                 <Stat label="משמרות" value={String(detail.summary.shiftsCount)} />
-                <Stat label="שעות" value={String(detail.summary.totalApprovedHours)} />
-                <Stat label="שעתי" value={ils(detail.summary.hourlyPay)} />
+                <Stat label="שעות נוכחות" value={String(detail.summary.totalApprovedHours)} />
+                <Stat label="שעות לתשלום" value={detail.summary.totalPaidHours != null ? String(detail.summary.totalPaidHours) : '—'} />
                 <Stat label="סה״כ" value={ils(detail.summary.total)} strong />
               </div>
 
@@ -243,7 +244,7 @@ export default function OwnerWorkerReportsPage() {
                       <div>
                         <p className="text-sm font-medium text-gray-900">{s.customerName || 'לקוח/ה'}</p>
                         <p className="mt-0.5 text-xs text-gray-500">
-                          {fmtDate(s.date)} · {s.approvedHours} שעות
+                          {fmtDate(s.date)} · {s.approvedHours} שעות נוכחות{s.paidHours != null ? ` · ${s.paidHours} לתשלום` : ''}
                         </p>
                       </div>
                       <span className="text-sm font-semibold text-gray-900">{ils(s.pay)}</span>
