@@ -32,3 +32,4 @@ export * from './dashboard-issues';
 export * from './owner-grid';
 export * from './audit-labels';
 export * from './worker-report-status';
+export * from './worker-report-math';

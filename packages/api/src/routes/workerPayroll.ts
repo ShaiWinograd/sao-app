@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireOwner, requireAnyRole } from '../middleware/auth.js';
 import { WorkerReportApprovalSchema, WorkerReportNoteSchema } from '@workforce/shared';
-import { UserRole, presentWorkerReportStatus } from '@workforce/shared';
+import { UserRole, presentWorkerReportStatus, computeWorkerPayLine, summarizeWorkerPay, projectWorkerFacingReport } from '@workforce/shared';
 import { money, round2 } from '../lib/money.js';
 import { buildLinesPdf } from '../lib/pdf.js';
 import { latestWorkerReport as latestReport } from '../lib/workerReport.js';
@@ -45,16 +45,20 @@ async function computeMonthlyReport(workerId: string, m: number, y: number) {
   const ROLE_LABEL: Record<string, string> = { REGULAR: 'עובדת', TEAM_LEADER: 'ראש צוות', BACKUP: 'גיבוי' };
   const heTime = (d: Date) => d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' });
 
-  let hourlyPay = 0;
-  let dailyPay = 0;
-  let totalHours = 0;
-  const lines = shifts.map((shift) => {
-    const h = money(shift.approvedHours);
-    const hp = h * money(shift.hourlyWageSnapshot);
-    const dp = shift.isDailyPaymentEligible ? money(shift.dailyPaymentSnapshot) : 0;
-    hourlyPay += hp;
-    dailyPay += dp;
-    totalHours += h;
+  // Pay is computed per worked job/day on hours rounded to the nearest half hour
+  // (spec §19), BEFORE monthly aggregation. Exact attendance is preserved.
+  const payLines = shifts.map((shift) =>
+    computeWorkerPayLine({
+      approvedHours: money(shift.approvedHours),
+      hourlyWage: money(shift.hourlyWageSnapshot),
+      dailyPayment: money(shift.dailyPaymentSnapshot),
+      isDailyPaymentEligible: shift.isDailyPaymentEligible,
+    }),
+  );
+  const totals = summarizeWorkerPay(payLines);
+
+  const lines = shifts.map((shift, i) => {
+    const p = payLines[i];
     return {
       id: shift.id,
       shiftId: shift.id,
@@ -70,15 +74,15 @@ async function computeMonthlyReport(workerId: string, m: number, y: number) {
       clockIn: shift.actualStart ? heTime(shift.actualStart) : null,
       clockOut: shift.actualEnd ? heTime(shift.actualEnd) : null,
       customerName: `${shift.job.customer.firstName} ${shift.job.customer.lastName}`.trim(),
-      approvedHours: round2(h),
+      // Exact approved attendance (preserved) plus the rounded hours used for pay.
+      approvedHours: round2(p.exactHours),
+      paidHours: p.paidHours,
       // Internal only (owner / audit / salary history) — never shown to workers.
       hourlyRate: round2(money(shift.hourlyWageSnapshot)),
-      dailyPayment: round2(dp),
-      pay: round2(hp + dp),
+      dailyPayment: round2(p.dailyPay),
+      pay: round2(p.pay),
     };
   });
-
-  const total = hourlyPay + dailyPay;
 
   return {
     month: m,
@@ -86,10 +90,11 @@ async function computeMonthlyReport(workerId: string, m: number, y: number) {
     shifts: lines,
     summary: {
       shiftsCount: shifts.length,
-      totalApprovedHours: round2(totalHours),
-      hourlyPay: round2(hourlyPay),
-      dailyPay: round2(dailyPay),
-      total: round2(total),
+      totalApprovedHours: round2(totals.totalExactHours),
+      totalPaidHours: totals.totalPaidHours,
+      hourlyPay: round2(totals.hourlyPay),
+      dailyPay: round2(totals.dailyPay),
+      total: round2(totals.total),
     },
   };
 }
@@ -106,32 +111,9 @@ async function publishReportVersion(workerId: string, m: number, y: number, publ
 
 // Strip internal money breakdown (hourly rate, hourly/daily subtotals) from a
 // computed/snapshot report so the worker-facing UI and PDF only ever see the
-// spec §19.3 line (date, customer, job type, role, approved clock-in/out,
-// approved hours, one day total) and summary (workdays, hours, monthly total).
-function toWorkerFacingReport(payload: any) {
-  const lines = Array.isArray(payload?.shifts) ? payload.shifts : [];
-  const summary = payload?.summary ?? {};
-  return {
-    shifts: lines.map((s: any) => ({
-      shiftId: s.shiftId,
-      date: s.date,
-      customerName: s.customerName,
-      jobType: s.jobType,
-      jobTypeLabel: s.shiftLabel ?? s.jobTypeLabel ?? '',
-      role: s.role ?? null,
-      roleLabel: s.roleLabel ?? '',
-      clockIn: s.clockIn ?? null,
-      clockOut: s.clockOut ?? null,
-      approvedHours: s.approvedHours,
-      dayTotal: s.pay,
-    })),
-    summary: {
-      workdays: summary.shiftsCount ?? lines.length,
-      totalApprovedHours: summary.totalApprovedHours ?? 0,
-      total: summary.total ?? 0,
-    },
-  };
-}
+// spec §19.3 line and summary. Delegates to the shared, unit-tested projection,
+// which reads a stored snapshot verbatim (published versions stay immutable).
+const toWorkerFacingReport = projectWorkerFacingReport;
 
 export async function workerPayrollRoutes(app: FastifyInstance) {
   // Worker: their own monthly report — the published immutable snapshot, or the
@@ -248,11 +230,15 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
     for (const s of snap.shifts) {
       const clock = s.clockIn && s.clockOut ? `${s.clockIn}–${s.clockOut}` : '—';
       const role = s.roleLabel ? ` · ${s.roleLabel}` : '';
-      lines.push(`  ${heDate(s.date)} · ${s.customerName} · ${s.jobTypeLabel}${role} · ${clock} · ${s.approvedHours} שעות · ${nis(s.dayTotal)}`);
+      // Show the paid (rounded) hours used for the amount; fall back to exact
+      // hours on legacy snapshots that predate paid-hour rounding.
+      const hoursText = s.paidHours != null ? `${s.paidHours} שעות לתשלום` : `${s.approvedHours} שעות`;
+      lines.push(`  ${heDate(s.date)} · ${s.customerName} · ${s.jobTypeLabel}${role} · ${clock} · ${hoursText} · ${nis(s.dayTotal)}`);
     }
     lines.push('');
     lines.push(`ימי עבודה: ${snap.summary.workdays}`);
-    lines.push(`שעות מאושרות: ${snap.summary.totalApprovedHours}`);
+    lines.push(`שעות נוכחות מאושרות: ${snap.summary.totalApprovedHours}`);
+    if (snap.summary.totalPaidHours != null) lines.push(`שעות לתשלום: ${snap.summary.totalPaidHours}`);
     lines.push(`סה"כ לחודש: ${nis(snap.summary.total)}`);
 
     const pdf = await buildLinesPdf('דוח חודשי', `${worker.firstName} ${worker.lastName} · ${m}/${y}`, lines);

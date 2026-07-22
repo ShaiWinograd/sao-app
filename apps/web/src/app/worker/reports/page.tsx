@@ -16,6 +16,7 @@ type EarningsLine = {
   clockIn: string | null;
   clockOut: string | null;
   approvedHours: number;
+  paidHours: number | null;
   dayTotal: number;
 };
 type ReportNote = { id: string; shiftId: string | null; type: string; message: string; createdAt: string };
@@ -31,6 +32,7 @@ type Earnings = {
   summary: {
     workdays: number;
     totalApprovedHours: number;
+    totalPaidHours: number | null;
     total: number;
   };
 };
@@ -249,9 +251,10 @@ export default function WorkerReportsPage() {
                 </span>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3 text-sm">
+            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
               <Stat label="ימי עבודה" value={String(data.summary.workdays)} />
-              <Stat label="שעות מאושרות" value={`${data.summary.totalApprovedHours}`} icon={<Clock className="w-3.5 h-3.5" />} />
+              <Stat label="שעות נוכחות" value={`${data.summary.totalApprovedHours}`} icon={<Clock className="w-3.5 h-3.5" />} />
+              <Stat label="שעות לתשלום" value={data.summary.totalPaidHours != null ? `${data.summary.totalPaidHours}` : `${data.summary.totalApprovedHours}`} />
               <Stat label="סה״כ לחודש" value={ils(data.summary.total)} strong />
             </div>
           </div>
@@ -292,7 +295,7 @@ export default function WorkerReportsPage() {
                       <p className="text-xs text-gray-500 mt-0.5">
                         {fmtDate(s.date)}
                         {s.clockIn && s.clockOut ? ` · ${s.clockIn}–${s.clockOut}` : ''}
-                        {` · ${s.approvedHours} שעות`}
+                        {s.paidHours != null ? ` · נוכחות ${s.approvedHours} · לתשלום ${s.paidHours} שעות` : ` · ${s.approvedHours} שעות`}
                       </p>
                     </div>
                     <span className="shrink-0 text-sm font-semibold text-gray-900">{ils(s.dayTotal)}</span>
