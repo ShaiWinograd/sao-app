@@ -23,3 +23,24 @@ export function presentWorkerReportStatus(status: string | null | undefined): st
   if (!status) return 'DRAFT';
   return status === 'PAID' ? 'WORKER_APPROVED' : status;
 }
+
+/**
+ * Clear, worker-facing Hebrew label for a monthly-report status. Deliberately
+ * non-technical (no raw status codes, no version suffix like "v2" — the version
+ * number belongs in version history, not the status badge).
+ */
+export function workerReportStatusLabel(status: string | null | undefined): string {
+  switch (presentWorkerReportStatus(status)) {
+    case 'PUBLISHED':
+      return 'ממתין לאישורך';
+    case 'REVISED':
+      return 'גרסה מעודכנת ממתינה לאישורך';
+    case 'CORRECTION_REQUESTED':
+      return 'נדרשת בדיקה';
+    case 'WORKER_APPROVED':
+      return 'אושר';
+    case 'DRAFT':
+    default:
+      return 'טרם פורסם';
+  }
+}
