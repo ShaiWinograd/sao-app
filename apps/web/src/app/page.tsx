@@ -30,8 +30,11 @@ export default function HomePage() {
         }
         // Owners/admins may keep using the preview override to open the worker area.
         router.replace(readRoleOverride() === 'WORKER' ? '/worker' : '/dashboard');
-      } catch {
-        if (!cancelled) router.replace('/dashboard');
+      } catch (err) {
+        if (cancelled) return;
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        // Authenticated but not authorized → dedicated unauthorized screen.
+        router.replace(status === 403 ? '/unauthorized' : '/dashboard');
       }
     })();
     return () => {

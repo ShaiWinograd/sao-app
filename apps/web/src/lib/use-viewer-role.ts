@@ -1,10 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { type AppViewerRole, resolveAppViewerRole, hasExplicitViewerRole } from './viewer-access';
 
 const OVERRIDE_KEY = 'sao-role-override';
+
+// Authoritative viewer role, supplied by the AuthorizationGate from the DB
+// (`/auth/me`). When present it is the source of truth for UI gating, so the
+// owner UI never depends on inferring a role from (possibly missing) Clerk
+// metadata. Null only outside the gate (e.g. before the check resolves).
+export const ViewerRoleContext = createContext<AppViewerRole | null>(null);
 
 export function readRoleOverride(): AppViewerRole | null {
   if (typeof window === 'undefined') return null;
@@ -34,7 +40,10 @@ function accountCanSwitchRole(user: Parameters<typeof resolveAppViewerRole>[0]):
  */
 export function useViewerRole(): AppViewerRole {
   const { user } = useUser();
-  const base = resolveAppViewerRole(user);
+  const authoritative = useContext(ViewerRoleContext);
+  // The DB role (from the gate) is authoritative; fall back to Clerk metadata
+  // only when the gate context is absent. Neither path infers OWNER by default.
+  const base = authoritative ?? resolveAppViewerRole(user);
   const canSwitch = accountCanSwitchRole(user);
   const [override, setOverride] = useState<AppViewerRole | null>(null);
   useEffect(() => {

@@ -5,18 +5,20 @@ function normalizeRoleValue(value: unknown): string {
   return value.trim().toUpperCase();
 }
 
-// An account with no explicit Clerk role is treated as OWNER, matching the API
-// auth default (`publicMetadata.role ?? OWNER`). Real staff are provisioned with
-// an explicit ADMIN/WORKER role, which is always respected.
+// The role is resolved from the authoritative DB endpoint (`/auth/me`, surfaced
+// via ViewerRoleContext). This metadata-based helper is only a fallback used
+// before that resolves; it NEVER infers OWNER from a missing/unknown role —
+// unknown accounts get the least-privileged role, and real privileged access is
+// always granted from explicit trusted data (DB role / Clerk metadata).
 export function resolveAppViewerRole(user: { publicMetadata?: unknown } | null | undefined): AppViewerRole {
-  if (!user || typeof user !== 'object') return 'OWNER';
+  if (!user || typeof user !== 'object') return 'WORKER';
   const metadata = user.publicMetadata;
-  if (!metadata || typeof metadata !== 'object') return 'OWNER';
+  if (!metadata || typeof metadata !== 'object') return 'WORKER';
   const roleValue = normalizeRoleValue((metadata as Record<string, unknown>).role);
   if (roleValue === 'OWNER') return 'OWNER';
   if (roleValue === 'ADMIN') return 'ADMIN';
   if (roleValue === 'WORKER') return 'WORKER';
-  return 'OWNER';
+  return 'WORKER';
 }
 
 // Whether the account has an explicit role set in Clerk metadata (vs. the default).

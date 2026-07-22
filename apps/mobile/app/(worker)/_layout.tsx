@@ -3,21 +3,23 @@ import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { HE } from '@workforce/shared';
 import { colors } from '../../lib/theme';
+import { AuthorizationGate } from '../../components/AuthorizationGate';
 
 export default function WorkerLayout() {
   const { isSignedIn } = useAuth();
   if (!isSignedIn) return <Redirect href="/(auth)/sign-in" />;
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.muted,
-        tabBarLabelStyle: { fontSize: 11 },
-        tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border },
-        headerShown: false,
-      }}
-    >
+    <AuthorizationGate>
+      <Tabs
+        screenOptions={{
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.muted,
+          tabBarLabelStyle: { fontSize: 11 },
+          tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border },
+          headerShown: false,
+        }}
+      >
       <Tabs.Screen
         name="home"
         options={{
@@ -55,6 +57,7 @@ export default function WorkerLayout() {
       />
       {/* Pushed full-screen detail — hidden from the tab bar. */}
       <Tabs.Screen name="shift-detail" options={{ href: null }} />
-    </Tabs>
+      </Tabs>
+    </AuthorizationGate>
   );
 }
