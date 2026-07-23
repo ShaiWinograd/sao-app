@@ -160,6 +160,17 @@ enum AddressLabel {
   OTHER
 }
 
+// Lifecycle of an address's geocoding result (PBI #217). Only RESOLVED may ever
+// activate the §16.4 500 m attendance rule; every other value (including the
+// default) leaves location monitoring INACTIVE. Additive/append-only: never
+// remove or rename a value.
+enum GeocodeStatus {
+  NOT_REQUESTED
+  RESOLVED
+  NEEDS_REVIEW
+  FAILED
+}
+
 enum FormQuestionType {
   YES_NO
   MULTIPLE_CHOICE
@@ -226,20 +237,20 @@ enum ReportingBasis {
 // ─── User (Clerk-managed identity, mirrored here for relations) ───────────────
 
 model User {
-  id          String   @id // Clerk user ID
-  email       String   @unique
+  id          String            @id // Clerk user ID
+  email       String            @unique
   firstName   String
   lastName    String
   role        UserRole
-  isActive    Boolean  @default(true)
+  isActive    Boolean           @default(true)
   permissions AdminPermission[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 
   // Relations
-  workerProfile  Worker?
-  auditLogs      AuditLog[]
-  assignedCases  CustomerCase[]  @relation("CaseManager")
+  workerProfile Worker?
+  auditLogs     AuditLog[]
+  assignedCases CustomerCase[] @relation("CaseManager")
 
   @@map("users")
 }
@@ -247,37 +258,37 @@ model User {
 // ─── Worker ───────────────────────────────────────────────────────────────────
 
 model Worker {
-  id                  String   @id @default(cuid())
-  userId              String   @unique
-  firstName           String
-  lastName            String
-  phone               String
-  email               String   @unique
-  hourlyWage          Decimal  @db.Decimal(10, 2)
-  dailyPaymentAmount  Decimal  @db.Decimal(10, 2)
-  paymentMethod       PaymentMethod
-  skills              WorkerSkill[]
-  isActive            Boolean  @default(true)
-  homeArea            String?
-  notes               String?
-  internalNotes       String?
-  expoPushToken       String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                 String        @id @default(cuid())
+  userId             String        @unique
+  firstName          String
+  lastName           String
+  phone              String
+  email              String        @unique
+  hourlyWage         Decimal       @db.Decimal(10, 2)
+  dailyPaymentAmount Decimal       @db.Decimal(10, 2)
+  paymentMethod      PaymentMethod
+  skills             WorkerSkill[]
+  isActive           Boolean       @default(true)
+  homeArea           String?
+  notes              String?
+  internalNotes      String?
+  expoPushToken      String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   // Relations
-  user                User     @relation(fields: [userId], references: [id])
-  shifts              Shift[]
-  availability        WorkerAvailability[]
-  replacementRequests ReplacementRequest[] @relation("ReplacementOriginal")
-  suggestedReplacements ReplacementRequest[] @relation("ReplacementSuggested")
-  approvedReplacements ReplacementRequest[] @relation("ReplacementApproved")
-  reportApprovals     WorkerReportApproval[]
-  monthlyReports      WorkerMonthlyReport[]
-  reportNotes         WorkerReportNote[]
+  user                  User                   @relation(fields: [userId], references: [id])
+  shifts                Shift[]
+  availability          WorkerAvailability[]
+  replacementRequests   ReplacementRequest[]   @relation("ReplacementOriginal")
+  suggestedReplacements ReplacementRequest[]   @relation("ReplacementSuggested")
+  approvedReplacements  ReplacementRequest[]   @relation("ReplacementApproved")
+  reportApprovals       WorkerReportApproval[]
+  monthlyReports        WorkerMonthlyReport[]
+  reportNotes           WorkerReportNote[]
   replacementVolunteers ReplacementVolunteer[]
-  swapsProposed       ShiftSwap[]          @relation("SwapFromWorker")
-  swapsReceived       ShiftSwap[]          @relation("SwapToWorker")
+  swapsProposed         ShiftSwap[]            @relation("SwapFromWorker")
+  swapsReceived         ShiftSwap[]            @relation("SwapToWorker")
 
   @@map("workers")
 }
@@ -300,7 +311,7 @@ model WorkerAvailability {
   createdAt DateTime              @default(now())
   updatedAt DateTime              @updatedAt
 
-  worker    Worker                @relation(fields: [workerId], references: [id])
+  worker Worker @relation(fields: [workerId], references: [id])
 
   @@index([workerId])
   @@map("worker_availability")
@@ -309,30 +320,30 @@ model WorkerAvailability {
 // ─── Customer ─────────────────────────────────────────────────────────────────
 
 model Customer {
-  id                 String   @id @default(cuid())
-  firstName          String
-  lastName           String
-  phone              String
-  email              String?
-  preferredContact   String?
-  notes              String?
+  id                  String   @id @default(cuid())
+  firstName           String
+  lastName            String
+  phone               String
+  email               String?
+  preferredContact    String?
+  notes               String?
   parkingInstructions String?
-  accessInstructions String?
-  elevatorInfo       String?
-  petInfo            String?
-  specialRequests    String?
-  internalNotes      String?
-  isActive           Boolean  @default(true)
+  accessInstructions  String?
+  elevatorInfo        String?
+  petInfo             String?
+  specialRequests     String?
+  internalNotes       String?
+  isActive            Boolean  @default(true)
   // System customers (e.g. "General Reservation" / שריון כללי) cannot be deleted
   // and are used to reserve workforce before a real customer exists (spec §3.2).
-  isSystem           Boolean  @default(false)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  isSystem            Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   // Relations
-  addresses          Address[]
-  cases              CustomerCase[]
-  jobs               Job[]
+  addresses Address[]
+  cases     CustomerCase[]
+  jobs      Job[]
 
   @@map("customers")
 }
@@ -340,26 +351,38 @@ model Customer {
 // ─── Address ──────────────────────────────────────────────────────────────────
 
 model Address {
-  id               String       @id @default(cuid())
-  customerId       String
-  fullAddress      String
-  apartmentDetails String?
-  label            AddressLabel
-  accessNotes      String?
-  parkingNotes     String?
-  elevatorNotes    String?
+  id                     String        @id @default(cuid())
+  customerId             String
+  fullAddress            String
+  apartmentDetails       String?
+  label                  AddressLabel
+  accessNotes            String?
+  parkingNotes           String?
+  elevatorNotes          String?
   // Geocoded coordinates for the 500m attendance geofence (§16.1/§16.4). Nullable
   // until an address is geocoded; when absent, attendance falls back to the
   // owner-review flow and the mobile leaving-area watcher stays inactive.
-  latitude         Float?
-  longitude        Float?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  latitude               Float?
+  longitude              Float?
+  // Geocoding result metadata (PBI #217). The owner-entered `fullAddress` above
+  // is the original snapshot and is never mutated by geocoding. Coordinates only
+  // gate the 500 m rule when `geocodeStatus` is RESOLVED (enforced in a later
+  // PR); existing rows default to NOT_REQUESTED, so pre-existing latitude/
+  // longitude values never activate monitoring on their own.
+  normalizedAddress      String?
+  geocodeStatus          GeocodeStatus @default(NOT_REQUESTED)
+  geocodeProvider        String?
+  geocodeProviderPlaceId String?
+  geocodedAt             DateTime?
+  geocodeReason          String?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
 
   // Relations
-  customer         Customer     @relation(fields: [customerId], references: [id])
-  jobs             Job[]
+  customer Customer @relation(fields: [customerId], references: [id])
+  jobs     Job[]
 
+  @@index([geocodeStatus])
   @@map("addresses")
 }
 
@@ -374,16 +397,16 @@ model CustomerCase {
   latestActivityDate   DateTime?
   assignedAdminId      String?
   internalNotes        String?
-  finalReportStatus    String?    // 'NOT_GENERATED' | 'DRAFT' | 'SENT'
+  finalReportStatus    String? // 'NOT_GENERATED' | 'DRAFT' | 'SENT'
   customerReportStatus String?
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
 
   // Relations
-  customer             Customer   @relation(fields: [customerId], references: [id])
-  assignedAdmin        User?      @relation("CaseManager", fields: [assignedAdminId], references: [id])
-  jobs                 Job[]
-  reportVersions       CustomerReportVersion[]
+  customer       Customer                @relation(fields: [customerId], references: [id])
+  assignedAdmin  User?                   @relation("CaseManager", fields: [assignedAdminId], references: [id])
+  jobs           Job[]
+  reportVersions CustomerReportVersion[]
 
   @@map("customer_cases")
 }
@@ -393,17 +416,17 @@ model CustomerCase {
 // per case (corrections add a new version; earlier versions are preserved). The
 // PDF is reproducible from `snapshot`, never from mutable live job data.
 model CustomerReportVersion {
-  id            String       @id @default(cuid())
+  id            String   @id @default(cuid())
   caseId        String
   versionNumber Int
-  status        String       @default("FINALIZED")
+  status        String   @default("FINALIZED")
   snapshot      Json
   pdf           Bytes?
   createdById   String?
   supersedesId  String?
-  createdAt     DateTime     @default(now())
+  createdAt     DateTime @default(now())
 
-  case          CustomerCase @relation(fields: [caseId], references: [id])
+  case CustomerCase @relation(fields: [caseId], references: [id])
 
   @@unique([caseId, versionNumber])
   @@index([caseId])
@@ -413,7 +436,7 @@ model CustomerReportVersion {
 // ─── Job ──────────────────────────────────────────────────────────────────────
 
 model Job {
-  id                   String       @id @default(cuid())
+  id                   String        @id @default(cuid())
   caseId               String
   customerId           String
   addressId            String
@@ -422,27 +445,27 @@ model Job {
   plannedStart         DateTime
   plannedEnd           DateTime
   requiredWorkerCount  Int
-  staffingMode         StaffingMode @default(AUTO_APPROVE)
+  staffingMode         StaffingMode  @default(AUTO_APPROVE)
   jobNotes             String?
   workerVisibleNotes   String?
   billingModel         BillingModel?
-  billingRate          Decimal?     @db.Decimal(10, 2)
-  locationRadiusMeters Int          @default(500)
-  status               JobStatus    @default(RESERVATION)
+  billingRate          Decimal?      @db.Decimal(10, 2)
+  locationRadiusMeters Int           @default(500)
+  status               JobStatus     @default(RESERVATION)
   reportedAt           DateTime?
   idempotencyKey       String?
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime     @updatedAt
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
 
   // Relations
-  case                 CustomerCase @relation(fields: [caseId], references: [id])
-  customer             Customer     @relation(fields: [customerId], references: [id])
-  address              Address      @relation(fields: [addressId], references: [id])
-  slots                JobSlot[]
-  shifts               Shift[]
-  expenses             JobExpense[]
-  formTemplate         FormTemplate? @relation(fields: [formTemplateId], references: [id])
-  formTemplateId       String?
+  case           CustomerCase  @relation(fields: [caseId], references: [id])
+  customer       Customer      @relation(fields: [customerId], references: [id])
+  address        Address       @relation(fields: [addressId], references: [id])
+  slots          JobSlot[]
+  shifts         Shift[]
+  expenses       JobExpense[]
+  formTemplate   FormTemplate? @relation(fields: [formTemplateId], references: [id])
+  formTemplateId String?
 
   @@index([idempotencyKey])
   @@map("jobs")
@@ -451,13 +474,13 @@ model Job {
 // ─── Job Slot (required role per position) ────────────────────────────────────
 
 model JobSlot {
-  id             String      @id @default(cuid())
-  jobId          String
-  requiredSkill  WorkerSkill?
-  label          String?
+  id              String       @id @default(cuid())
+  jobId           String
+  requiredSkill   WorkerSkill?
+  label           String?
   filledByShiftId String?
 
-  job            Job         @relation(fields: [jobId], references: [id])
+  job Job @relation(fields: [jobId], references: [id])
 
   @@map("job_slots")
 }
@@ -465,54 +488,54 @@ model JobSlot {
 // ─── Shift ────────────────────────────────────────────────────────────────────
 
 model Shift {
-  id                      String             @id @default(cuid())
-  workerId                String
-  jobId                   String
-  slotId                  String?
-  scheduledStart          DateTime
-  scheduledEnd            DateTime
-  actualStart             DateTime?
-  actualEnd               DateTime?
-  clockInLat              Float?
-  clockInLon              Float?
-  clockInDistanceMeters   Float?
-  clockOutLat             Float?
-  clockOutLon             Float?
-  clockOutDistanceMeters  Float?
-  attendanceStatus        AttendanceStatus   @default(SCHEDULED)
-  clockInMethod           AttendanceMethod?
-  clockOutMethod          AttendanceMethod?
-  joinRequestStatus       JoinRequestStatus  @default(PENDING)
-  assignmentRole          AssignmentRole     @default(REGULAR)
-  replacementStatus       ReplacementStatus  @default(NONE)
-  formStatus              FormSubmissionStatus @default(NOT_SUBMITTED)
-  approvedHours           Decimal?           @db.Decimal(10, 2)
-  hourlyWageSnapshot      Decimal            @db.Decimal(10, 2)
-  dailyPaymentSnapshot    Decimal            @db.Decimal(10, 2)
-  isDailyPaymentEligible  Boolean            @default(false)
-  workerNameSnapshot      String
-  requiresReview          Boolean            @default(false)
+  id                     String               @id @default(cuid())
+  workerId               String
+  jobId                  String
+  slotId                 String?
+  scheduledStart         DateTime
+  scheduledEnd           DateTime
+  actualStart            DateTime?
+  actualEnd              DateTime?
+  clockInLat             Float?
+  clockInLon             Float?
+  clockInDistanceMeters  Float?
+  clockOutLat            Float?
+  clockOutLon            Float?
+  clockOutDistanceMeters Float?
+  attendanceStatus       AttendanceStatus     @default(SCHEDULED)
+  clockInMethod          AttendanceMethod?
+  clockOutMethod         AttendanceMethod?
+  joinRequestStatus      JoinRequestStatus    @default(PENDING)
+  assignmentRole         AssignmentRole       @default(REGULAR)
+  replacementStatus      ReplacementStatus    @default(NONE)
+  formStatus             FormSubmissionStatus @default(NOT_SUBMITTED)
+  approvedHours          Decimal?             @db.Decimal(10, 2)
+  hourlyWageSnapshot     Decimal              @db.Decimal(10, 2)
+  dailyPaymentSnapshot   Decimal              @db.Decimal(10, 2)
+  isDailyPaymentEligible Boolean              @default(false)
+  workerNameSnapshot     String
+  requiresReview         Boolean              @default(false)
   // ── Persisted time-based state for the attendance sweep (spec §16.2/§16.4/§17.3).
   // Timers live in the DB (not app/mobile memory) so restarts/downtime never skip
   // scheduled actions; the sweep re-reads and re-checks these transactionally.
-  proposedClockIn         DateTime?          // §16.2 proposed clock-in time (== scheduledStart) once a missing-clock-in proposal is created
-  areaExitAt              DateTime?          // §16.4 first confirmed exit from the geofence
-  areaExitDeadline        DateTime?          // §16.4 auto-clock-out deadline (areaExitAt + 15m)
-  formDeadline            DateTime?          // §17.3 end-of-next-day deadline for the end form (set at clock-out when a form is enabled)
-  formLastReminderAt      DateTime?          // §17.3 last end-form reminder sent (drives the every-3h cadence)
-  formOverdue             Boolean            @default(false) // §17.3 end form passed its deadline (informational)
-  createdAt               DateTime           @default(now())
-  updatedAt               DateTime           @updatedAt
+  proposedClockIn        DateTime? // §16.2 proposed clock-in time (== scheduledStart) once a missing-clock-in proposal is created
+  areaExitAt             DateTime? // §16.4 first confirmed exit from the geofence
+  areaExitDeadline       DateTime? // §16.4 auto-clock-out deadline (areaExitAt + 15m)
+  formDeadline           DateTime? // §17.3 end-of-next-day deadline for the end form (set at clock-out when a form is enabled)
+  formLastReminderAt     DateTime? // §17.3 last end-form reminder sent (drives the every-3h cadence)
+  formOverdue            Boolean              @default(false) // §17.3 end form passed its deadline (informational)
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
 
   // Relations
-  worker                  Worker             @relation(fields: [workerId], references: [id])
-  job                     Job                @relation(fields: [jobId], references: [id])
-  attendanceCorrections   AttendanceCorrection[]
-  locationChecks          LocationCheck[]
-  replacementRequests     ReplacementRequest[]
-  formSubmission          FormSubmission?
-  swapsFrom               ShiftSwap[]        @relation("SwapFromShift")
-  swapsTo                 ShiftSwap[]        @relation("SwapToShift")
+  worker                Worker                 @relation(fields: [workerId], references: [id])
+  job                   Job                    @relation(fields: [jobId], references: [id])
+  attendanceCorrections AttendanceCorrection[]
+  locationChecks        LocationCheck[]
+  replacementRequests   ReplacementRequest[]
+  formSubmission        FormSubmission?
+  swapsFrom             ShiftSwap[]            @relation("SwapFromShift")
+  swapsTo               ShiftSwap[]            @relation("SwapToShift")
 
   @@map("shifts")
 }
@@ -520,16 +543,16 @@ model Shift {
 // ─── Attendance Correction ────────────────────────────────────────────────────
 
 model AttendanceCorrection {
-  id             String   @id @default(cuid())
-  shiftId        String
-  correctedById  String
-  clockIn        DateTime?
-  clockOut       DateTime?
-  reason         String
-  internalNote   String?
-  createdAt      DateTime @default(now())
+  id            String    @id @default(cuid())
+  shiftId       String
+  correctedById String
+  clockIn       DateTime?
+  clockOut      DateTime?
+  reason        String
+  internalNote  String?
+  createdAt     DateTime  @default(now())
 
-  shift          Shift    @relation(fields: [shiftId], references: [id])
+  shift Shift @relation(fields: [shiftId], references: [id])
 
   @@map("attendance_corrections")
 }
@@ -537,16 +560,16 @@ model AttendanceCorrection {
 // ─── Location Check ───────────────────────────────────────────────────────────
 
 model LocationCheck {
-  id              String   @id @default(cuid())
-  shiftId         String
-  latitude        Float
-  longitude       Float
-  distanceMeters  Float
-  isWithinRadius  Boolean
-  checkedAt       DateTime @default(now())
-  workerResponse  String?  // 'END_SHIFT' | 'STILL_WORKING' | 'REPORT_ISSUE' | 'NO_RESPONSE'
+  id             String   @id @default(cuid())
+  shiftId        String
+  latitude       Float
+  longitude      Float
+  distanceMeters Float
+  isWithinRadius Boolean
+  checkedAt      DateTime @default(now())
+  workerResponse String? // 'END_SHIFT' | 'STILL_WORKING' | 'REPORT_ISSUE' | 'NO_RESPONSE'
 
-  shift           Shift    @relation(fields: [shiftId], references: [id])
+  shift Shift @relation(fields: [shiftId], references: [id])
 
   @@map("location_checks")
 }
@@ -554,23 +577,23 @@ model LocationCheck {
 // ─── Replacement Request ──────────────────────────────────────────────────────
 
 model ReplacementRequest {
-  id                   String            @id @default(cuid())
-  shiftId              String
-  requestedByWorkerId  String
-  reason               String
-  suggestedWorkerId    String?
-  approvedWorkerId     String?
-  status               ReplacementStatus @default(PENDING)
-  adminNote            String?
-  resolvedAt           DateTime?
-  createdAt            DateTime          @default(now())
-  updatedAt            DateTime          @updatedAt
+  id                  String            @id @default(cuid())
+  shiftId             String
+  requestedByWorkerId String
+  reason              String
+  suggestedWorkerId   String?
+  approvedWorkerId    String?
+  status              ReplacementStatus @default(PENDING)
+  adminNote           String?
+  resolvedAt          DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
-  shift                Shift             @relation(fields: [shiftId], references: [id])
-  requestedByWorker    Worker            @relation("ReplacementOriginal", fields: [requestedByWorkerId], references: [id])
-  suggestedWorker      Worker?           @relation("ReplacementSuggested", fields: [suggestedWorkerId], references: [id])
-  approvedWorker       Worker?           @relation("ReplacementApproved", fields: [approvedWorkerId], references: [id])
-  volunteers           ReplacementVolunteer[]
+  shift             Shift                  @relation(fields: [shiftId], references: [id])
+  requestedByWorker Worker                 @relation("ReplacementOriginal", fields: [requestedByWorkerId], references: [id])
+  suggestedWorker   Worker?                @relation("ReplacementSuggested", fields: [suggestedWorkerId], references: [id])
+  approvedWorker    Worker?                @relation("ReplacementApproved", fields: [approvedWorkerId], references: [id])
+  volunteers        ReplacementVolunteer[]
 
   @@map("replacement_requests")
 }
@@ -582,8 +605,8 @@ model ReplacementVolunteer {
   workerId             String
   createdAt            DateTime @default(now())
 
-  request              ReplacementRequest @relation(fields: [replacementRequestId], references: [id], onDelete: Cascade)
-  worker               Worker             @relation(fields: [workerId], references: [id])
+  request ReplacementRequest @relation(fields: [replacementRequestId], references: [id], onDelete: Cascade)
+  worker  Worker             @relation(fields: [workerId], references: [id])
 
   @@unique([replacementRequestId, workerId])
   @@map("replacement_volunteers")
@@ -591,23 +614,23 @@ model ReplacementVolunteer {
 
 // A two-way swap: proposer's fromShift <-> target worker's toShift.
 model ShiftSwap {
-  id               String     @id @default(cuid())
-  fromShiftId      String
-  toShiftId        String
-  fromWorkerId     String
-  toWorkerId       String
-  status           SwapStatus @default(PENDING_WORKER)
-  note             String?
+  id                String     @id @default(cuid())
+  fromShiftId       String
+  toShiftId         String
+  fromWorkerId      String
+  toWorkerId        String
+  status            SwapStatus @default(PENDING_WORKER)
+  note              String?
   workerRespondedAt DateTime?
-  resolvedAt       DateTime?
-  adminNote        String?
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  resolvedAt        DateTime?
+  adminNote         String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 
-  fromShift        Shift      @relation("SwapFromShift", fields: [fromShiftId], references: [id], onDelete: Cascade)
-  toShift          Shift      @relation("SwapToShift", fields: [toShiftId], references: [id], onDelete: Cascade)
-  fromWorker       Worker     @relation("SwapFromWorker", fields: [fromWorkerId], references: [id])
-  toWorker         Worker     @relation("SwapToWorker", fields: [toWorkerId], references: [id])
+  fromShift  Shift  @relation("SwapFromShift", fields: [fromShiftId], references: [id], onDelete: Cascade)
+  toShift    Shift  @relation("SwapToShift", fields: [toShiftId], references: [id], onDelete: Cascade)
+  fromWorker Worker @relation("SwapFromWorker", fields: [fromWorkerId], references: [id])
+  toWorker   Worker @relation("SwapToWorker", fields: [toWorkerId], references: [id])
 
   @@index([toWorkerId, status])
   @@index([fromWorkerId, status])
@@ -617,32 +640,32 @@ model ShiftSwap {
 // ─── Form Template ────────────────────────────────────────────────────────────
 
 model FormTemplate {
-  id          String          @id @default(cuid())
-  name        String
-  jobType     JobType
-  isDefault   Boolean         @default(false)
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id        String   @id @default(cuid())
+  name      String
+  jobType   JobType
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  questions   FormQuestion[]
-  jobs        Job[]
+  questions FormQuestion[]
+  jobs      Job[]
 
   @@map("form_templates")
 }
 
 model FormQuestion {
-  id             String                 @id @default(cuid())
-  templateId     String
-  questionText   String
-  type           FormQuestionType
-  visibility     FormQuestionVisibility @default(WORKER)
-  isRequired     Boolean                @default(false)
-  order          Int
-  options        String[]               // For MULTIPLE_CHOICE / CHECKBOX
-  createdAt      DateTime               @default(now())
+  id           String                 @id @default(cuid())
+  templateId   String
+  questionText String
+  type         FormQuestionType
+  visibility   FormQuestionVisibility @default(WORKER)
+  isRequired   Boolean                @default(false)
+  order        Int
+  options      String[] // For MULTIPLE_CHOICE / CHECKBOX
+  createdAt    DateTime               @default(now())
 
-  template       FormTemplate           @relation(fields: [templateId], references: [id])
-  answers        FormAnswer[]
+  template FormTemplate @relation(fields: [templateId], references: [id])
+  answers  FormAnswer[]
 
   @@map("form_questions")
 }
@@ -659,21 +682,21 @@ model FormSubmission {
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
-  shift            Shift            @relation(fields: [shiftId], references: [id])
-  answers          FormAnswer[]
+  shift   Shift        @relation(fields: [shiftId], references: [id])
+  answers FormAnswer[]
 
   @@map("form_submissions")
 }
 
 model FormAnswer {
-  id           String         @id @default(cuid())
+  id           String   @id @default(cuid())
   submissionId String
   questionId   String
-  value        String         // JSON-serialized value
-  createdAt    DateTime       @default(now())
+  value        String // JSON-serialized value
+  createdAt    DateTime @default(now())
 
-  submission   FormSubmission @relation(fields: [submissionId], references: [id])
-  question     FormQuestion   @relation(fields: [questionId], references: [id])
+  submission FormSubmission @relation(fields: [submissionId], references: [id])
+  question   FormQuestion   @relation(fields: [questionId], references: [id])
 
   @@map("form_answers")
 }
@@ -691,7 +714,7 @@ model WorkerReportApproval {
   createdAt  DateTime             @default(now())
   updatedAt  DateTime             @updatedAt
 
-  worker     Worker               @relation(fields: [workerId], references: [id])
+  worker Worker @relation(fields: [workerId], references: [id])
 
   @@unique([workerId, month, year])
   @@map("worker_report_approvals")
@@ -727,7 +750,7 @@ model WorkerMonthlyReport {
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 
-  worker           Worker             @relation(fields: [workerId], references: [id])
+  worker Worker @relation(fields: [workerId], references: [id])
 
   @@unique([workerId, month, year, version])
   @@index([workerId, month, year])
@@ -737,16 +760,16 @@ model WorkerMonthlyReport {
 // ─── Worker Report Note ───────────────────────────────────────────────────────
 
 model WorkerReportNote {
-  id         String         @id @default(cuid())
-  workerId   String
-  month      Int
-  year       Int
-  shiftId    String?
-  type       ReportNoteType @default(COMMENT)
-  message    String
-  createdAt  DateTime       @default(now())
+  id        String         @id @default(cuid())
+  workerId  String
+  month     Int
+  year      Int
+  shiftId   String?
+  type      ReportNoteType @default(COMMENT)
+  message   String
+  createdAt DateTime       @default(now())
 
-  worker     Worker         @relation(fields: [workerId], references: [id])
+  worker Worker @relation(fields: [workerId], references: [id])
 
   @@index([workerId, month, year])
   @@map("worker_report_notes")
@@ -763,7 +786,7 @@ model JobExpense {
   notes       String?
   createdAt   DateTime        @default(now())
 
-  job         Job             @relation(fields: [jobId], references: [id])
+  job Job @relation(fields: [jobId], references: [id])
 
   @@map("job_expenses")
 }
@@ -771,17 +794,17 @@ model JobExpense {
 // ─── Business Expense (monthly overhead) ─────────────────────────────────────
 
 model BusinessExpense {
-  id          String          @id @default(cuid())
-  date        DateTime
-  amount      Decimal         @db.Decimal(10, 2)
-  category    ExpenseCategory
-  vendor      String?
-  notes       String?
-  receiptUrl  String?
-  month       Int
-  year        Int
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id         String          @id @default(cuid())
+  date       DateTime
+  amount     Decimal         @db.Decimal(10, 2)
+  category   ExpenseCategory
+  vendor     String?
+  notes      String?
+  receiptUrl String?
+  month      Int
+  year       Int
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
 
   @@map("business_expenses")
 }
@@ -789,11 +812,11 @@ model BusinessExpense {
 // ─── Month Close ──────────────────────────────────────────────────────────────
 
 model MonthClose {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   month        Int
   year         Int
   closedById   String
-  closedAt     DateTime @default(now())
+  closedAt     DateTime  @default(now())
   reopenedById String?
   reopenedAt   DateTime?
   notes        String?
@@ -805,17 +828,17 @@ model MonthClose {
 // ─── Audit Log ────────────────────────────────────────────────────────────────
 
 model AuditLog {
-  id           String      @id @default(cuid())
+  id            String      @id @default(cuid())
   performedById String
-  action       AuditAction
-  entityType   String
-  entityId     String
+  action        AuditAction
+  entityType    String
+  entityId      String
   previousValue Json?
-  newValue     Json?
-  reason       String?
-  createdAt    DateTime    @default(now())
+  newValue      Json?
+  reason        String?
+  createdAt     DateTime    @default(now())
 
-  performedBy  User        @relation(fields: [performedById], references: [id])
+  performedBy User @relation(fields: [performedById], references: [id])
 
   @@map("audit_logs")
 }
@@ -823,14 +846,14 @@ model AuditLog {
 // ─── Notification ─────────────────────────────────────────────────────────────
 
 model Notification {
-  id         String   @id @default(cuid())
-  userId     String
-  title      String
-  body       String
-  data       Json?
-  isRead     Boolean  @default(false)
-  sentAt     DateTime @default(now())
-  readAt     DateTime?
+  id     String    @id @default(cuid())
+  userId String
+  title  String
+  body   String
+  data   Json?
+  isRead Boolean   @default(false)
+  sentAt DateTime  @default(now())
+  readAt DateTime?
 
   @@map("notifications")
 }
@@ -838,11 +861,10 @@ model Notification {
 // ─── App Setting ──────────────────────────────────────────────────────────────
 
 model AppSetting {
-  key       String @id
+  key       String   @id
   value     String
   notes     String?
   updatedAt DateTime @updatedAt
 
   @@map("app_settings")
 }
-
