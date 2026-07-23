@@ -20,11 +20,11 @@ const navItems = [
   { href: '/worker/profile', label: 'הפרופיל שלי', icon: User },
 ];
 
-export default function WorkerSidebar() {
+export default function WorkerSidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   const pathname = usePathname();
 
   return (
-    <aside className="w-56 bg-white border-l border-gray-200 flex flex-col h-screen overflow-hidden shadow-sm no-print">
+    <aside className="flex h-full w-full flex-col overflow-hidden border-l border-gray-200 bg-white shadow-sm no-print">
       {/* Logo */}
       <div className="px-4 py-4 border-b border-gray-100">
         <div className="flex items-center gap-3">
@@ -46,6 +46,7 @@ export default function WorkerSidebar() {
             <Link
               key={href}
               href={href}
+              onClick={onNavigate}
               aria-current={isActive ? 'page' : undefined}
               className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs transition-colors ${
                 isActive
