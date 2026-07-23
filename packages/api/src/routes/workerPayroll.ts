@@ -2,9 +2,9 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireOwner, requireAnyRole } from '../middleware/auth.js';
 import { WorkerReportApprovalSchema, WorkerReportNoteSchema } from '@workforce/shared';
-import { UserRole, presentWorkerReportStatus, computeWorkerPayLine, summarizeWorkerPay, projectWorkerFacingReport, buildWorkerReportPdfLines } from '@workforce/shared';
+import { UserRole, presentWorkerReportStatus, computeWorkerPayLine, summarizeWorkerPay, projectWorkerFacingReport, buildWorkerReportPdfModel } from '@workforce/shared';
 import { money, round2 } from '../lib/money.js';
-import { buildLinesPdf } from '../lib/pdf.js';
+import { renderWorkerReportPdf as renderWorkerReportPdfDocument } from '../lib/pdf.js';
 import { latestWorkerReport as latestReport } from '../lib/workerReport.js';
 
 async function resolveAuditUser(userId?: string) {
@@ -133,11 +133,11 @@ async function renderWorkerReportPdf(
   workerName: string,
 ): Promise<Buffer> {
   const projected = projectWorkerFacingReport(report.snapshot as any);
-  const pdfLines = buildWorkerReportPdfLines(
+  const model = buildWorkerReportPdfModel(
     { workerName, month: report.month, year: report.year, version: report.version, publishedAt: report.publishedAt },
     projected,
   );
-  return buildLinesPdf('דוח חודשי', `${workerName} · ${report.month}/${report.year}`, pdfLines);
+  return renderWorkerReportPdfDocument(model);
 }
 
 export async function workerPayrollRoutes(app: FastifyInstance) {

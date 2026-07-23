@@ -5,6 +5,8 @@ import {
   summarizeWorkerPay,
   projectWorkerFacingReport,
   buildWorkerReportPdfLines,
+  buildWorkerReportPdfModel,
+  hebrewMonthYear,
   type WorkerPayLine,
 } from './worker-report-math';
 
@@ -158,5 +160,77 @@ describe('buildWorkerReportPdfLines', () => {
       projectWorkerFacingReport({ shifts: [{ shiftId: 's', date: '2026-07-01', customerName: 'a', shiftLabel: 'אריזה', clockIn: null, clockOut: null, approvedHours: '0', paidHours: 0, pay: '0' }], summary: {} }),
     ).join('\n');
     expect(t).toContain('כניסה: — · יציאה: —');
+  });
+});
+
+describe('buildWorkerReportPdfModel (structured RTL layout)', () => {
+  const projected = projectWorkerFacingReport({
+    shifts: [
+      { shiftId: 's1', date: '2026-07-22', customerName: 'נסיון', shiftLabel: 'אריזה', roleLabel: 'עובדת', clockIn: '09:05', clockOut: '13:58', approvedHours: '4.88', paidHours: 5, pay: '450' },
+    ],
+    summary: { shiftsCount: 1, totalApprovedHours: '4.88', totalPaidHours: 5, total: '450' },
+  });
+  const model = buildWorkerReportPdfModel(
+    { workerName: 'נועה וינוגרד', month: 7, year: 2026, version: 2, publishedAt: '2026-07-22T09:00:00.000Z' },
+    projected,
+  );
+
+  it('titles the document for the worker and lists worker/month/publication in the subtitle', () => {
+    expect(model.title).toBe('דוח חודשי לעובדת');
+    expect(model.subtitle[0]).toBe('עובדת: נועה וינוגרד');
+    expect(model.subtitle[1]).toBe('חודש: יולי 2026');
+    expect(model.subtitle[2]).toBe('תאריך פרסום: 22.07.2026');
+  });
+
+  it('orders columns right-to-left: date, customer, job type, role, in, out, hours, paid, amount', () => {
+    expect(model.table.headers).toEqual([
+      'תאריך', 'לקוחה', 'סוג עבודה', 'תפקיד', 'כניסה', 'יציאה', 'שעות נוכחות', 'שעות לתשלום', 'סכום',
+    ]);
+  });
+
+  it('places each date/time/number/currency value in its own cell', () => {
+    const row = model.table.rows[0];
+    expect(row[0]).toBe('22.07.2026');
+    expect(row[4]).toBe('09:05'); // clock-in
+    expect(row[5]).toBe('13:58'); // clock-out
+    expect(row[6]).toBe('4.88'); // exact approved hours (preserved)
+    expect(row[7]).toBe('5'); // paid hours (nearest half hour)
+    expect(row[8]).toBe('450 ₪'); // amount with the shekel sign after the number
+  });
+
+  it('summarizes workdays, attendance hours, paid hours and monthly amount (amount emphasized)', () => {
+    expect(model.totals.map((t) => t.label)).toEqual(['ימי עבודה', 'שעות נוכחות', 'שעות לתשלום', 'סכום חודשי']);
+    expect(model.totals[0].value).toBe('1');
+    expect(model.totals[1].value).toBe('4.88');
+    expect(model.totals[2].value).toBe('5');
+    expect(model.totals[3].value).toBe('450 ₪');
+    expect(model.totals[3].emphasis).toBe(true);
+  });
+
+  it('never exposes hourly rate, payment status, internal notes or a version number', () => {
+    const flat = JSON.stringify(model);
+    expect(flat).not.toMatch(/תעריף|שכר שעתי|hourlyRate/i);
+    expect(flat).not.toMatch(/paidAt|PAID|שולם/i);
+    expect(flat).not.toMatch(/הערה פנימית|internal/i);
+    expect(flat).not.toMatch(/גרסה|\bv2\b/i); // version is stored/known but never rendered
+  });
+
+  it('renders unresolved clock times and legacy null paid hours as a dash', () => {
+    const m = buildWorkerReportPdfModel(
+      { workerName: 'x', month: 3, year: 2026, version: 1, publishedAt: null },
+      projectWorkerFacingReport({ shifts: [{ shiftId: 's', date: '2026-03-01', customerName: 'a', shiftLabel: 'אריזה', clockIn: null, clockOut: null, approvedHours: '0', paidHours: null, pay: '0' }], summary: {} }),
+    );
+    expect(m.subtitle).toHaveLength(2); // no publication line when unpublished
+    expect(m.table.rows[0][4]).toBe('—');
+    expect(m.table.rows[0][5]).toBe('—');
+    expect(m.table.rows[0][7]).toBe('—'); // legacy null paid hours
+  });
+});
+
+describe('hebrewMonthYear', () => {
+  it('maps 1-based months to Hebrew names with the year', () => {
+    expect(hebrewMonthYear(1, 2026)).toBe('ינואר 2026');
+    expect(hebrewMonthYear(7, 2026)).toBe('יולי 2026');
+    expect(hebrewMonthYear(12, 2025)).toBe('דצמבר 2025');
   });
 });

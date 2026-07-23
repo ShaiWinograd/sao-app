@@ -1,4 +1,4 @@
-import { roundToHalfHour } from './customer-report';
+import { formatShekel, roundToHalfHour } from './customer-report';
 
 // Worker monthly-report pay math (spec §19).
 //
@@ -153,4 +153,89 @@ export function buildWorkerReportPdfLines(
   if (projected.summary.totalPaidHours != null) lines.push(`סה"כ שעות לתשלום: ${projected.summary.totalPaidHours}`);
   lines.push(`סה"כ לחודש: ${nis(projected.summary.total)}`);
   return lines;
+}
+
+// ─── Worker-facing PDF layout model (pure, RTL Hebrew, structured cells) ───────
+// Structured cell-based layout model for the worker monthly-report PDF, mirroring
+// the customer report's approach (buildCustomerReportPdfModel): each value sits
+// in its own right-aligned cell so Hebrew text and numeric/time/currency tokens
+// never reorder against each other under the bidi algorithm. Keeping the layout
+// as data makes it unit-testable without parsing the binary PDF. Reads the
+// projected snapshot VERBATIM — no recomputation — so published historical
+// versions always render their own immutable stored values. EXCLUDED (worker-
+// facing): hourly rate, daily-rate breakdown, payment status, paidAt, internal
+// owner notes, version number, and any other worker's data.
+
+export type WorkerReportPdfModel = {
+  title: string;
+  subtitle: string[];
+  // Columns are listed right-to-left: index 0 renders at the far right.
+  table: { headers: string[]; rows: string[][] };
+  totals: Array<{ label: string; value: string; emphasis?: boolean }>;
+};
+
+const HEBREW_MONTHS = [
+  'ינואר',
+  'פברואר',
+  'מרץ',
+  'אפריל',
+  'מאי',
+  'יוני',
+  'יולי',
+  'אוגוסט',
+  'ספטמבר',
+  'אוקטובר',
+  'נובמבר',
+  'דצמבר',
+] as const;
+
+/** "יולי 2026" — Hebrew month name + year (month is 1-based). */
+export function hebrewMonthYear(month: number, year: number): string {
+  const name = HEBREW_MONTHS[(Number(month) || 1) - 1] ?? String(month);
+  return `${name} ${year}`;
+}
+
+export function buildWorkerReportPdfModel(
+  meta: WorkerReportPdfMeta,
+  projected: ReturnType<typeof projectWorkerFacingReport>,
+): WorkerReportPdfModel {
+  // meta.version is accepted (used elsewhere) but intentionally NOT rendered —
+  // the worker-facing PDF must never expose an internal version number.
+  const subtitle = [`עובדת: ${meta.workerName}`, `חודש: ${hebrewMonthYear(meta.month, meta.year)}`];
+  if (meta.publishedAt) subtitle.push(`תאריך פרסום: ${pdfDateTime(meta.publishedAt)}`);
+
+  const headers = [
+    'תאריך',
+    'לקוחה',
+    'סוג עבודה',
+    'תפקיד',
+    'כניסה',
+    'יציאה',
+    'שעות נוכחות',
+    'שעות לתשלום',
+    'סכום',
+  ];
+  const rows = projected.shifts.map((s: any) => [
+    pdfDay(s.date),
+    s.customerName || '—',
+    s.jobTypeLabel || '—',
+    s.roleLabel || '—',
+    s.clockIn ?? '—',
+    s.clockOut ?? '—',
+    String(s.approvedHours),
+    s.paidHours != null ? String(s.paidHours) : '—',
+    formatShekel(Number(s.dayTotal) || 0),
+  ]);
+
+  const totals: WorkerReportPdfModel['totals'] = [
+    { label: 'ימי עבודה', value: String(projected.summary.workdays) },
+    { label: 'שעות נוכחות', value: String(projected.summary.totalApprovedHours) },
+    {
+      label: 'שעות לתשלום',
+      value: projected.summary.totalPaidHours != null ? String(projected.summary.totalPaidHours) : '—',
+    },
+    { label: 'סכום חודשי', value: formatShekel(Number(projected.summary.total) || 0), emphasis: true },
+  ];
+
+  return { title: 'דוח חודשי לעובדת', subtitle, table: { headers, rows }, totals };
 }
