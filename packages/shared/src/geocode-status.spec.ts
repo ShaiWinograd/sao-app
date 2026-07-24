@@ -4,7 +4,9 @@ import {
   geocodeMonitoringActive,
   geocodeMonitoringState,
   geocodeMonitoringStateLabel,
+  geocodeReasonExplanation,
   geocodeStatusLabel,
+  isRetryableGeocodeReason,
   type GeocodeStatus,
 } from './geocode-status';
 
@@ -65,5 +67,38 @@ describe('Hebrew labels', () => {
 describe('GEOCODE_STATUSES', () => {
   it('lists exactly the four Prisma enum values, NOT_REQUESTED first (the default)', () => {
     expect(GEOCODE_STATUSES).toEqual(['NOT_REQUESTED', 'RESOLVED', 'NEEDS_REVIEW', 'FAILED']);
+  });
+});
+
+describe('isRetryableGeocodeReason', () => {
+  it('is retryable only for a transient provider outage', () => {
+    expect(isRetryableGeocodeReason('PROVIDER_UNAVAILABLE')).toBe(true);
+  });
+  it('is not retryable for results that need the owner to correct the address', () => {
+    for (const r of ['NO_MATCH', 'CITY_MISMATCH', 'AMBIGUOUS', 'NOT_HOUSE_LEVEL', 'CENTROID_RESULT', 'LOW_CONFIDENCE', 'INVALID_QUERY', null]) {
+      expect(isRetryableGeocodeReason(r)).toBe(false);
+    }
+  });
+});
+
+describe('geocodeReasonExplanation', () => {
+  it('gives a plain, actionable Hebrew sentence per reason', () => {
+    expect(geocodeReasonExplanation('AMBIGUOUS')).toContain('כמה כתובות');
+    expect(geocodeReasonExplanation('CITY_MISMATCH')).toContain('עיר אחרת');
+    expect(geocodeReasonExplanation('NOT_HOUSE_LEVEL')).toContain('מספר בית');
+    expect(geocodeReasonExplanation('NO_MATCH')).toContain('לא נמצאה');
+    expect(geocodeReasonExplanation('PROVIDER_UNAVAILABLE')).toContain('לנסות שוב');
+  });
+  it('returns no explanation for a successful or absent reason', () => {
+    expect(geocodeReasonExplanation('RESOLVED_EXACT')).toBe('');
+    expect(geocodeReasonExplanation(null)).toBe('');
+    expect(geocodeReasonExplanation(undefined)).toBe('');
+  });
+  it('never exposes a raw reason code, confidence score, or technical error', () => {
+    for (const r of ['AMBIGUOUS', 'CITY_MISMATCH', 'NOT_HOUSE_LEVEL', 'CENTROID_RESULT', 'LOW_CONFIDENCE', 'NO_MATCH', 'PROVIDER_UNAVAILABLE', 'PROVIDER_ERROR', 'INVALID_QUERY', 'CONFIG_ERROR', 'PROVIDER_NOT_CONFIGURED']) {
+      const text = geocodeReasonExplanation(r);
+      expect(text).not.toMatch(/[A-Z_]{3,}/); // no raw codes
+      expect(text).not.toMatch(/0\.\d|confidence|score/i); // no confidence
+    }
   });
 });

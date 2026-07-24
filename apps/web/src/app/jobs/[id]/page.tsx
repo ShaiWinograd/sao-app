@@ -8,6 +8,7 @@ import { ArrowRight, CheckCircle2, RefreshCw, Send, UserCheck, XCircle, Repeat, 
 import { evaluateJobPublishReadiness, MANAGER_SKILL, deriveJobStatusBadge, formatAuditEvent } from '@workforce/shared';
 import { api, authHeaders } from '../../../lib/api';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
+import AddressGeocodeState from '../../../components/geocode/AddressGeocodeState';
 
 type ApiJobSlot = {
   id: string;
@@ -47,7 +48,14 @@ type ApiJobDetail = {
   addressId: string | null;
   jobNotes: string | null;
   workerVisibleNotes: string | null;
-  address?: { fullAddress: string; latitude?: number | null; longitude?: number | null } | null;
+  address?: {
+    fullAddress: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    geocodeStatus?: string | null;
+    geocodeReason?: string | null;
+    normalizedAddress?: string | null;
+  } | null;
   customer: { firstName: string; lastName: string; phone: string; isSystem?: boolean };
   slots: ApiJobSlot[];
   shifts: ApiJobShift[];
@@ -1143,12 +1151,16 @@ export default function JobDetailPage() {
               </button>
             )}
           </div>
-          {job.address && (job.address.latitude == null || job.address.longitude == null) && (
-            <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
-              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-              <span>
-                לכתובת העבודה אין קואורדינטות — ניטור מיקום (כניסה/יציאה מהאזור) אינו פעיל למשמרת זו. הנוכחות אינה מוגנת ע״י כלל 500 מ׳ ותיבדק ידנית לפי הצורך.
-              </span>
+          {job.address && job.addressId && (
+            <div className="mb-3">
+              <AddressGeocodeState
+                addressId={job.addressId}
+                status={job.address.geocodeStatus}
+                reason={job.address.geocodeReason}
+                normalizedAddress={job.address.normalizedAddress}
+                fullAddress={job.address.fullAddress}
+                onChanged={load}
+              />
             </div>
           )}
           {job.shifts.length === 0 ? (
