@@ -71,3 +71,49 @@ export function geocodeMonitoringStateLabel(status: GeocodeStatus | string | nul
       return 'ניטור מיקום לא זמין';
   }
 }
+
+// ─── Owner-facing reason explanations (PBI #217, PR-4) ────────────────────────
+// Turn an internal geocodeReason code into a plain, actionable Hebrew sentence.
+// NEVER expose the raw code, provider confidence, or a technical error string.
+
+/**
+ * True when the failure is transient (a retry may succeed as-is). False for
+ * results that need the owner to CORRECT the address (no match, wrong city,
+ * ambiguous, not house-level, …).
+ */
+export function isRetryableGeocodeReason(reason: string | null | undefined): boolean {
+  return reason === 'PROVIDER_UNAVAILABLE';
+}
+
+/**
+ * Plain, owner-facing Hebrew explanation for a geocode reason. Returns '' for a
+ * successful/absent reason (no explanation needed).
+ */
+export function geocodeReasonExplanation(reason: string | null | undefined): string {
+  switch (reason) {
+    case 'AMBIGUOUS':
+      return 'נמצאו כמה כתובות אפשריות. יש לבחור את הכתובת המדויקת או לתקן אותה.';
+    case 'CITY_MISMATCH':
+      return 'הכתובת שאותרה נמצאת בעיר אחרת מזו שהוזנה. כדאי לתקן את הכתובת.';
+    case 'NOT_HOUSE_LEVEL':
+      return 'לא אותר מספר בית מדויק. יש להוסיף רחוב ומספר בית.';
+    case 'CENTROID_RESULT':
+      return 'אותר מרכז עיר או אזור בלבד, לא כתובת מדויקת. יש להזין רחוב ומספר בית.';
+    case 'LOW_CONFIDENCE':
+      return 'ההתאמה חלקית. כדאי לוודא שהכתובת נכונה.';
+    case 'NO_MATCH':
+      return 'לא נמצאה כתובת מתאימה. יש לתקן את הכתובת ולנסות שוב.';
+    case 'PROVIDER_UNAVAILABLE':
+      return 'שירות איתור הכתובות אינו זמין כרגע. אפשר לנסות שוב עוד רגע.';
+    case 'PROVIDER_ERROR':
+      return 'אירעה תקלה באיתור הכתובת. כדאי לנסות שוב או לתקן את הכתובת.';
+    case 'INVALID_QUERY':
+      return 'הכתובת חסרה או אינה תקינה. יש להזין כתובת מלאה.';
+    case 'CONFIG_ERROR':
+    case 'PROVIDER_NOT_CONFIGURED':
+      return 'איתור הכתובות אינו מופעל כרגע.';
+    case 'RESOLVED_EXACT':
+    default:
+      return '';
+  }
+}
