@@ -630,8 +630,15 @@ export default function DashboardPage() {
   const worksSummary = useMemo(() => {
     const totalWorks = displayedWorks.length;
     const totalRequired = displayedWorks.reduce((sum, work) => sum + work.requiredWorkers, 0);
+    // This top summary block reports agreed-vs-assigned totals on a single
+    // `assignedWorkers.length` basis (assigned/required, open, completion %), so
+    // all three stay internally consistent. The staffing-shortage surfaces (grid
+    // badge, attention cards, daily counter) use `workStaffing` instead.
     const totalAssigned = displayedWorks.reduce((sum, work) => sum + work.assignedWorkers.length, 0);
-    const openSlots = displayedWorks.reduce((sum, work) => sum + workStaffing(work).workerShortageSlots, 0);
+    const openSlots = displayedWorks.reduce(
+      (sum, work) => sum + Math.max(work.requiredWorkers - work.assignedWorkers.length, 0),
+      0,
+    );
     const completionRate = totalRequired > 0 ? Math.round((totalAssigned / totalRequired) * 100) : 0;
 
     return {
