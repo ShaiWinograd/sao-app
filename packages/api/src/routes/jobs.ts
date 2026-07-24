@@ -12,6 +12,7 @@ import { isUnavailableOn } from '@workforce/shared';
 import { evaluateJobCompletion } from '@workforce/shared';
 import type { AvailabilityBlock } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
+import { computeAddressGeocode, getConfiguredProvider } from '../lib/geocoding/service.js';
 import { AppError } from '../lib/errors.js';
 import { lockJob, lockIdempotencyKey } from '../lib/commitment.js';
 import { resolveOrCreateCaseForJob } from '../domain/caseResolution.js';
@@ -438,6 +439,15 @@ export async function jobsRoutes(app: FastifyInstance) {
     //    lock on it and re-check inside the transaction so two concurrent submits
     //    with the same key cannot create two jobs (no DB unique index required).
     let idempotentReplay = false;
+    // Geocode the address text BEFORE opening the transaction so the provider
+    // HTTP call never holds a DB transaction open. Never blocks quick-create:
+    // any failure yields NOT_REQUESTED/FAILED. latitude/longitude are not written
+    // yet — see TODO(PR-5) in lib/geocoding/service.ts.
+    const addressGeo = await computeAddressGeocode({
+      provider: getConfiguredProvider(),
+      fullAddress: body.cityOrAddress.trim(),
+    }).catch(() => ({ apply: null }));
+
     const job = await prisma.$transaction(async (tx) => {
       if (body.idempotencyKey) {
         await lockIdempotencyKey(tx, body.idempotencyKey);
@@ -456,7 +466,7 @@ export async function jobsRoutes(app: FastifyInstance) {
       });
 
       const address = await tx.address.create({
-        data: { customerId, fullAddress: body.cityOrAddress.trim(), label: 'OTHER' },
+        data: { customerId, fullAddress: body.cityOrAddress.trim(), label: 'OTHER', ...(addressGeo.apply ?? {}) },
       });
 
       return tx.job.create({
