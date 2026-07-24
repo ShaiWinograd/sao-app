@@ -9,6 +9,8 @@
 // wired into runtime geofence behavior; later PRs must gate on
 // `geocodeMonitoringActive`.
 
+import { distanceInMeters } from './utils';
+
 /** Mirrors the Prisma `GeocodeStatus` enum. Append-only — never remove a value. */
 export type GeocodeStatus = 'NOT_REQUESTED' | 'RESOLVED' | 'NEEDS_REVIEW' | 'FAILED';
 
@@ -28,6 +30,84 @@ export const GEOCODE_STATUSES: readonly GeocodeStatus[] = [
  */
 export function geocodeMonitoringActive(status: GeocodeStatus | string | null | undefined): boolean {
   return status === 'RESOLVED';
+}
+
+/** A validated monitoring centre — a job address's coordinates safe to geofence. */
+export type MonitoringCoords = { latitude: number; longitude: number };
+
+/**
+ * THE central coordinate gate (PBI #217, PR-5). Returns the job address's
+ * coordinates ONLY when they may drive the §16.4 500 m rule / leaving-area
+ * watcher, i.e. when ALL hold:
+ *   - `geocodeStatus` is exactly `RESOLVED`;
+ *   - latitude & longitude are finite numbers (0 is valid — never treated as falsy);
+ *   - latitude ∈ [-90, 90] and longitude ∈ [-180, 180].
+ * Any other status, or missing/invalid/out-of-range coordinates, returns null so
+ * monitoring stays inactive. This is PERMANENT safety infrastructure: every
+ * runtime coordinate consumer must go through it and must NEVER infer monitoring
+ * eligibility from coordinates alone. Never widen this gate.
+ */
+export function addressMonitoringCoords(
+  address: { geocodeStatus?: string | null; latitude?: number | null; longitude?: number | null } | null | undefined,
+): MonitoringCoords | null {
+  if (!address || address.geocodeStatus !== 'RESOLVED') return null;
+  const { latitude, longitude } = address;
+  if (typeof latitude !== 'number' || typeof longitude !== 'number') return null;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+  return { latitude, longitude };
+}
+
+/** True when the address may actively drive location monitoring (see the gate). */
+export function isAddressMonitoringActive(
+  address: { geocodeStatus?: string | null; latitude?: number | null; longitude?: number | null } | null | undefined,
+): boolean {
+  return addressMonitoringCoords(address) !== null;
+}
+
+/**
+ * Worker/mobile monitoring contract (PBI #217, PR-5). The API exposes job
+ * coordinates to workers ONLY when monitoring is active; otherwise `jobCoords`
+ * is null and `monitoringActive` is false. The client must NOT infer eligibility
+ * from coordinates — it must read `monitoringActive`.
+ */
+export function toWorkerJobMonitoring(
+  address: { geocodeStatus?: string | null; latitude?: number | null; longitude?: number | null } | null | undefined,
+): { monitoringActive: boolean; jobCoords: MonitoringCoords | null } {
+  const jobCoords = addressMonitoringCoords(address);
+  return { monitoringActive: jobCoords !== null, jobCoords };
+}
+
+/** Result of judging a worker's location against a job's monitoring centre. */
+export interface GeofenceEvaluation {
+  /** True only when there is a validated RESOLVED centre AND a worker reading. */
+  locationKnown: boolean;
+  distanceMeters: number | null;
+  /** True when unknown (cannot judge → never treated as out-of-range). */
+  withinRadius: boolean;
+}
+
+/**
+ * Judge a worker's reported position against a job address's monitoring centre
+ * (PBI #217, PR-5). The centre is taken through `addressMonitoringCoords`, so the
+ * 500 m rule is applied ONLY for a validated RESOLVED address. When the centre or
+ * the worker reading is missing/invalid, `locationKnown` is false and the caller
+ * must still allow the action (flag for owner review, never block).
+ */
+export function evaluateGeofence(args: {
+  address: { geocodeStatus?: string | null; latitude?: number | null; longitude?: number | null } | null | undefined;
+  workerLatitude?: number | null;
+  workerLongitude?: number | null;
+  allowedRadiusMeters: number;
+}): GeofenceEvaluation {
+  const centre = addressMonitoringCoords(args.address);
+  const wLat = args.workerLatitude;
+  const wLon = args.workerLongitude;
+  if (!centre || typeof wLat !== 'number' || typeof wLon !== 'number' || !Number.isFinite(wLat) || !Number.isFinite(wLon)) {
+    return { locationKnown: false, distanceMeters: null, withinRadius: true };
+  }
+  const distanceMeters = distanceInMeters(wLat, wLon, centre.latitude, centre.longitude);
+  return { locationKnown: true, distanceMeters, withinRadius: distanceMeters <= args.allowedRadiusMeters };
 }
 
 /** Owner-facing monitoring state derived from the raw status. */

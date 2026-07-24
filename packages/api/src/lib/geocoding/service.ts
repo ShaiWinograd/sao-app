@@ -1,19 +1,12 @@
-// Geocoding persistence service (PBI #217, PR-3). Turns an address's text into
-// the metadata we persist on the Address row. It owns the create/edit/retry
-// rules and the safety invariants; the routes stay thin.
+// Geocoding persistence service (PBI #217, PR-3/PR-5). Turns an address's text
+// into the metadata + coordinates we persist on the Address row. It owns the
+// create/edit/retry rules and the safety invariants; the routes stay thin.
 //
-// ─────────────────────────────────────────────────────────────────────────────
-// TODO(PR-5): Validated coordinates are intentionally deferred until the RESOLVED
-// consumer gate is deployed. Attendance (§16.1) and the mobile leaving-area
-// watcher (§16.4) read Address.latitude/longitude DIRECTLY, so writing coordinates
-// here would activate the 500 m rule and the watcher before an explicit
-// `geocodeStatus === 'RESOLVED' && lat/lon present` gate exists. PR-3 therefore
-// NEVER writes latitude/longitude (they stay NULL for every status, RESOLVED
-// included). PR-5 lands atomically: (1) gate the attendance API consumers, (2)
-// gate the mobile watcher payload/consumer, (3) only then persist RESOLVED
-// coordinates, (4) keep non-RESOLVED coordinates null, (5) add integration tests.
-// The provider's coordinates exist only in memory during this request.
-// ─────────────────────────────────────────────────────────────────────────────
+// COORDINATES (PR-5): latitude/longitude are persisted ONLY for a validated
+// RESOLVED result. NOT_REQUESTED / NEEDS_REVIEW / FAILED always keep both null.
+// The runtime coordinate consumers are gated by `addressMonitoringCoords`
+// (@workforce/shared) which additionally requires status === 'RESOLVED', so a
+// stray coordinate can never activate monitoring on its own.
 
 import type { GeocodeStatus } from '@workforce/shared';
 import { createAzureMapsProvider } from './azureMapsProvider.js';
@@ -21,11 +14,13 @@ import { decideGeocode } from './decision.js';
 import type { GeocodeProvider, GeocodeQuery } from './types.js';
 
 /**
- * The geocoding fields PR-3 may write to an Address. NOTE: `latitude` and
- * `longitude` are deliberately absent — see the TODO(PR-5) above.
+ * The geocoding fields we may write to an Address. `latitude`/`longitude` are
+ * populated ONLY for RESOLVED (null for every other status).
  */
 export interface AddressGeoPersistence {
   geocodeStatus: GeocodeStatus;
+  latitude: number | null;
+  longitude: number | null;
   normalizedAddress: string | null;
   geocodeProvider: string | null;
   geocodeProviderPlaceId: string | null;
@@ -63,6 +58,8 @@ function sameAddressText(a: string, b: string): boolean {
 function inactive(status: GeocodeStatus, reason: string, now: Date): AddressGeoPersistence {
   return {
     geocodeStatus: status,
+    latitude: null,
+    longitude: null,
     normalizedAddress: null,
     geocodeProvider: null,
     geocodeProviderPlaceId: null,
@@ -72,26 +69,36 @@ function inactive(status: GeocodeStatus, reason: string, now: Date): AddressGeoP
 }
 
 /**
- * Build the Azure Maps–backed provider from the server-only `AZURE_MAPS_KEY`.
- * Returns null when the key is unset, so geocoding is simply skipped (addresses
- * stay NOT_REQUESTED) rather than failing. The key is read ONLY here and never
- * logged or returned.
+ * Geocoding runs only when BOTH the runtime kill switch is on AND the server key
+ * is configured. Either off → no provider → no lookup → addresses stay
+ * NOT_REQUESTED. This lets us deploy the code with geocoding fully disabled and
+ * enable it later without a code change; and disable it instantly (operational
+ * rollback) without touching the safety gate or any data. Server-only — never
+ * exposed to web/mobile.
+ */
+export function geocodingEnabled(): boolean {
+  return process.env.ADDRESS_GEOCODING_ENABLED === 'true' && Boolean(process.env.AZURE_MAPS_KEY);
+}
+
+/**
+ * Build the Azure Maps–backed provider. Returns null unless geocoding is enabled
+ * (flag on + key set), so geocoding is simply skipped rather than failing. The
+ * key is read ONLY here and never logged or returned.
  */
 export function getConfiguredProvider(): GeocodeProvider | null {
-  const apiKey = process.env.AZURE_MAPS_KEY;
-  if (!apiKey) return null;
-  return createAzureMapsProvider({ apiKey });
+  if (!geocodingEnabled()) return null;
+  return createAzureMapsProvider({ apiKey: process.env.AZURE_MAPS_KEY as string });
 }
 
 /**
  * Decide the geocode fields to persist for a create/edit/retry. Coordinates are
- * intentionally never written in PR-3 (see TODO(PR-5)). Safety rules:
- *  - RESOLVED / NEEDS_REVIEW store the validated metadata + status + reason.
- *  - FAILED stores the failure status + reason with no metadata.
+ * written ONLY for RESOLVED (null for every other status). Safety rules:
+ *  - RESOLVED stores validated metadata + coordinates; NEEDS_REVIEW stores
+ *    metadata with null coordinates; FAILED stores status + reason only.
  *  - A transient provider failure on an UNCHANGED address (owner retry) preserves
- *    the prior row (never wipes a previously valid geocode).
- *  - Changing the address text invalidates the previous metadata before
- *    revalidation (the new result overwrites it).
+ *    the prior row (never wipes a previously valid geocode or its coordinates).
+ *  - Changing the address text invalidates the previous metadata/coordinates
+ *    before revalidation (the new result overwrites it).
  *  - Client-supplied coordinates are never consulted — status comes only from the
  *    server's own lookup + decideGeocode.
  */
@@ -114,11 +121,33 @@ export async function computeAddressGeocode(args: ComputeAddressGeocodeArgs): Pr
   const response = await args.provider.geocode(query);
   const decision = decideGeocode(query, response);
 
-  if (decision.status === 'RESOLVED' || decision.status === 'NEEDS_REVIEW') {
+  if (decision.status === 'RESOLVED') {
     const c = decision.candidate!;
+    // Persist validated coordinates ONLY for RESOLVED. Consumers are additionally
+    // gated by addressMonitoringCoords (status must be RESOLVED + coords valid).
     return {
       apply: {
-        geocodeStatus: decision.status,
+        geocodeStatus: 'RESOLVED',
+        latitude: c.latitude,
+        longitude: c.longitude,
+        normalizedAddress: c.formattedAddress || null,
+        geocodeProvider: c.provider,
+        geocodeProviderPlaceId: c.providerPlaceId,
+        geocodedAt: now,
+        geocodeReason: decision.reason,
+      },
+    };
+  }
+
+  if (decision.status === 'NEEDS_REVIEW') {
+    const c = decision.candidate!;
+    // Store the candidate metadata for owner review, but NEVER its coordinates —
+    // a non-RESOLVED row must keep latitude/longitude null so it can't activate.
+    return {
+      apply: {
+        geocodeStatus: 'NEEDS_REVIEW',
+        latitude: null,
+        longitude: null,
         normalizedAddress: c.formattedAddress || null,
         geocodeProvider: c.provider,
         geocodeProviderPlaceId: c.providerPlaceId,
@@ -129,7 +158,9 @@ export async function computeAddressGeocode(args: ComputeAddressGeocodeArgs): Pr
   }
 
   // FAILED: a transient outage on an unchanged address must not wipe a prior
-  // valid geocode.
+  // valid geocode (preserve prior status, coordinates, and metadata).
   if (decision.transient && !textChanged) return { apply: null };
+  // Terminal failure, or a transient failure after the text changed → inactive,
+  // with any stale coordinates cleared to null.
   return { apply: inactive('FAILED', decision.reason, now) };
 }

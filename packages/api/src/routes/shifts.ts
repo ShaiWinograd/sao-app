@@ -6,6 +6,7 @@ import {
   JoinRequestSchema, ApproveReplacementSchema, WorkerReplacementRequestSchema, ProposeSwapSchema, SwapDecisionSchema, OwnerSwapSchema,
   UserRole, isUnavailableOn, MANAGER_SKILL,
   decideApproval, nextBackupToPromote, hoursUntil, DROP_LOCK_HOURS, type StaffingRole,
+  toWorkerJobMonitoring,
 } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
 import { assertWorkerFreeOnDate, lockJob } from '../lib/commitment.js';
@@ -532,12 +533,22 @@ export async function shiftsRoutes(app: FastifyInstance) {
       );
       const isTeamLeader = !!viewer && !!leaderSlot && leaderSlot.filledByShiftId === safe.id && safe.workerId === viewer.id;
       const { customer, slots, ...jobRest } = (safe.job ?? {}) as any;
+      // Location monitoring contract (§16.4): expose coordinates ONLY when the
+      // address is a validated RESOLVED geocode. Strip the raw coordinates and
+      // geocode internals from the worker payload; the client reads
+      // `monitoringActive` + `jobCoords` and must not infer eligibility itself.
+      const { latitude, longitude, geocodeStatus, geocodeReason, geocodeProvider, geocodeProviderPlaceId, geocodedAt, normalizedAddress, ...addressSafe } =
+        (jobRest.address ?? {}) as any;
+      const monitoring = toWorkerJobMonitoring(jobRest.address);
       safe.job = {
         ...jobRest,
+        address: jobRest.address ? addressSafe : jobRest.address,
         customer: customer
           ? { firstName: customer.firstName, lastName: customer.lastName, ...(isTeamLeader ? { phone: customer.phone } : {}) }
           : customer,
       };
+      safe.monitoringActive = monitoring.monitoringActive;
+      safe.jobCoords = monitoring.jobCoords;
       return safe;
     }
     return shift;
