@@ -42,6 +42,7 @@ describe('decideGeocode — NEEDS_REVIEW (never activates monitoring)', () => {
     ['non-address (POI/other)', ok([candidate({ precision: 'OTHER' })]), 'NOT_HOUSE_LEVEL'],
     ['ambiguous close runner-up', ok([candidate({ confidence: 0.9, providerPlaceId: 'a' }), candidate({ confidence: 0.85, providerPlaceId: 'b' })]), 'AMBIGUOUS'],
     ['different city', ok([candidate({ city: 'חיפה' })]), 'CITY_MISMATCH'],
+    ['candidate has no city while a city is expected', ok([candidate({ city: null })]), 'CITY_MISMATCH'],
     ['low confidence', ok([candidate({ confidence: 0.6 })]), 'LOW_CONFIDENCE'],
   ];
   it.each(cases)('flags %s as NEEDS_REVIEW (%s)', (_name, response, reason) => {
