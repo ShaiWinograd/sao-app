@@ -2,3 +2,4 @@
 export * from './types.js';
 export * from './decision.js';
 export * from './azureMapsProvider.js';
+export * from './service.js';
