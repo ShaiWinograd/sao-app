@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   GEOCODE_STATUSES,
+  addressMonitoringCoords,
+  evaluateGeofence,
   geocodeMonitoringActive,
   geocodeMonitoringState,
   geocodeMonitoringStateLabel,
   geocodeReasonExplanation,
   geocodeStatusLabel,
+  isAddressMonitoringActive,
   isRetryableGeocodeReason,
+  toWorkerJobMonitoring,
   type GeocodeStatus,
 } from './geocode-status';
 
@@ -67,6 +71,99 @@ describe('Hebrew labels', () => {
 describe('GEOCODE_STATUSES', () => {
   it('lists exactly the four Prisma enum values, NOT_REQUESTED first (the default)', () => {
     expect(GEOCODE_STATUSES).toEqual(['NOT_REQUESTED', 'RESOLVED', 'NEEDS_REVIEW', 'FAILED']);
+  });
+});
+
+describe('addressMonitoringCoords (central §16.4 coordinate gate)', () => {
+  const RESOLVED = (over: Record<string, unknown> = {}) => ({ geocodeStatus: 'RESOLVED', latitude: 32.06, longitude: 34.77, ...over });
+
+  it('returns coordinates only for RESOLVED with valid, in-range lat/lon', () => {
+    expect(addressMonitoringCoords(RESOLVED())).toEqual({ latitude: 32.06, longitude: 34.77 });
+    expect(isAddressMonitoringActive(RESOLVED())).toBe(true);
+  });
+
+  it('treats 0/0 as valid coordinates (never rejected for being falsy)', () => {
+    expect(addressMonitoringCoords(RESOLVED({ latitude: 0, longitude: 0 }))).toEqual({ latitude: 0, longitude: 0 });
+  });
+
+  it('returns null for every non-RESOLVED status even if stray coordinates exist', () => {
+    for (const st of ['NOT_REQUESTED', 'NEEDS_REVIEW', 'FAILED', null, undefined, 'resolved']) {
+      expect(addressMonitoringCoords(RESOLVED({ geocodeStatus: st }))).toBeNull();
+      expect(isAddressMonitoringActive(RESOLVED({ geocodeStatus: st }))).toBe(false);
+    }
+  });
+
+  it('returns null for missing, non-numeric, non-finite, or out-of-range coordinates', () => {
+    expect(addressMonitoringCoords(RESOLVED({ latitude: null }))).toBeNull();
+    expect(addressMonitoringCoords(RESOLVED({ longitude: undefined }))).toBeNull();
+    expect(addressMonitoringCoords(RESOLVED({ latitude: '32.06' }))).toBeNull();
+    expect(addressMonitoringCoords(RESOLVED({ latitude: Number.NaN }))).toBeNull();
+    expect(addressMonitoringCoords(RESOLVED({ longitude: Infinity }))).toBeNull();
+    expect(addressMonitoringCoords(RESOLVED({ latitude: 91 }))).toBeNull();
+    expect(addressMonitoringCoords(RESOLVED({ latitude: -90.5 }))).toBeNull();
+    expect(addressMonitoringCoords(RESOLVED({ longitude: 181 }))).toBeNull();
+    expect(addressMonitoringCoords(RESOLVED({ longitude: -200 }))).toBeNull();
+  });
+
+  it('returns null for a null/undefined address', () => {
+    expect(addressMonitoringCoords(null)).toBeNull();
+    expect(addressMonitoringCoords(undefined)).toBeNull();
+  });
+});
+
+describe('toWorkerJobMonitoring (worker/mobile contract)', () => {
+  it('exposes jobCoords only when monitoring is active (RESOLVED + valid coords)', () => {
+    expect(toWorkerJobMonitoring({ geocodeStatus: 'RESOLVED', latitude: 32.06, longitude: 34.77 })).toEqual({
+      monitoringActive: true,
+      jobCoords: { latitude: 32.06, longitude: 34.77 },
+    });
+  });
+
+  it('omits coordinates (jobCoords null, monitoringActive false) for any inactive address', () => {
+    for (const a of [
+      { geocodeStatus: 'NEEDS_REVIEW', latitude: 32.06, longitude: 34.77 },
+      { geocodeStatus: 'FAILED', latitude: 32.06, longitude: 34.77 },
+      { geocodeStatus: 'NOT_REQUESTED', latitude: 32.06, longitude: 34.77 },
+      { geocodeStatus: 'RESOLVED', latitude: null, longitude: null },
+      { geocodeStatus: 'RESOLVED', latitude: 999, longitude: 34.77 },
+      null,
+    ]) {
+      expect(toWorkerJobMonitoring(a as any)).toEqual({ monitoringActive: false, jobCoords: null });
+    }
+  });
+});
+
+describe('evaluateGeofence (attendance distance/gate)', () => {
+  const RESOLVED = { geocodeStatus: 'RESOLVED', latitude: 32.0, longitude: 34.8 };
+
+  it('judges distance only for a validated RESOLVED address + worker reading', () => {
+    const near = evaluateGeofence({ address: RESOLVED, workerLatitude: 32.0005, workerLongitude: 34.8, allowedRadiusMeters: 500 });
+    expect(near.locationKnown).toBe(true);
+    expect(near.withinRadius).toBe(true);
+    expect(near.distanceMeters).toBeGreaterThan(0);
+
+    const far = evaluateGeofence({ address: RESOLVED, workerLatitude: 32.1, workerLongitude: 34.8, allowedRadiusMeters: 500 });
+    expect(far.locationKnown).toBe(true);
+    expect(far.withinRadius).toBe(false);
+  });
+
+  it('never judges distance for a non-RESOLVED address (locationKnown=false, withinRadius=true)', () => {
+    for (const st of ['NOT_REQUESTED', 'NEEDS_REVIEW', 'FAILED']) {
+      const g = evaluateGeofence({ address: { geocodeStatus: st, latitude: 32.0, longitude: 34.8 }, workerLatitude: 32.0, workerLongitude: 34.8, allowedRadiusMeters: 500 });
+      expect(g).toEqual({ locationKnown: false, distanceMeters: null, withinRadius: true });
+    }
+  });
+
+  it('is unknown (not out-of-range) when the worker reading is missing/denied', () => {
+    const g = evaluateGeofence({ address: RESOLVED, workerLatitude: null, workerLongitude: null, allowedRadiusMeters: 500 });
+    expect(g).toEqual({ locationKnown: false, distanceMeters: null, withinRadius: true });
+  });
+
+  it('handles a 0/0 worker reading against a 0/0 RESOLVED centre as known', () => {
+    const g = evaluateGeofence({ address: { geocodeStatus: 'RESOLVED', latitude: 0, longitude: 0 }, workerLatitude: 0, workerLongitude: 0, allowedRadiusMeters: 500 });
+    expect(g.locationKnown).toBe(true);
+    expect(g.distanceMeters).toBe(0);
+    expect(g.withinRadius).toBe(true);
   });
 });
 

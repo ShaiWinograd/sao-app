@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
 import { ClockInSchema, ClockOutSchema, AttendanceCorrectionSchema } from '@workforce/shared';
-import { distanceInMeters } from '@workforce/shared';
+import { evaluateGeofence } from '@workforce/shared';
 import { evaluateJobCompletion } from '@workforce/shared';
 import { endOfNextDayDeadline, areaExitDeadline } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
@@ -55,26 +55,20 @@ export async function attendanceRoutes(app: FastifyInstance) {
       });
     }
 
-    // Job geofence centre (the address's geocoded coordinates). Nullable until the
-    // address is geocoded — when absent we cannot judge range, so clock-in is
-    // allowed and simply not distance-validated.
-    const jobLat = shift.job.address?.latitude ?? null;
-    const jobLon = shift.job.address?.longitude ?? null;
-
     const radiusSetting = await prisma.appSetting.findUnique({
       where: { key: 'DEFAULT_LOCATION_RADIUS_METERS' },
     });
     const allowedRadius = shift.job.locationRadiusMeters ?? Number(radiusSetting?.value ?? 500);
 
-    let distanceMeters: number | null = null;
-    let withinRadius = true;
-    let locationKnown = false;
-
-    if (jobLat !== null && jobLon !== null && body.latitude != null && body.longitude != null) {
-      locationKnown = true;
-      distanceMeters = distanceInMeters(body.latitude, body.longitude, jobLat, jobLon);
-      withinRadius = distanceMeters <= allowedRadius;
-    }
+    // Geofence judgement — applied ONLY for a validated RESOLVED address (central
+    // gate). Non-RESOLVED / missing coords → locationKnown=false → flagged for
+    // owner review; a clock-in is NEVER blocked on this.
+    const { locationKnown, distanceMeters, withinRadius } = evaluateGeofence({
+      address: shift.job.address,
+      workerLatitude: body.latitude,
+      workerLongitude: body.longitude,
+      allowedRadiusMeters: allowedRadius,
+    });
 
     // §16.1: a clock-in is always allowed. It is final automatically only when it
     // is a normal in-range clock-in with no worker review note. Out-of-range, an
@@ -168,20 +162,18 @@ export async function attendanceRoutes(app: FastifyInstance) {
     });
     if (!shift) return reply.status(404).send({ error: 'Shift not found' });
 
-    const jobLat = shift.job.address?.latitude ?? null;
-    const jobLon = shift.job.address?.longitude ?? null;
     const allowedRadius = shift.job.locationRadiusMeters;
-    let distanceMeters = 0;
-    let isWithinRadius = true;
-    if (jobLat != null && jobLon != null) {
-      distanceMeters = distanceInMeters(latitude, longitude, jobLat, jobLon);
-      isWithinRadius = distanceMeters <= allowedRadius;
-    }
+    const { distanceMeters, withinRadius: isWithinRadius } = evaluateGeofence({
+      address: shift.job.address,
+      workerLatitude: latitude,
+      workerLongitude: longitude,
+      allowedRadiusMeters: allowedRadius,
+    });
 
     const check = await prisma.locationCheck.create({
-      data: { shiftId, latitude, longitude, distanceMeters, isWithinRadius },
+      data: { shiftId, latitude, longitude, distanceMeters: distanceMeters ?? 0, isWithinRadius },
     });
-    return { check, isWithinRadius, distanceMeters, allowedRadius };
+    return { check, isWithinRadius, distanceMeters: distanceMeters ?? 0, allowedRadius };
   });
 
   // Worker reports leaving the geofence (§16.4). Persists the FIRST confirmed exit

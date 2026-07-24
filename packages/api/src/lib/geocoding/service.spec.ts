@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, afterEach, vi } from 'vitest';
 import { CreateAddressSchema } from '@workforce/shared';
-import { computeAddressGeocode } from './service.js';
+import { computeAddressGeocode, geocodingEnabled, getConfiguredProvider } from './service.js';
 import type { GeocodeCandidate, GeocodeProvider, GeocodeProviderResponse } from './types.js';
 
 function candidate(over: Partial<GeocodeCandidate> = {}): GeocodeCandidate {
@@ -29,11 +29,13 @@ const PERSIST_KEYS = [
   'geocodeProvider',
   'geocodeProviderPlaceId',
   'geocodeReason',
+  'latitude',
+  'longitude',
   'normalizedAddress',
 ].sort();
 
-describe('computeAddressGeocode — PR-3 persistence (no coordinates written)', () => {
-  it('resolved create: persists RESOLVED + validated metadata, but NEVER latitude/longitude', async () => {
+describe('computeAddressGeocode — PR-5 persistence (RESOLVED coordinates only)', () => {
+  it('resolved create: persists RESOLVED + validated metadata AND coordinates', async () => {
     const r = await computeAddressGeocode({
       provider: provider(ok([candidate()])),
       fullAddress: 'הרצל 10, תל אביב',
@@ -41,17 +43,26 @@ describe('computeAddressGeocode — PR-3 persistence (no coordinates written)', 
     });
     expect(r.apply).not.toBeNull();
     expect(r.apply!.geocodeStatus).toBe('RESOLVED');
+    expect(r.apply!.latitude).toBe(32.06);
+    expect(r.apply!.longitude).toBe(34.77);
     expect(r.apply!.normalizedAddress).toBe('הרצל 10, תל אביב');
     expect(r.apply!.geocodeProvider).toBe('azure-maps');
     expect(r.apply!.geocodeProviderPlaceId).toBe('place-1');
     expect(r.apply!.geocodedAt).toBeInstanceOf(Date);
-    // Acceptance: coordinates are deferred to PR-5 — the shape has no lat/lon.
-    expect(Object.keys(r.apply!)).not.toContain('latitude');
-    expect(Object.keys(r.apply!)).not.toContain('longitude');
     expect(Object.keys(r.apply!).sort()).toEqual(PERSIST_KEYS);
   });
 
-  it('ambiguous result → NEEDS_REVIEW (inactive), metadata stored, no coordinates', async () => {
+  it('resolved create at 0/0 persists the zero coordinates (not dropped as falsy)', async () => {
+    const r = await computeAddressGeocode({
+      provider: provider(ok([candidate({ latitude: 0, longitude: 0 })])),
+      fullAddress: 'קו המשווה',
+    });
+    expect(r.apply!.geocodeStatus).toBe('RESOLVED');
+    expect(r.apply!.latitude).toBe(0);
+    expect(r.apply!.longitude).toBe(0);
+  });
+
+  it('ambiguous result → NEEDS_REVIEW (inactive): metadata stored, coordinates NULL', async () => {
     const r = await computeAddressGeocode({
       provider: provider(ok([candidate({ confidence: 0.9, providerPlaceId: 'a' }), candidate({ confidence: 0.85, providerPlaceId: 'b' })])),
       fullAddress: 'הרצל, תל אביב',
@@ -59,6 +70,8 @@ describe('computeAddressGeocode — PR-3 persistence (no coordinates written)', 
     });
     expect(r.apply!.geocodeStatus).toBe('NEEDS_REVIEW');
     expect(r.apply!.geocodeReason).toBe('AMBIGUOUS');
+    expect(r.apply!.latitude).toBeNull();
+    expect(r.apply!.longitude).toBeNull();
     expect(Object.keys(r.apply!).sort()).toEqual(PERSIST_KEYS);
   });
 
@@ -99,6 +112,9 @@ describe('computeAddressGeocode — PR-3 persistence (no coordinates written)', 
     expect(failed.apply!.geocodeStatus).toBe('FAILED');
     expect(failed.apply!.normalizedAddress).toBeNull();
     expect(failed.apply!.geocodeProviderPlaceId).toBeNull();
+    // Stale coordinates are cleared on a changed-address failure.
+    expect(failed.apply!.latitude).toBeNull();
+    expect(failed.apply!.longitude).toBeNull();
   });
 
   it('same address + transient failure (owner retry) preserves the prior row', async () => {
@@ -174,5 +190,37 @@ describe('computeAddressGeocode — PR-3 persistence (no coordinates written)', 
     });
     expect(edit.apply!.geocodeStatus).toBe('NOT_REQUESTED');
     expect(edit.apply!.geocodeReason).toBe('PROVIDER_NOT_CONFIGURED');
+  });
+});
+
+describe('geocodingEnabled / getConfiguredProvider (feature flag + key)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('is disabled unless BOTH the flag is on AND the key is set', () => {
+    vi.stubEnv('ADDRESS_GEOCODING_ENABLED', 'false');
+    vi.stubEnv('AZURE_MAPS_KEY', 'k');
+    expect(geocodingEnabled()).toBe(false);
+    expect(getConfiguredProvider()).toBeNull();
+
+    vi.stubEnv('ADDRESS_GEOCODING_ENABLED', 'true');
+    vi.stubEnv('AZURE_MAPS_KEY', '');
+    expect(geocodingEnabled()).toBe(false);
+    expect(getConfiguredProvider()).toBeNull();
+  });
+
+  it('is enabled only when the flag is exactly "true" and a key exists', () => {
+    vi.stubEnv('ADDRESS_GEOCODING_ENABLED', 'true');
+    vi.stubEnv('AZURE_MAPS_KEY', 'server-key');
+    expect(geocodingEnabled()).toBe(true);
+    expect(getConfiguredProvider()).not.toBeNull();
+  });
+
+  it('a lookup with the flag off performs NO provider call (provider is null)', async () => {
+    vi.stubEnv('ADDRESS_GEOCODING_ENABLED', 'false');
+    vi.stubEnv('AZURE_MAPS_KEY', 'server-key');
+    const r = await computeAddressGeocode({ provider: getConfiguredProvider(), fullAddress: 'הרצל 10, תל אביב' });
+    expect(r.apply).toBeNull(); // create → column default NOT_REQUESTED, no network
   });
 });

@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { CreateJobSchema, UpdateJobSchema } from '@workforce/shared';
 import { UserRole, MANAGER_SKILL } from '@workforce/shared';
+import { toWorkerJobMonitoring } from '@workforce/shared';
 import { GENERAL_RESERVATION_CUSTOMER_ID } from '@workforce/shared';
 import { validateServiceAddition } from '@workforce/shared';
 import { evaluateJobPublishReadiness } from '@workforce/shared';
@@ -327,8 +328,17 @@ export async function jobsRoutes(app: FastifyInstance) {
           .map((s: any) => s.filledByShiftId),
       );
       const isTeamLeader = !!myWorker && (shifts ?? []).some((s: any) => s.workerId === myWorker.id && leaderShiftIds.has(s.id));
+      // Location monitoring contract (§16.4): coordinates are exposed to workers
+      // ONLY via monitoringActive/jobCoords when the address is a validated
+      // RESOLVED geocode. Strip the raw coordinates + geocode internals.
+      const { latitude, longitude, geocodeStatus, geocodeReason, geocodeProvider, geocodeProviderPlaceId, geocodedAt, normalizedAddress, ...addressSafe } =
+        ((rest as any).address ?? {}) as any;
+      const monitoring = toWorkerJobMonitoring((rest as any).address);
       return {
         ...rest,
+        address: (rest as any).address ? addressSafe : (rest as any).address,
+        monitoringActive: monitoring.monitoringActive,
+        jobCoords: monitoring.jobCoords,
         customer: {
           firstName: customer.firstName,
           lastName: customer.lastName,

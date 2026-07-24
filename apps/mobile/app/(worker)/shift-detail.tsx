@@ -237,9 +237,12 @@ export default function ShiftDetailScreen() {
   });
 
   // §16.3/§16.4 leaving-area watcher for this shift (active only while clocked in).
+  // The API exposes coordinates ONLY when monitoring is active (validated RESOLVED
+  // address). The client trusts `monitoringActive`/`jobCoords` and never infers
+  // eligibility from raw address coordinates.
   const jobCoords =
-    shift?.job?.address?.latitude != null && shift?.job?.address?.longitude != null
-      ? { latitude: shift.job.address.latitude as number, longitude: shift.job.address.longitude as number }
+    shift?.monitoringActive && shift?.jobCoords?.latitude != null && shift?.jobCoords?.longitude != null
+      ? { latitude: shift.jobCoords.latitude as number, longitude: shift.jobCoords.longitude as number }
       : null;
   const areaMonitor = useAttendanceMonitor({
     shiftId: id,

@@ -15,8 +15,8 @@ export async function addressesRoutes(app: FastifyInstance) {
     // Server-side geocoding (PBI #217). Client-supplied coordinates, if any, are
     // ignored — the status is derived only from our own lookup. Never blocks
     // create: any geocode failure yields NOT_REQUESTED/FAILED and proceeds.
-    // NOTE: latitude/longitude are intentionally NOT written yet — see
-    // TODO(PR-5) in lib/geocoding/service.ts.
+    // Coordinates are written only for a validated RESOLVED result (and consumers
+    // are additionally gated by addressMonitoringCoords).
     const geo = await computeAddressGeocode({ provider: getConfiguredProvider(), fullAddress: body.fullAddress }).catch(
       () => ({ apply: null }),
     );
