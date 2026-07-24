@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUser, useAuth } from '@clerk/nextjs';
-import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone, workerRowBadge, fillsRequiredSlot, workerRowAssignments } from '@workforce/shared';
+import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone, workerRowBadge, fillsRequiredSlot, workerRowAssignments, getStaffingIssueBreakdown } from '@workforce/shared';
 import { AlertTriangle, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Info, Plus, XCircle } from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
@@ -614,9 +614,26 @@ export default function DashboardPage() {
     };
   }, [cases, customerMode, selectedCustomerId, jobDate]);
 
+  // Single source of truth for staffing shortages (spec §12): the team-leader
+  // slot is a ROLE constraint inside the required headcount, never a substitute
+  // for a missing worker. Total missing-worker count and the missing-leader
+  // warning are computed independently here so the grid, counters and attention
+  // cards all agree.
+  const workStaffing = (work: ActiveWork) =>
+    getStaffingIssueBreakdown({
+      requiredWorkers: work.requiredWorkers,
+      assignedWorkers: work.approvedWorkers,
+      requiresManager: work.requiredTeamLeads > 0,
+      hasAssignedManager: Boolean(work.actualTeamLeadName),
+    });
+
   const worksSummary = useMemo(() => {
     const totalWorks = displayedWorks.length;
     const totalRequired = displayedWorks.reduce((sum, work) => sum + work.requiredWorkers, 0);
+    // This top summary block reports agreed-vs-assigned totals on a single
+    // `assignedWorkers.length` basis (assigned/required, open, completion %), so
+    // all three stay internally consistent. The staffing-shortage surfaces (grid
+    // badge, attention cards, daily counter) use `workStaffing` instead.
     const totalAssigned = displayedWorks.reduce((sum, work) => sum + work.assignedWorkers.length, 0);
     const openSlots = displayedWorks.reduce(
       (sum, work) => sum + Math.max(work.requiredWorkers - work.assignedWorkers.length, 0),
@@ -648,13 +665,14 @@ export default function DashboardPage() {
     const partialSchedulingCases = activeCases.filter((item) => {
       const caseWorks = worksByCaseId.get(item.id) ?? [];
       if (caseWorks.length === 0) return false;
-      return caseWorks.some(
-        (work) => work.approvedWorkers < work.requiredWorkers || (work.requiredTeamLeads > 0 && !work.actualTeamLeadName),
-      );
+      return caseWorks.some((work) => {
+        const breakdown = workStaffing(work);
+        return breakdown.workerShortageSlots > 0 || breakdown.managerShortage;
+      });
     });
 
-    const jobsWithWorkerShortage = futureWorks.filter((work) => work.approvedWorkers < work.requiredWorkers);
-    const jobsMissingManager = futureWorks.filter((work) => work.requiredTeamLeads > 0 && !work.actualTeamLeadName);
+    const jobsWithWorkerShortage = futureWorks.filter((work) => workStaffing(work).workerShortageSlots > 0);
+    const jobsMissingManager = futureWorks.filter((work) => workStaffing(work).managerShortage);
     const attendanceExceptions = futureWorks.filter(
       (work) => (work.status === 'active' || work.status === 'done') && work.assignedWorkers.length > 0,
     );
@@ -706,7 +724,7 @@ export default function DashboardPage() {
         items: jobsWithWorkerShortage.map((work) => ({
           id: String(work.id),
           projectName: work.caseName,
-          issue: `חסרים ${Math.max(work.requiredWorkers - work.requiredTeamLeads - work.assignedWorkers.length, 0)} עובדים`,
+          issue: `חסרים ${workStaffing(work).workerShortageSlots} עובדים`,
           href: `/jobs/${work.id}`,
           dateLabel: toDisplayDateFromDateKey(work.dateKey),
           severity: 'high' as const,
@@ -849,7 +867,7 @@ export default function DashboardPage() {
       const dayWorks = displayedWorks.filter((work) => work.dateKey === dateKey);
       const required = dayWorks.reduce((sum, work) => sum + work.requiredWorkers, 0);
       const assigned = dayWorks.reduce((sum, work) => sum + Math.min(work.approvedWorkers, work.requiredWorkers), 0);
-      const unfilledShifts = dayWorks.filter((work) => work.approvedWorkers < work.requiredWorkers).length;
+      const unfilledShifts = dayWorks.filter((work) => workStaffing(work).workerShortageSlots > 0).length;
       const openSlots = Math.max(required - assigned, 0);
       const coverage = required > 0 ? assigned / required : 1;
       const coverageClass = isNonWorkingDay ? 'bg-gray-300' : coverage >= 1 ? 'bg-emerald-500' : coverage >= 0.75 ? 'bg-amber-500' : 'bg-rose-500';
@@ -872,7 +890,7 @@ export default function DashboardPage() {
   const unassignedWorksByDate = useMemo(() => {
     const map = new Map<string, Array<{ work: ActiveWork; open: number }>>();
     displayedWorks.forEach((work) => {
-      const open = Math.max(work.requiredWorkers - work.requiredTeamLeads - work.approvedWorkers, 0);
+      const open = workStaffing(work).workerShortageSlots;
       if (open > 0) {
         map.set(work.dateKey, [...(map.get(work.dateKey) ?? []), { work, open }]);
       }

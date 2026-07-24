@@ -18,6 +18,10 @@ export type StaffingSummary = {
   actualSlots: number;
 };
 
+// Single source of truth for staffing shortages (spec §12). Total missing-worker
+// count is `requiredWorkers - assignedWorkers` — a reserved shift-leader position
+// is a ROLE constraint WITHIN the required headcount, never a substitute for a
+// missing worker — and the missing-manager warning is reported independently.
 export function getStaffingIssueBreakdown(input: StaffingInsightInput): StaffingIssueBreakdown {
   const workerShortageSlots = Math.max(input.requiredWorkers - input.assignedWorkers, 0);
   const managerShortage = input.requiresManager && !input.hasAssignedManager;

@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { ArrowRight, CheckCircle2, RefreshCw, Send, UserCheck, XCircle, Repeat, AlertTriangle, ArrowUpCircle } from 'lucide-react';
-import { evaluateJobPublishReadiness, MANAGER_SKILL, deriveJobStatusBadge, formatAuditEvent } from '@workforce/shared';
+import { evaluateJobPublishReadiness, MANAGER_SKILL, deriveJobStatusBadge, formatAuditEvent, getStaffingIssueBreakdown } from '@workforce/shared';
 import { api, authHeaders } from '../../../lib/api';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import AddressGeocodeState from '../../../components/geocode/AddressGeocodeState';
@@ -539,8 +539,14 @@ export default function JobDetailPage() {
       (s) => s.joinRequestStatus === 'APPROVED' && (s.assignmentRole === 'REGULAR' || s.assignmentRole === 'TEAM_LEADER'),
     ).length;
     const hasBackup = job.shifts.some((s) => s.joinRequestStatus === 'APPROVED' && s.assignmentRole === 'BACKUP');
+    const breakdown = getStaffingIssueBreakdown({
+      requiredWorkers: job.requiredWorkerCount,
+      assignedWorkers: approvedNormal,
+      requiresManager: requiresLeader,
+      hasAssignedManager: hasLeader,
+    });
     return {
-      missingLeader: requiresLeader && !hasLeader,
+      missingLeader: breakdown.managerShortage,
       canPromoteBackup: hasBackup && approvedNormal < job.requiredWorkerCount,
     };
   }, [job, managerSlots]);
