@@ -25,8 +25,14 @@ let seq = 0;
 const uid = (p: string) => `${p}-${Date.now()}-${seq++}`;
 
 async function clean() {
+  await prisma.customerReportVersion.deleteMany({});
   await prisma.auditLog.deleteMany({});
   await prisma.notification.deleteMany({});
+  await prisma.formSubmission.deleteMany({});
+  await prisma.locationCheck.deleteMany({});
+  await prisma.attendanceCorrection.deleteMany({});
+  await prisma.shiftSwap.deleteMany({});
+  await prisma.replacementRequest.deleteMany({});
   await prisma.shift.deleteMany({});
   await prisma.jobSlot.deleteMany({});
   await prisma.job.deleteMany({});
@@ -82,6 +88,27 @@ async function addShift(jobId: string, status: 'APPROVED' | 'PENDING' | 'AWAITIN
     },
   });
   return { worker, shift };
+}
+
+// A prisma-like client whose in-transaction `notification.createMany` throws, so a
+// notification failure exercises the transaction rollback path. Every other tx
+// delegate/method passes through to the real transaction client.
+function clientWithFailingNotifications(base: PrismaClient) {
+  return {
+    $transaction: (cb: (tx: any) => Promise<any>) =>
+      base.$transaction((tx: any) => {
+        const wrapped = new Proxy(tx, {
+          get(t, prop) {
+            if (prop === 'notification') {
+              return { createMany: async () => { throw new Error('notify-boom'); } };
+            }
+            const v = (t as any)[prop];
+            return typeof v === 'function' ? v.bind(t) : v;
+          },
+        });
+        return cb(wrapped);
+      }),
+  } as unknown as PrismaClient;
 }
 
 const maybe = TEST_DB ? describe : describe.skip;
@@ -210,6 +237,110 @@ maybe('§10.1 assignRealCustomerToJob', () => {
 
     await expect(assignRealCustomerToJob(prisma, { jobId: job.id, customerId: target.id, actor: { id: owner.id } })).rejects.toMatchObject({
       code: 'ATTENDANCE_STARTED',
+    });
+    const after = await prisma.job.findUnique({ where: { id: job.id } });
+    expect(after?.customerId).toBe(gr.id);
+    expect(await prisma.auditLog.count()).toBe(0);
+  });
+
+  // ── Blocker regressions ────────────────────────────────────────────────────
+
+  it('serializes concurrent assigns on the same job — exactly one wins (lock + in-tx re-read)', async () => {
+    const owner = await seedOwner();
+    const gr = await seedCustomer({ isSystem: true });
+    const t1 = await seedCustomer();
+    const t2 = await seedCustomer();
+    const { job } = await seedGrJob(gr.id);
+
+    const results = await Promise.allSettled([
+      assignRealCustomerToJob(prisma, { jobId: job.id, customerId: t1.id, actor: { id: owner.id } }),
+      assignRealCustomerToJob(prisma, { jobId: job.id, customerId: t2.id, actor: { id: owner.id } }),
+    ]);
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    // The loser re-reads the (now real-customer) job under the lock → rejected.
+    expect(rejected[0].reason).toMatchObject({ code: 'NOT_GENERAL_RESERVATION' });
+    const after = await prisma.job.findUnique({ where: { id: job.id } });
+    expect([t1.id, t2.id]).toContain(after?.customerId);
+    expect(await prisma.auditLog.count({ where: { entityId: job.id, reason: 'assign-customer' } })).toBe(1);
+  });
+
+  it('rolls back the entire reassignment if notification creation fails', async () => {
+    const owner = await seedOwner();
+    const gr = await seedCustomer({ isSystem: true });
+    const target = await seedCustomer();
+    const { job, kase: grCase, address: grAddress } = await seedGrJob(gr.id);
+    await addShift(job.id, 'APPROVED'); // ensures notifications are attempted
+
+    await expect(
+      assignRealCustomerToJob(clientWithFailingNotifications(prisma), { jobId: job.id, customerId: target.id, actor: { id: owner.id } }),
+    ).rejects.toThrow('notify-boom');
+
+    const after = await prisma.job.findUnique({ where: { id: job.id } });
+    expect(after?.customerId).toBe(gr.id);
+    expect(after?.caseId).toBe(grCase.id);
+    expect(after?.addressId).toBe(grAddress.id);
+    expect(await prisma.address.count({ where: { customerId: target.id } })).toBe(0);
+    expect(await prisma.customerCase.count({ where: { customerId: target.id } })).toBe(0);
+    expect(await prisma.auditLog.count()).toBe(0);
+    expect(await prisma.notification.count()).toBe(0);
+  });
+
+  it('does not reuse a target address whose access/parking/elevator notes differ; clones instead', async () => {
+    const owner = await seedOwner();
+    const gr = await seedCustomer({ isSystem: true });
+    const target = await seedCustomer();
+    // Target already has a same-text address but with DIFFERENT access notes.
+    await prisma.address.create({ data: { customerId: target.id, fullAddress: 'הרצל 10 תל אביב', label: 'OTHER', accessNotes: 'קוד ישן' } });
+    const kase = await prisma.customerCase.create({ data: { customerId: gr.id, name: 'שריון', status: 'ACTIVE' } });
+    const grAddr = await prisma.address.create({
+      data: { customerId: gr.id, fullAddress: 'הרצל 10 תל אביב', label: 'OTHER', accessNotes: 'קוד 1234', parkingNotes: 'חניה בחצר', elevatorNotes: 'מעלית שירות' },
+    });
+    const job = await prisma.job.create({
+      data: { caseId: kase.id, customerId: gr.id, addressId: grAddr.id, jobType: 'PACKING', date: at(0), plannedStart: at(0), plannedEnd: at(0), requiredWorkerCount: 1, status: 'RESERVATION' },
+    });
+
+    const res = await assignRealCustomerToJob(prisma, { jobId: job.id, customerId: target.id, actor: { id: owner.id } });
+
+    const used = await prisma.address.findUnique({ where: { id: res.addressId! } });
+    expect(used?.customerId).toBe(target.id);
+    // A new row was cloned preserving the GR job's details — not the differing one.
+    expect(used?.accessNotes).toBe('קוד 1234');
+    expect(used?.parkingNotes).toBe('חניה בחצר');
+    expect(used?.elevatorNotes).toBe('מעלית שירות');
+    expect(await prisma.address.count({ where: { customerId: target.id } })).toBe(2);
+  });
+
+  it('reuses an existing target address only when ALL preserved fields match', async () => {
+    const owner = await seedOwner();
+    const gr = await seedCustomer({ isSystem: true });
+    const target = await seedCustomer();
+    const match = await prisma.address.create({
+      data: { customerId: target.id, fullAddress: 'הרצל 10 תל אביב', label: 'OTHER', accessNotes: 'קוד 1234', parkingNotes: 'חניה בחצר', elevatorNotes: 'מעלית שירות' },
+    });
+    const kase = await prisma.customerCase.create({ data: { customerId: gr.id, name: 'שריון', status: 'ACTIVE' } });
+    const grAddr = await prisma.address.create({
+      data: { customerId: gr.id, fullAddress: 'הרצל 10 תל אביב', label: 'OTHER', accessNotes: 'קוד 1234', parkingNotes: 'חניה בחצר', elevatorNotes: 'מעלית שירות' },
+    });
+    const job = await prisma.job.create({
+      data: { caseId: kase.id, customerId: gr.id, addressId: grAddr.id, jobType: 'PACKING', date: at(0), plannedStart: at(0), plannedEnd: at(0), requiredWorkerCount: 1, status: 'RESERVATION' },
+    });
+
+    const res = await assignRealCustomerToJob(prisma, { jobId: job.id, customerId: target.id, actor: { id: owner.id } });
+    expect(res.addressId).toBe(match.id);
+    expect(await prisma.address.count({ where: { customerId: target.id } })).toBe(1);
+  });
+
+  it('rejects an inactive target customer and makes no changes', async () => {
+    const owner = await seedOwner();
+    const gr = await seedCustomer({ isSystem: true });
+    const inactive = await prisma.customer.create({ data: { firstName: 'I', lastName: uid('c'), phone: '03', isActive: false } });
+    const { job } = await seedGrJob(gr.id);
+
+    await expect(assignRealCustomerToJob(prisma, { jobId: job.id, customerId: inactive.id, actor: { id: owner.id } })).rejects.toMatchObject({
+      code: 'TARGET_INACTIVE',
     });
     const after = await prisma.job.findUnique({ where: { id: job.id } });
     expect(after?.customerId).toBe(gr.id);

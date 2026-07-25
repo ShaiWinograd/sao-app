@@ -3,17 +3,22 @@
 // V1 slice: only the General-Reservation → real-customer direction. Guards:
 // owner-only (enforced by the route's requireAdmin preHandler); the source job
 // must currently belong to the system (General Reservation) customer; the target
-// must be a real, non-system customer; and the job must be pre-attendance.
+// must be a real, non-system, ACTIVE customer; and the job must be pre-attendance.
+//
+// RACE SAFETY: the job advisory lock is taken FIRST, then every guard is re-read
+// and enforced INSIDE the transaction, so a concurrent assign or clock-in that
+// committed before we locked cannot slip past a stale pre-transaction read. The
+// customer swap, address move, case (re)grouping, audit AND worker notifications
+// all commit in the same transaction — a throw (or a failed notification write)
+// rolls the whole change back atomically.
 //
 // The shared GR address row is NEVER mutated. An equivalent address already under
-// the target customer is reused, otherwise the GR address is cloned into a new row
-// for the target (geocode metadata intentionally reset to the NOT_REQUESTED
-// default so monitoring never activates from a stale, unvalidated coordinate).
-// Project grouping uses the shared 60-day active-case resolver. The customer swap,
-// address move, case (re)grouping and audit all commit in one transaction; a
-// throw rolls the whole change back. Assigned and pending workers are notified
-// afterwards (no re-approval, §11.2 "Customer only"); the empty GR case is left
-// intact.
+// the target customer (matching EVERY preserved field) is reused, otherwise the GR
+// address is cloned into a new row for the target (geocode metadata intentionally
+// reset to the NOT_REQUESTED default so monitoring never activates from a stale,
+// unvalidated coordinate). Project grouping uses the shared 60-day active-case
+// resolver. Assigned and pending workers are notified (no re-approval, §11.2
+// "Customer only"); the empty GR case is left intact.
 import type { Job } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { logAudit } from '../lib/audit.js';
@@ -34,48 +39,55 @@ export async function assignRealCustomerToJob(
   client: typeof prisma,
   params: { jobId: string; customerId: string; actor?: { id?: string } | null },
 ): Promise<AssignCustomerResult> {
-  const job = await client.job.findUnique({
-    where: { id: params.jobId },
-    select: {
-      id: true,
-      status: true,
-      date: true,
-      caseId: true,
-      addressId: true,
-      customerId: true,
-      customer: { select: { isSystem: true } },
-      address: {
-        select: { fullAddress: true, apartmentDetails: true, label: true, accessNotes: true, parkingNotes: true, elevatorNotes: true },
-      },
-      shifts: { select: { attendanceStatus: true } },
-    },
-  });
-  if (!job) throw new AppError(404, 'JOB_NOT_FOUND', 'Job not found');
-  if (!job.customer.isSystem) {
-    throw new AppError(409, 'NOT_GENERAL_RESERVATION', 'רק עבודה בשריון כללי ניתנת לשיוך ללקוח.');
-  }
-  if (job.status === 'COMPLETED' || job.status === 'ARCHIVED') {
-    throw new AppError(409, 'JOB_CLOSED', 'לא ניתן לשייך לקוח לעבודה שהושלמה או הוסרה.');
-  }
-  if (job.shifts.some((s) => s.attendanceStatus !== 'SCHEDULED')) {
-    throw new AppError(409, 'ATTENDANCE_STARTED', 'לא ניתן לשייך לקוח לאחר תחילת נוכחות בעבודה.');
-  }
-
-  const target = await client.customer.findUnique({
-    where: { id: params.customerId },
-    select: { id: true, firstName: true, lastName: true, isSystem: true },
-  });
-  if (!target) throw new AppError(404, 'CUSTOMER_NOT_FOUND', 'Customer not found');
-  if (target.isSystem) {
-    throw new AppError(409, 'TARGET_IS_SYSTEM', 'יש לבחור לקוח אמיתי (לא שריון כללי).');
-  }
-
-  const caseName = `${target.firstName} ${target.lastName}`.trim();
-
-  const { updated, newCaseId, addressId } = await client.$transaction(async (tx) => {
+  return client.$transaction(async (tx) => {
+    // Lock the job FIRST so concurrent assigns serialize, then read every value
+    // that a guard depends on under the lock (TOCTOU-safe).
     await lockJob(tx, params.jobId);
 
-    // Resolve the address WITHOUT mutating the shared GR row.
+    const job = await tx.job.findUnique({
+      where: { id: params.jobId },
+      select: {
+        id: true,
+        status: true,
+        date: true,
+        caseId: true,
+        addressId: true,
+        customerId: true,
+        customer: { select: { isSystem: true } },
+        address: {
+          select: { fullAddress: true, apartmentDetails: true, label: true, accessNotes: true, parkingNotes: true, elevatorNotes: true },
+        },
+        shifts: { select: { attendanceStatus: true } },
+      },
+    });
+    if (!job) throw new AppError(404, 'JOB_NOT_FOUND', 'Job not found');
+    if (!job.customer.isSystem) {
+      throw new AppError(409, 'NOT_GENERAL_RESERVATION', 'רק עבודה בשריון כללי ניתנת לשיוך ללקוח.');
+    }
+    if (job.status === 'COMPLETED' || job.status === 'ARCHIVED') {
+      throw new AppError(409, 'JOB_CLOSED', 'לא ניתן לשייך לקוח לעבודה שהושלמה או הוסרה.');
+    }
+    if (job.shifts.some((s) => s.attendanceStatus !== 'SCHEDULED')) {
+      throw new AppError(409, 'ATTENDANCE_STARTED', 'לא ניתן לשייך לקוח לאחר תחילת נוכחות בעבודה.');
+    }
+
+    const target = await tx.customer.findUnique({
+      where: { id: params.customerId },
+      select: { id: true, firstName: true, lastName: true, isSystem: true, isActive: true },
+    });
+    if (!target) throw new AppError(404, 'CUSTOMER_NOT_FOUND', 'Customer not found');
+    if (target.isSystem) {
+      throw new AppError(409, 'TARGET_IS_SYSTEM', 'יש לבחור לקוח אמיתי (לא שריון כללי).');
+    }
+    if (!target.isActive) {
+      throw new AppError(409, 'TARGET_INACTIVE', 'לא ניתן לשייך עבודה ללקוח לא פעיל.');
+    }
+
+    const caseName = `${target.firstName} ${target.lastName}`.trim();
+
+    // Resolve the address WITHOUT mutating the shared GR row. Equivalence compares
+    // EVERY preserved field so no visible detail (access/parking/elevator/apartment
+    // notes) changes silently on reuse; otherwise clone all of them.
     let addressId = job.addressId;
     if (job.addressId && job.address) {
       const src = job.address;
@@ -85,6 +97,9 @@ export async function assignRealCustomerToJob(
           fullAddress: src.fullAddress,
           label: src.label,
           apartmentDetails: src.apartmentDetails ?? null,
+          accessNotes: src.accessNotes ?? null,
+          parkingNotes: src.parkingNotes ?? null,
+          elevatorNotes: src.elevatorNotes ?? null,
         },
         select: { id: true },
       });
@@ -130,26 +145,26 @@ export async function assignRealCustomerToJob(
       tx,
     );
 
-    return { updated, newCaseId, addressId };
-  });
-
-  // §11.2 "Customer only" → notify assigned AND pending workers; no re-approval.
-  const involved = await client.shift.findMany({
-    where: { jobId: params.jobId, joinRequestStatus: { in: [...NOTIFY_STATUSES] } },
-    select: { worker: { select: { userId: true } } },
-  });
-  const notifiedUserIds = Array.from(new Set(involved.map((s) => s.worker.userId)));
-  if (notifiedUserIds.length) {
-    const dk = job.date.toISOString().slice(0, 10);
-    await client.notification.createMany({
-      data: notifiedUserIds.map((userId) => ({
-        userId,
-        title: 'עודכן לקוח העבודה',
-        body: `העבודה בתאריך ${dk} שויכה ללקוח ${caseName}. אין צורך באישור מחדש.`,
-        data: { type: 'JOB_CUSTOMER_ASSIGNED', jobId: params.jobId } as any,
-      })),
+    // §11.2 "Customer only" → notify assigned AND pending workers; no re-approval.
+    // Created inside the transaction so a notification failure rolls back the whole
+    // reassignment (never a committed swap with a dangling error/retry).
+    const involved = await tx.shift.findMany({
+      where: { jobId: params.jobId, joinRequestStatus: { in: [...NOTIFY_STATUSES] } },
+      select: { worker: { select: { userId: true } } },
     });
-  }
+    const notifiedUserIds = Array.from(new Set(involved.map((s) => s.worker.userId)));
+    if (notifiedUserIds.length) {
+      const dk = job.date.toISOString().slice(0, 10);
+      await tx.notification.createMany({
+        data: notifiedUserIds.map((userId) => ({
+          userId,
+          title: 'עודכן לקוח העבודה',
+          body: `העבודה בתאריך ${dk} שויכה ללקוח ${caseName}. אין צורך באישור מחדש.`,
+          data: { type: 'JOB_CUSTOMER_ASSIGNED', jobId: params.jobId } as any,
+        })),
+      });
+    }
 
-  return { job: updated, caseId: newCaseId, addressId, notifiedUserIds };
+    return { job: updated, caseId: newCaseId, addressId, notifiedUserIds };
+  });
 }

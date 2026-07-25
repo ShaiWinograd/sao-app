@@ -184,11 +184,12 @@ export default function JobDetailPage() {
       }
       try {
         const auth = await authHeaders(getToken);
-        const res = await api.get<Array<{ id: string; firstName: string; lastName: string; phone: string }>>(
+        const res = await api.get<Array<{ id: string; firstName: string; lastName: string; phone: string; isSystem?: boolean; isActive?: boolean }>>(
           `/customers?search=${encodeURIComponent(term.trim())}`,
           auth,
         );
-        setCustomerMatches(res.data.filter((c) => c.id !== 'general-reservation').slice(0, 8));
+        // Only real, active customers may receive a General-Reservation job.
+        setCustomerMatches(res.data.filter((c) => !c.isSystem && c.isActive !== false).slice(0, 8));
       } catch {
         setCustomerMatches([]);
       }
