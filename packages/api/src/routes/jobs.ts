@@ -4,7 +4,6 @@ import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { CreateJobSchema, UpdateJobSchema } from '@workforce/shared';
 import { UserRole, MANAGER_SKILL } from '@workforce/shared';
 import { toWorkerJobMonitoring } from '@workforce/shared';
-import { GENERAL_RESERVATION_CUSTOMER_ID } from '@workforce/shared';
 import { validateServiceAddition } from '@workforce/shared';
 import { evaluateJobPublishReadiness } from '@workforce/shared';
 import { requiresReapproval } from '@workforce/shared';
@@ -13,10 +12,11 @@ import { isUnavailableOn } from '@workforce/shared';
 import { evaluateJobCompletion } from '@workforce/shared';
 import type { AvailabilityBlock } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
-import { computeAddressGeocode, getConfiguredProvider } from '../lib/geocoding/service.js';
+import { getConfiguredProvider } from '../lib/geocoding/service.js';
+import { getSelectionSecret } from '../lib/geocoding/selectionToken.js';
+import { createQuickJob } from '../domain/quickCreateJob.js';
 import { AppError } from '../lib/errors.js';
-import { lockJob, lockIdempotencyKey } from '../lib/commitment.js';
-import { resolveOrCreateCaseForJob } from '../domain/caseResolution.js';
+import { lockJob } from '../lib/commitment.js';
 import { assignRealCustomerToJob } from '../domain/assignCustomer.js';
 import { getCaseReadiness } from '../domain/customerReport.js';
 import { z } from 'zod';
@@ -384,7 +384,17 @@ export async function jobsRoutes(app: FastifyInstance) {
     date: z.string(),
     startTime: z.string(),
     endTime: z.string(),
-    cityOrAddress: z.string().min(1),
+    // Legacy free-text address (kept optional for the current production client).
+    cityOrAddress: z.string().min(1).optional(),
+    // New additive contract: a server-signed selected suggestion, or an explicit
+    // manual unresolved fallback. Exactly one of cityOrAddress/address is required
+    // (enforced in resolveQuickCreateAddress with a structured error).
+    address: z
+      .discriminatedUnion('mode', [
+        z.object({ mode: z.literal('selected'), token: z.string().min(1) }),
+        z.object({ mode: z.literal('manual'), text: z.string().min(1), confirmedUnresolved: z.literal(true) }),
+      ])
+      .optional(),
     requiredWorkerCount: z.number().int().min(1),
     requiresTeamLeader: z.boolean().optional(),
     initialStatus: z.enum(['RESERVATION', 'APPROVED']).optional(),
@@ -397,112 +407,15 @@ export async function jobsRoutes(app: FastifyInstance) {
   app.post('/quick', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const body = QuickJobSchema.parse(req.body);
 
-    // Idempotent replay (fast path): a repeated submission with the same key
-    // returns the already-created job instead of creating another one (and before
-    // any customer/case side effects). Race-safety is handled below by an advisory
-    // lock + re-check inside the transaction.
-    if (body.idempotencyKey) {
-      const existing = await prisma.job.findFirst({ where: { idempotencyKey: body.idempotencyKey }, include: { slots: true } });
-      if (existing) {
-        reply.status(200);
-        return { job: existing, capacityWarning: false, availableWorkers: 0, idempotentReplay: true };
-      }
-    }
-
-    // 1) Resolve the customer. Job-first: prefer an explicit general reservation,
-    //    then a selected existing customer, then an inline new customer. The owner
-    //    never has to pick an existing/new mode — the shape of the payload decides.
-    let customerId: string;
-    const wantsGeneralReservation =
-      body.generalReservation === true || body.customerMode === 'GENERAL_RESERVATION';
-    if (wantsGeneralReservation) {
-      customerId = GENERAL_RESERVATION_CUSTOMER_ID;
-    } else if (body.customerId) {
-      const exists = await prisma.customer.findUnique({ where: { id: body.customerId }, select: { id: true } });
-      if (!exists) return reply.status(404).send({ error: 'Customer not found' });
-      customerId = body.customerId;
-    } else if (body.newCustomer?.firstName) {
-      const created = await prisma.customer.create({
-        data: {
-          firstName: body.newCustomer.firstName,
-          lastName: body.newCustomer.lastName ?? '',
-          phone: body.newCustomer.phone ?? '-',
-          email: body.newCustomer.email?.trim() || null,
-        },
-      });
-      customerId = created.id;
-    } else {
-      return reply.status(400).send({ error: 'יש לבחור לקוח/ת קיים, למלא לקוח/ת חדש/ה, או לסמן שריון כללי.' });
-    }
-
-    // 2) Datetimes + default form template.
-    const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { firstName: true, lastName: true } });
-    const dateOnly = body.date.slice(0, 10);
-    const parsedDate = new Date(`${dateOnly}T00:00:00.000Z`);
-    const plannedStart = new Date(`${dateOnly}T${body.startTime}:00.000Z`);
-    const plannedEnd = new Date(`${dateOnly}T${body.endTime}:00.000Z`);
-    const defaultTemplate = await prisma.formTemplate.findFirst({ where: { jobType: body.jobType, isDefault: true }, select: { id: true } });
-    const caseName = `${customer?.firstName ?? ''} ${customer?.lastName ?? ''}`.trim();
-    const teamLeaderSlots = body.requiresTeamLeader ? 1 : 0;
-
-    // 3) Resolve the case (shared §18.12 grouping rule) + create the address and
-    //    the job atomically. When an idempotency key is present, take an advisory
-    //    lock on it and re-check inside the transaction so two concurrent submits
-    //    with the same key cannot create two jobs (no DB unique index required).
-    let idempotentReplay = false;
-    // Geocode the address text BEFORE opening the transaction so the provider
-    // HTTP call never holds a DB transaction open. Never blocks quick-create:
-    // any failure yields NOT_REQUESTED/FAILED. latitude/longitude are not written
-    // yet — see TODO(PR-5) in lib/geocoding/service.ts.
-    const addressGeo = await computeAddressGeocode({
+    // ALL orchestration (fast-path replay → address resolution → in-transaction
+    // customer/case/address/job creation after the idempotency lock) lives in the
+    // extracted domain function, so this route and its tests exercise the exact
+    // same ordering. A concurrent first submission can never leave an orphan
+    // customer, and a replay performs no writes.
+    const { job, idempotentReplay } = await createQuickJob(prisma, body, {
       provider: getConfiguredProvider(),
-      fullAddress: body.cityOrAddress.trim(),
-    }).catch(() => ({ apply: null }));
-
-    const job = await prisma.$transaction(async (tx) => {
-      if (body.idempotencyKey) {
-        await lockIdempotencyKey(tx, body.idempotencyKey);
-        const existing = await tx.job.findFirst({ where: { idempotencyKey: body.idempotencyKey }, include: { slots: true } });
-        if (existing) {
-          idempotentReplay = true;
-          return existing;
-        }
-      }
-
-      const caseId = await resolveOrCreateCaseForJob(tx, {
-        customerId,
-        caseName,
-        newJobDate: parsedDate,
-        actor: (req as any).user,
-      });
-
-      const address = await tx.address.create({
-        data: { customerId, fullAddress: body.cityOrAddress.trim(), label: 'OTHER', ...(addressGeo.apply ?? {}) },
-      });
-
-      return tx.job.create({
-        data: {
-          caseId,
-          customerId,
-          addressId: address.id,
-          jobType: body.jobType,
-          date: parsedDate,
-          plannedStart,
-          plannedEnd,
-          requiredWorkerCount: body.requiredWorkerCount,
-          jobNotes: body.notes ?? null,
-          formTemplateId: defaultTemplate?.id ?? null,
-          status: body.initialStatus ?? 'RESERVATION',
-          idempotencyKey: body.idempotencyKey ?? null,
-          slots: {
-            create: [
-              ...(teamLeaderSlots ? [{ requiredSkill: MANAGER_SKILL as any }] : []),
-              ...Array.from({ length: Math.max(0, body.requiredWorkerCount - teamLeaderSlots) }, () => ({ requiredSkill: null })),
-            ],
-          },
-        },
-        include: { slots: true },
-      });
+      secret: getSelectionSecret(),
+      actor: (req as any).user,
     });
 
     if (idempotentReplay) {
@@ -510,10 +423,12 @@ export async function jobsRoutes(app: FastifyInstance) {
       return { job, capacityWarning: false, availableWorkers: 0, idempotentReplay: true };
     }
 
+    // Side effects run once, ONLY for a first creation (never on a replay).
     await logAudit((req as any).user, 'CREATE', 'Job', job.id, null, { status: job.status, quick: true }, 'quick-created');
     await notifyJobPublished(job.id);
 
-    // 5) Advisory capacity warning (spec §17) — never blocks creation.
+    // Advisory capacity warning (spec §17) — never blocks creation.
+    const parsedDate = new Date(`${body.date.slice(0, 10)}T00:00:00.000Z`);
     const activeWorkers = await prisma.worker.count({ where: { isActive: true } });
     const occupied = await prisma.shift.findMany({
       where: { joinRequestStatus: { in: ['PENDING', 'AWAITING_WORKER', 'APPROVED'] }, job: { date: parsedDate } },

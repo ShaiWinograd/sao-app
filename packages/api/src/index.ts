@@ -12,6 +12,7 @@ import { AppError } from './lib/errors.js';
 import { customersRoutes } from './routes/customers.js';
 import { casesRoutes } from './routes/cases.js';
 import { addressesRoutes } from './routes/addresses.js';
+import { geocodeRoutes } from './routes/geocode.js';
 import { jobsRoutes } from './routes/jobs.js';
 import { shiftsRoutes } from './routes/shifts.js';
 import { attendanceRoutes } from './routes/attendance.js';
@@ -162,6 +163,7 @@ async function build() {
   await app.register(customersRoutes,      { prefix: `${prefix}/customers` });
   await app.register(casesRoutes,          { prefix: `${prefix}/cases` });
   await app.register(addressesRoutes,      { prefix: `${prefix}/addresses` });
+  await app.register(geocodeRoutes,        { prefix: `${prefix}/geocode` });
   await app.register(jobsRoutes,           { prefix: `${prefix}/jobs` });
   await app.register(shiftsRoutes,         { prefix: `${prefix}/shifts` });
   await app.register(attendanceRoutes,     { prefix: `${prefix}/attendance` });

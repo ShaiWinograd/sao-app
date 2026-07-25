@@ -20,6 +20,23 @@ export interface GeocodeQuery {
   city?: string | null;
   /** Default true: the 500 m rule needs a house-level point to be RESOLVED. */
   requireHouseLevel?: boolean;
+  /** Ask the provider to treat the query as a partial/typeahead search (suggest). */
+  typeahead?: boolean;
+  /** Bounded number of candidates to return (provider caps it further). */
+  limit?: number;
+}
+
+/**
+ * Structured address components extracted from a provider result. Kept separate
+ * from the (often malformed) `freeformAddress` so a clean display can be built
+ * from validated fields — e.g. postal code is never mixed into the street/number.
+ */
+export interface GeocodeAddressComponents {
+  streetName: string | null;
+  streetNumber: string | null;
+  municipality: string | null;
+  postalCode: string | null;
+  countryCode: string | null;
 }
 
 /** A single normalized candidate returned by any provider adapter. */
@@ -33,6 +50,8 @@ export interface GeocodeCandidate {
   city: string | null;
   /** Calibrated 0..1 confidence. Adapters normalize the provider score into this range. */
   confidence: number;
+  /** Structured components (when the provider supplies them); used for clean display + house-level validation. */
+  components?: GeocodeAddressComponents | null;
 }
 
 /**
