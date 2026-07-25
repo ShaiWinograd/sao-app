@@ -23,10 +23,11 @@ const DEMO_WORKERS = [
 ] as const;
 
 export async function adminRoutes(app: FastifyInstance) {
-  // Aggregated owner action items for the dashboard (integration spec §21, §7).
-  // Existing decision items are counts; the two priority-1 operational items
-  // (today-still-in-reservation, past-not-completed) also return directly-linkable
-  // job rows. See domain/ownerTasks for the timezone-safe derivation.
+  // Aggregated owner action items for the dashboard. Source of truth:
+  // space_order_product_refactor_spec.md §7. Existing decision items are counts;
+  // the two priority-1 operational items (today-still-in-reservation,
+  // past-not-completed) also return directly-linkable job rows. See
+  // domain/ownerTasks for the timezone-safe derivation.
   app.get('/tasks', { preHandler: [authenticate, requireAdmin] }, async () => {
     return computeOwnerTasks(prisma);
   });

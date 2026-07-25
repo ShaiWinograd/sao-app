@@ -1,4 +1,5 @@
-// Aggregated owner "Requires Attention" tasks for the dashboard (spec §7).
+// Aggregated owner "Requires Attention" tasks for the dashboard.
+// Source of truth: space_order_product_refactor_spec.md §7.
 //
 // Existing decision items are simple counts. The two priority-1 operational items
 // (§7.3 items 1–2, §7.4) additionally return job-level rows so the owner can open

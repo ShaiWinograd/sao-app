@@ -3,6 +3,7 @@ import {
   businessDateKey,
   businessTomorrowStartUtc,
   classifyAttentionJobs,
+  formatBusinessDate,
   type AttentionJobInput,
 } from './attention-jobs';
 
@@ -132,6 +133,34 @@ describe('classifyAttentionJobs — timezone boundary around midnight', () => {
     );
     expect(g.todayInReservation).toEqual([]);
     expect(g.pastNotCompleted.map((j) => j.jobId)).toEqual(['was-today']);
+  });
+});
+
+describe('formatBusinessDate — job date renders in the business timezone (§22.1)', () => {
+  // A job stored at UTC midnight of the 25th. In a browser whose system timezone
+  // is behind UTC (e.g. America/New_York, UTC-4), naive local formatting rolls the
+  // displayed day back to the 24th. formatBusinessDate must always show the 25th.
+  const iso = '2026-07-25T00:00:00.000Z';
+  const dm = { day: '2-digit', month: '2-digit' } as const;
+
+  it('renders the true calendar day regardless of the system timezone', () => {
+    // UTC formatting yields the true calendar day (the 25th); the business zone
+    // (Asia/Jerusalem, ahead of UTC) must match it.
+    const inUtc = new Intl.DateTimeFormat('he-IL', { ...dm, timeZone: 'UTC' }).format(new Date(iso));
+    expect(formatBusinessDate(iso)).toBe(inUtc);
+  });
+
+  it('does NOT roll the day back the way a behind-UTC browser timezone would', () => {
+    // The naive western render is the 24th — this is exactly the bug the explicit
+    // business timezone prevents.
+    const naiveWestern = new Intl.DateTimeFormat('he-IL', { ...dm, timeZone: 'America/New_York' }).format(new Date(iso));
+    expect(naiveWestern).not.toBe(formatBusinessDate(iso));
+  });
+
+  it('honours an explicitly supplied timezone', () => {
+    // Forcing a behind-UTC zone reproduces the wrong (24th) day, confirming the
+    // timeZone argument (defaulting to the business zone) is what drives output.
+    expect(formatBusinessDate(iso, dm, 'he-IL', 'America/New_York')).not.toBe(formatBusinessDate(iso));
   });
 });
 

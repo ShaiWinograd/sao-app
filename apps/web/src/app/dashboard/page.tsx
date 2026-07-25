@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUser, useAuth } from '@clerk/nextjs';
-import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone, workerRowBadge, fillsRequiredSlot, workerRowAssignments, getStaffingIssueBreakdown } from '@workforce/shared';
+import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone, workerRowBadge, fillsRequiredSlot, workerRowAssignments, getStaffingIssueBreakdown, formatBusinessDate } from '@workforce/shared';
 import { AlertTriangle, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Info, Plus, XCircle } from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
@@ -580,10 +580,11 @@ export default function DashboardPage() {
     ].filter((i) => i.count > 0);
   }, [attention]);
 
-  // Priority-1 operational items (§7.3 items 1–2, §7.4): rendered ABOVE the
-  // decision items, each expanding to direct links to every affected job. Empty
-  // groups are not shown; the lists are derived server-side and disappear on the
-  // next fetch once a job's status/date no longer matches (no done/snooze state).
+  // Priority-1 operational items (space_order_product_refactor_spec.md §7.3
+  // items 1–2, §7.4): rendered ABOVE the decision items, each expanding to direct
+  // links to every affected job. Empty groups are not shown; the lists are derived
+  // server-side and disappear on the next fetch once a job's status/date no longer
+  // matches (no done/snooze state).
   const priorityAttention = useMemo(() => {
     if (!attention) return [] as Array<{ key: string; label: string; jobs: AttentionJobView[] }>;
     return [
@@ -1008,7 +1009,8 @@ export default function DashboardPage() {
                       className="block rounded-md px-2.5 py-1.5 text-right text-[11px] text-gray-700 hover:bg-rose-50"
                     >
                       <span className="font-medium text-gray-900">
-                        {new Date(job.date).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}
+                        {/* §22.1: render the job's service date in the business timezone. */}
+                        {formatBusinessDate(job.date)}
                       </span>
                       {' · '}
                       {job.customerName || 'שריון כללי'}

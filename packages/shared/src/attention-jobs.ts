@@ -1,4 +1,6 @@
-// Priority-1 "Requires Attention" job derivations (spec §7.3 items 1–2, §7.4).
+// Priority-1 "Requires Attention" job derivations.
+// Source of truth: space_order_product_refactor_spec.md §7.3 (items 1–2), §7.4,
+// §22.1 ("timestamps stored in UTC and rendered in the business timezone").
 //
 // Two operational tasks are computed purely from job status + date:
 //   1. "Today still in Reservation"  — a job scheduled for TODAY that the owner
@@ -49,6 +51,22 @@ export function businessDateKey(instant: Date, timeZone: string = BUSINESS_TIME_
     month: '2-digit',
     day: '2-digit',
   }).format(instant);
+}
+
+/**
+ * Format a job's service date for display, in the business timezone (§22.1). Job
+ * dates are stored at UTC midnight of their calendar day, so formatting WITHOUT an
+ * explicit timeZone would show the wrong day for viewers whose system timezone is
+ * behind UTC. Always pass the business timezone so the rendered day matches the
+ * job's intended calendar date regardless of the browser's timezone.
+ */
+export function formatBusinessDate(
+  date: Date | string,
+  options: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit' },
+  locale = 'he-IL',
+  timeZone: string = BUSINESS_TIME_ZONE,
+): string {
+  return new Intl.DateTimeFormat(locale, { ...options, timeZone }).format(new Date(date));
 }
 
 /**
