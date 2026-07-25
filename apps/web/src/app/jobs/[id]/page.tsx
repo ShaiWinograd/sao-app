@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { ArrowRight, CheckCircle2, RefreshCw, Send, UserCheck, XCircle, Repeat, AlertTriangle, ArrowUpCircle } from 'lucide-react';
-import { evaluateJobPublishReadiness, MANAGER_SKILL, deriveJobStatusBadge, formatAuditEvent, getStaffingIssueBreakdown } from '@workforce/shared';
+import { evaluateJobPublishReadiness, MANAGER_SKILL, deriveJobStatusBadge, formatAuditEvent, deriveJobStaffing } from '@workforce/shared';
 import { api, authHeaders } from '../../../lib/api';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import AddressGeocodeState from '../../../components/geocode/AddressGeocodeState';
@@ -122,7 +122,7 @@ export default function JobDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [assignSlotId, setAssignSlotId] = useState<string | null>(null);
+  const [assignTarget, setAssignTarget] = useState<'LEADER' | 'REGULAR' | null>(null);
   const [assignCandidates, setAssignCandidates] = useState<Array<{ id: string; name: string; available: boolean }>>([]);
   const [assignWorkerId, setAssignWorkerId] = useState('');
   const [moveOpen, setMoveOpen] = useState(false);
@@ -565,54 +565,40 @@ export default function JobDetailPage() {
     [getToken, load],
   );
 
-  const managerSlots = useMemo(
-    () => (job ? job.slots.filter((slot) => slot.requiredSkill === MANAGER_SKILL) : []),
-    [job],
-  );
-  const workerSlots = useMemo(
-    () => (job ? job.slots.filter((slot) => slot.requiredSkill !== MANAGER_SKILL) : []),
+  const requiresTeamLeader = useMemo(
+    () => (job ? job.slots.some((slot) => slot.requiredSkill === MANAGER_SKILL) : false),
     [job],
   );
 
-  const shiftForSlot = useCallback(
-    (slotId: string) => job?.shifts.find((shift) => shift.slotId === slotId) ?? null,
-    [job],
+  // Single shared staffing derivation (shifts + roles + required count) — never
+  // slot bindings, so an APPROVED worker with slotId=null still counts as assigned
+  // and the job page stays consistent with the dashboard staffing rules.
+  const jobStaffing = useMemo(
+    () => (job ? deriveJobStaffing(job.shifts, { requiredWorkerCount: job.requiredWorkerCount, requiresTeamLeader }) : null),
+    [job, requiresTeamLeader],
   );
 
   // Staffing summary for §12–13 owner controls: missing team leader and whether a
   // backup can be promoted into an open regular position.
   const staffing = useMemo(() => {
-    if (!job) return { missingLeader: false, canPromoteBackup: false };
-    const active = (s: ApiJobShift) => s.joinRequestStatus === 'APPROVED' || s.joinRequestStatus === 'AWAITING_WORKER';
-    const requiresLeader = managerSlots.length > 0;
-    const hasLeader = job.shifts.some((s) => active(s) && s.assignmentRole === 'TEAM_LEADER');
-    const approvedNormal = job.shifts.filter(
-      (s) => s.joinRequestStatus === 'APPROVED' && (s.assignmentRole === 'REGULAR' || s.assignmentRole === 'TEAM_LEADER'),
-    ).length;
-    const hasBackup = job.shifts.some((s) => s.joinRequestStatus === 'APPROVED' && s.assignmentRole === 'BACKUP');
-    const breakdown = getStaffingIssueBreakdown({
-      requiredWorkers: job.requiredWorkerCount,
-      assignedWorkers: approvedNormal,
-      requiresManager: requiresLeader,
-      hasAssignedManager: hasLeader,
-    });
+    if (!job || !jobStaffing) return { missingLeader: false, canPromoteBackup: false };
     return {
-      missingLeader: breakdown.managerShortage,
-      canPromoteBackup: hasBackup && approvedNormal < job.requiredWorkerCount,
+      missingLeader: jobStaffing.breakdown.managerShortage,
+      canPromoteBackup: jobStaffing.backups.length > 0 && jobStaffing.assignedWorkers < job.requiredWorkerCount,
     };
-  }, [job, managerSlots]);
+  }, [job, jobStaffing]);
 
   const openAssign = useCallback(
-    async (slot: { id: string; requiredSkill: string | null }) => {
+    async (target: 'LEADER' | 'REGULAR') => {
       if (!job) return;
-      setAssignSlotId(slot.id);
+      setAssignTarget(target);
       setAssignWorkerId('');
       setAssignCandidates([]);
       try {
         const auth = await authHeaders(getToken);
         const date = job.date.slice(0, 10);
-        const requiresManager = slot.requiredSkill === MANAGER_SKILL;
-        const skillParam = slot.requiredSkill ? `&skill=${encodeURIComponent(slot.requiredSkill)}` : '';
+        const requiresManager = target === 'LEADER';
+        const skillParam = requiresManager ? `&skill=${encodeURIComponent(MANAGER_SKILL)}` : '';
         const res = await api.get<Array<{ id: string; name: string; available: boolean }>>(
           `/workers/availability?date=${date}${skillParam}&requiresManager=${requiresManager}`,
           auth,
@@ -626,21 +612,25 @@ export default function JobDetailPage() {
   );
 
   const assignWorker = useCallback(async () => {
-    if (!job || !assignSlotId || !assignWorkerId) return;
+    if (!job || !assignTarget || !assignWorkerId) return;
     setBusy(true);
     setError(null);
     try {
       const auth = await authHeaders(getToken);
-      await api.post('/shifts/admin-assign', { jobId: job.id, workerId: assignWorkerId, slotId: assignSlotId }, auth);
-      setAssignSlotId(null);
+      await api.post(
+        '/shifts/admin-assign',
+        { jobId: job.id, workerId: assignWorkerId, ...(assignTarget === 'LEADER' ? { role: 'TEAM_LEADER' } : {}) },
+        auth,
+      );
+      setAssignTarget(null);
       setAssignWorkerId('');
       await load();
     } catch {
-      setError('שיבוץ העובד נכשל (ייתכן שהעובד כבר משובץ באותו יום או שהעמדה תפוסה)');
+      setError('שיבוץ העובד נכשל (ייתכן שהעובד כבר משובץ באותו יום או שכבר קיים ראש צוות)');
     } finally {
       setBusy(false);
     }
-  }, [job, assignSlotId, assignWorkerId, getToken, load]);
+  }, [job, assignTarget, assignWorkerId, getToken, load]);
 
   const removeShift = useCallback(
     async (shiftId: string, workerName: string) => {
@@ -663,16 +653,15 @@ export default function JobDetailPage() {
   );
 
   const jobBadge = useMemo(() => {
-    if (!job) return null;
-    const assignedWorkerCount = workerSlots.filter((slot) => shiftForSlot(slot.id)).length;
+    if (!job || !jobStaffing) return null;
     return deriveJobStatusBadge({
       status: job.status,
-      requiredWorkerCount: workerSlots.length,
-      assignedWorkerCount,
-      requiresManager: managerSlots.length > 0,
-      hasManager: managerSlots.some((slot) => shiftForSlot(slot.id)),
+      requiredWorkerCount: Math.max(job.requiredWorkerCount - (requiresTeamLeader ? 1 : 0), 0),
+      assignedWorkerCount: jobStaffing.regulars.length,
+      requiresManager: requiresTeamLeader,
+      hasManager: jobStaffing.hasApprovedLeader,
     });
-  }, [job, workerSlots, managerSlots, shiftForSlot]);
+  }, [job, jobStaffing, requiresTeamLeader]);
 
   const renderShiftStatus = (shift: ApiJobShift) => {
     const pendingReplacement = (shift.replacementRequests ?? []).find((r) => r.status === 'PENDING');
@@ -1011,7 +1000,7 @@ export default function JobDetailPage() {
         </div>
       )}
 
-      {tab === 'staffing' && (
+      {tab === 'staffing' && jobStaffing && (
         <div className="space-y-5">
           {(staffing.missingLeader || staffing.canPromoteBackup) && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
@@ -1048,158 +1037,199 @@ export default function JobDetailPage() {
               העברת עובדים לעבודה אחרת
             </button>
           </div>
+
+          {/* Team leader — driven by the shared shift-based derivation, not slots. */}
           <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-gray-900 mb-3">ראש צוות</h2>
-            {managerSlots.length === 0 ? (
+            {!requiresTeamLeader ? (
               <p className="text-sm text-gray-400">לא הוגדרה עמדת ראש צוות</p>
+            ) : jobStaffing.leaderShift ? (
+              <div className="rounded-lg border border-gray-100 px-3 py-2">
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-2 text-sm text-gray-800">
+                    <UserCheck className="w-4 h-4 text-gray-400" />
+                    {jobStaffing.leaderShift.workerNameSnapshot}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {renderShiftStatus(jobStaffing.leaderShift)}
+                    {jobStaffing.leaderShift.attendanceStatus === 'SCHEDULED' && (
+                      <button
+                        onClick={() => void removeShift(jobStaffing.leaderShift!.id, jobStaffing.leaderShift!.workerNameSnapshot)}
+                        disabled={busy}
+                        aria-label={`הסרת ${jobStaffing.leaderShift.workerNameSnapshot}`}
+                        className="px-2 py-1 text-[11px] rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                      >
+                        הסרה
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
             ) : (
-              <ul className="space-y-2">
-                {managerSlots.map((slot) => {
-                  const shift = shiftForSlot(slot.id);
-                  return (
-                    <li key={slot.id} className="rounded-lg border border-gray-100 px-3 py-2">
-                      <div className="flex items-center justify-between">
-                        <span className="inline-flex items-center gap-2 text-sm text-gray-800">
-                          <UserCheck className="w-4 h-4 text-gray-400" />
-                          {shift ? shift.workerNameSnapshot : 'מקום פנוי'}
-                        </span>
-                        {shift ? (
-                          <div className="flex items-center gap-2">
-                            {renderShiftStatus(shift)}
-                            {shift.attendanceStatus === 'SCHEDULED' && (
-                              <button
-                                onClick={() => void removeShift(shift.id, shift.workerNameSnapshot)}
-                                disabled={busy}
-                                aria-label={`הסרת ${shift.workerNameSnapshot}`}
-                                className="px-2 py-1 text-[11px] rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-                              >
-                                הסרה
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <StatusBadge tone="warning" label="לא מאויש" />
-                            <button
-                              onClick={() => void openAssign(slot)}
-                              className="px-2.5 py-1 text-[11px] rounded-lg border border-primary-200 text-primary-700 hover:bg-primary-50"
-                            >
-                              שיבוץ
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      {!shift && assignSlotId === slot.id && (
-                        <div className="mt-2 flex items-center gap-2">
-                          <select
-                            value={assignWorkerId}
-                            onChange={(e) => setAssignWorkerId(e.target.value)}
-                            aria-label="בחירת עובד לשיבוץ"
-                            className="flex-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs bg-white"
-                          >
-                            <option value="">בחירת עובד…</option>
-                            {assignCandidates.map((c) => (
-                              <option key={c.id} value={c.id} disabled={!c.available}>
-                                {c.name}{c.available ? '' : ' (לא זמין)'}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            onClick={() => void assignWorker()}
-                            disabled={busy || !assignWorkerId}
-                            className="px-3 py-1.5 text-xs rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
-                          >
-                            אישור
-                          </button>
-                          <button
-                            onClick={() => setAssignSlotId(null)}
-                            className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
-                          >
-                            ביטול
-                          </button>
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
+              <div className="rounded-lg border border-gray-100 px-3 py-2">
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-2 text-sm text-gray-800">
+                    <UserCheck className="w-4 h-4 text-gray-400" />
+                    מקום פנוי
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <StatusBadge tone="warning" label="לא מאויש" />
+                    <button
+                      onClick={() => void openAssign('LEADER')}
+                      className="px-2.5 py-1 text-[11px] rounded-lg border border-primary-200 text-primary-700 hover:bg-primary-50"
+                    >
+                      שיבוץ
+                    </button>
+                  </div>
+                </div>
+                {assignTarget === 'LEADER' && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <select
+                      value={assignWorkerId}
+                      onChange={(e) => setAssignWorkerId(e.target.value)}
+                      aria-label="בחירת ראש צוות לשיבוץ"
+                      className="flex-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs bg-white"
+                    >
+                      <option value="">בחירת עובד…</option>
+                      {assignCandidates.map((c) => (
+                        <option key={c.id} value={c.id} disabled={!c.available}>
+                          {c.name}{c.available ? '' : ' (לא זמין)'}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => void assignWorker()}
+                      disabled={busy || !assignWorkerId}
+                      className="px-3 py-1.5 text-xs rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+                    >
+                      אישור
+                    </button>
+                    <button
+                      onClick={() => setAssignTarget(null)}
+                      className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                    >
+                      ביטול
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </section>
 
+          {/* Workers — approved workers (incl. slotId=null), awaiting/pending, and
+              empty positions computed as required − approved (never negative). */}
           <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-gray-900 mb-3">עובדים</h2>
-            {workerSlots.length === 0 ? (
+            {jobStaffing.regulars.length === 0 &&
+            jobStaffing.awaiting.length === 0 &&
+            jobStaffing.pending.length === 0 &&
+            jobStaffing.emptyRegularPositions === 0 ? (
               <p className="text-sm text-gray-400">לא הוגדרו עמדות עבודה</p>
             ) : (
               <ul className="space-y-2">
-                {workerSlots.map((slot) => {
-                  const shift = shiftForSlot(slot.id);
-                  return (
-                    <li key={slot.id} className="rounded-lg border border-gray-100 px-3 py-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-800">{shift ? shift.workerNameSnapshot : 'מקום פנוי'}</span>
-                        {shift ? (
-                          <div className="flex items-center gap-2">
-                            {renderShiftStatus(shift)}
-                            {shift.attendanceStatus === 'SCHEDULED' && (
-                              <button
-                                onClick={() => void removeShift(shift.id, shift.workerNameSnapshot)}
-                                disabled={busy}
-                                aria-label={`הסרת ${shift.workerNameSnapshot}`}
-                                className="px-2 py-1 text-[11px] rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-                              >
-                                הסרה
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <StatusBadge tone="neutral" label="פנוי" />
-                            <button
-                              onClick={() => void openAssign(slot)}
-                              className="px-2.5 py-1 text-[11px] rounded-lg border border-primary-200 text-primary-700 hover:bg-primary-50"
-                            >
-                              שיבוץ
-                            </button>
-                          </div>
+                {[...jobStaffing.regulars, ...jobStaffing.awaiting, ...jobStaffing.pending].map((shift) => (
+                  <li key={shift.id} className="rounded-lg border border-gray-100 px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm text-gray-800">{shift.workerNameSnapshot}</span>
+                      <div className="flex items-center gap-2">
+                        {renderShiftStatus(shift)}
+                        {shift.attendanceStatus === 'SCHEDULED' && shift.joinRequestStatus !== 'PENDING' && (
+                          <button
+                            onClick={() => void removeShift(shift.id, shift.workerNameSnapshot)}
+                            disabled={busy}
+                            aria-label={`הסרת ${shift.workerNameSnapshot}`}
+                            className="px-2 py-1 text-[11px] rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                          >
+                            הסרה
+                          </button>
                         )}
                       </div>
-                      {!shift && assignSlotId === slot.id && (
-                        <div className="mt-2 flex items-center gap-2">
-                          <select
-                            value={assignWorkerId}
-                            onChange={(e) => setAssignWorkerId(e.target.value)}
-                            aria-label="בחירת עובד לשיבוץ"
-                            className="flex-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs bg-white"
-                          >
-                            <option value="">בחירת עובד…</option>
-                            {assignCandidates.map((c) => (
-                              <option key={c.id} value={c.id} disabled={!c.available}>
-                                {c.name}{c.available ? '' : ' (לא זמין)'}
-                              </option>
-                            ))}
-                          </select>
+                    </div>
+                  </li>
+                ))}
+                {Array.from({ length: jobStaffing.emptyRegularPositions }).map((_, i) => (
+                  <li key={`empty-${i}`} className="rounded-lg border border-gray-100 px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-800">מקום פנוי</span>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge tone="neutral" label="פנוי" />
+                        {i === 0 && (
                           <button
-                            onClick={() => void assignWorker()}
-                            disabled={busy || !assignWorkerId}
-                            className="px-3 py-1.5 text-xs rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+                            onClick={() => void openAssign('REGULAR')}
+                            className="px-2.5 py-1 text-[11px] rounded-lg border border-primary-200 text-primary-700 hover:bg-primary-50"
                           >
-                            אישור
+                            שיבוץ
                           </button>
-                          <button
-                            onClick={() => setAssignSlotId(null)}
-                            className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
-                          >
-                            ביטול
-                          </button>
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                ))}
               </ul>
             )}
+            {assignTarget === 'REGULAR' && (
+              <div className="mt-3 flex items-center gap-2">
+                <select
+                  value={assignWorkerId}
+                  onChange={(e) => setAssignWorkerId(e.target.value)}
+                  aria-label="בחירת עובד לשיבוץ"
+                  className="flex-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs bg-white"
+                >
+                  <option value="">בחירת עובד…</option>
+                  {assignCandidates.map((c) => (
+                    <option key={c.id} value={c.id} disabled={!c.available}>
+                      {c.name}{c.available ? '' : ' (לא זמין)'}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => void assignWorker()}
+                  disabled={busy || !assignWorkerId}
+                  className="px-3 py-1.5 text-xs rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+                >
+                  אישור
+                </button>
+                <button
+                  onClick={() => setAssignTarget(null)}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                >
+                  ביטול
+                </button>
+              </div>
+            )}
           </section>
+
+          {/* Backups — assigned but never fill required capacity. */}
+          {jobStaffing.backups.length > 0 && (
+            <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-semibold text-gray-900 mb-3">גיבוי</h2>
+              <ul className="space-y-2">
+                {jobStaffing.backups.map((shift) => (
+                  <li key={shift.id} className="rounded-lg border border-gray-100 px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-2 text-sm text-gray-800">
+                        {shift.workerNameSnapshot}
+                        <span className="text-[11px] text-purple-700">· גיבוי</span>
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {renderShiftStatus(shift)}
+                        {shift.attendanceStatus === 'SCHEDULED' && (
+                          <button
+                            onClick={() => void removeShift(shift.id, shift.workerNameSnapshot)}
+                            disabled={busy}
+                            aria-label={`הסרת ${shift.workerNameSnapshot}`}
+                            className="px-2 py-1 text-[11px] rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                          >
+                            הסרה
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </div>
       )}
 
