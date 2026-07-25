@@ -27,6 +27,7 @@ export * from './pricing-review';
 export * from './staffing-insights';
 export * from './staffing';
 export * from './attendance-sweep';
+export * from './attention-jobs';
 export * from './utils';
 export * from './dashboard-issues';
 export * from './owner-grid';
