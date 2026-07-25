@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUser, useAuth } from '@clerk/nextjs';
-import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone, workerRowBadge, fillsRequiredSlot, workerRowAssignments, getStaffingIssueBreakdown } from '@workforce/shared';
+import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone, workerRowBadge, fillsRequiredSlot, workerRowAssignments, getStaffingIssueBreakdown, formatBusinessDate } from '@workforce/shared';
 import { AlertTriangle, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Info, Plus, XCircle } from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
@@ -49,6 +49,15 @@ type DashboardWorker = {
 
 // Actionable owner items (spec §7) — all backed by implemented domain logic
 // via GET /admin/tasks.
+type AttentionJobView = {
+  jobId: string;
+  date: string;
+  plannedStart: string;
+  status: 'RESERVATION' | 'APPROVED' | 'COMPLETED' | 'ARCHIVED';
+  customerName: string;
+  jobType: string | null;
+};
+
 type OwnerTasks = {
   joinRequests: number;
   pendingAcceptance: number;
@@ -57,6 +66,11 @@ type OwnerTasks = {
   attendanceReview: number;
   reportCorrections: number;
   customerReportReady: number;
+  // Priority-1 operational items (§7.4): counts + directly-linkable job rows.
+  todayInReservation: number;
+  pastNotCompleted: number;
+  todayInReservationJobs: AttentionJobView[];
+  pastNotCompletedJobs: AttentionJobView[];
 };
 
 const MOM_OWNER_NAME = 'אורית';
@@ -361,6 +375,7 @@ export default function DashboardPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [joinPanelOpen, setJoinPanelOpen] = useState(false);
   const [attention, setAttention] = useState<OwnerTasks | null>(null);
+  const [openAttentionKey, setOpenAttentionKey] = useState<string | null>(null);
   const [editingWorkId, setEditingWorkId] = useState<number | null>(null);
   const [createMessage, setCreateMessage] = useState('');
   const [formAttempted, setFormAttempted] = useState(false);
@@ -563,6 +578,19 @@ export default function DashboardPage() {
       { key: 'reportCorrections', label: 'בקשות תיקון דוח', count: attention.reportCorrections, href: '/payroll' },
       { key: 'customerReportReady', label: 'הפרויקט מוכן לדוח לקוחה', count: attention.customerReportReady, href: '/reports/customer' },
     ].filter((i) => i.count > 0);
+  }, [attention]);
+
+  // Priority-1 operational items (space_order_product_refactor_spec.md §7.3
+  // items 1–2, §7.4): rendered ABOVE the decision items, each expanding to direct
+  // links to every affected job. Empty groups are not shown; the lists are derived
+  // server-side and disappear on the next fetch once a job's status/date no longer
+  // matches (no done/snooze state).
+  const priorityAttention = useMemo(() => {
+    if (!attention) return [] as Array<{ key: string; label: string; jobs: AttentionJobView[] }>;
+    return [
+      { key: 'pastNotCompleted', label: 'עבודה מהעבר לא הושלמה', jobs: attention.pastNotCompletedJobs ?? [] },
+      { key: 'todayInReservation', label: 'עבודה של היום עדיין בהזמנה', jobs: attention.todayInReservationJobs ?? [] },
+    ].filter((g) => g.jobs.length > 0);
   }, [attention]);
 
   const selectedCustomer = useMemo(
@@ -952,12 +980,48 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {attentionItems.length > 0 && (
+      {(priorityAttention.length > 0 || attentionItems.length > 0) && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2" data-testid="requires-attention">
           <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800">
             <AlertTriangle className="h-3.5 w-3.5" />
             דורש טיפול
           </span>
+          {/* Priority-1 operational items (§7.4) — rendered first, expand to
+              direct links to every affected job. */}
+          {priorityAttention.map((group) => (
+            <div key={group.key} className="relative" data-testid={`attention-${group.key}`}>
+              <button
+                type="button"
+                onClick={() => setOpenAttentionKey((prev) => (prev === group.key ? null : group.key))}
+                aria-expanded={openAttentionKey === group.key}
+                className="inline-flex items-center gap-1.5 rounded-full border border-rose-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-50"
+              >
+                {group.label}
+                <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold text-white">{group.jobs.length}</span>
+              </button>
+              {openAttentionKey === group.key && (
+                <div className="absolute right-0 z-30 mt-1 max-h-64 w-64 overflow-auto rounded-lg border border-rose-200 bg-white p-1 shadow-lg">
+                  {group.jobs.map((job) => (
+                    <Link
+                      key={job.jobId}
+                      href={`/jobs/${job.jobId}`}
+                      onClick={() => setOpenAttentionKey(null)}
+                      className="block rounded-md px-2.5 py-1.5 text-right text-[11px] text-gray-700 hover:bg-rose-50"
+                    >
+                      <span className="font-medium text-gray-900">
+                        {/* §22.1: render the job's service date in the business timezone. */}
+                        {formatBusinessDate(job.date)}
+                      </span>
+                      {' · '}
+                      {job.customerName || 'שריון כללי'}
+                      {' · '}
+                      <span className="text-gray-500">{job.status === 'APPROVED' ? 'אושר' : 'שריון'}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
           {attentionItems.map((item) =>
             item.key === 'joinRequests' ? (
               <button
