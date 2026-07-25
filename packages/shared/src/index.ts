@@ -26,6 +26,7 @@ export * from './date-finder';
 export * from './pricing-review';
 export * from './staffing-insights';
 export * from './job-staffing';
+export * from './direct-assign';
 export * from './staffing';
 export * from './attendance-sweep';
 export * from './attention-jobs';

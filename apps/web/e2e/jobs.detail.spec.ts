@@ -17,7 +17,6 @@ const jobSlotlessApproved = {
   workerVisibleNotes: null,
   address: { fullAddress: 'תל אביב 1' },
   customer: { firstName: 'יעל', lastName: 'כהן', phone: '0501111111' },
-  // One unbound slot — the derivation must NOT rely on it to detect assignment.
   slots: [{ id: 'slot-x', requiredSkill: null, label: null, filledByShiftId: null }],
   shifts: [
     {
@@ -33,7 +32,6 @@ const jobSlotlessApproved = {
   ],
 };
 
-// A job with a pending join request (slotId null) for the approve action.
 const jobPending = {
   ...jobSlotlessApproved,
   id: 'job-pending',
@@ -52,6 +50,45 @@ const jobPending = {
   ],
 };
 
+// An AWAITING_WORKER team leader (slotId null): must occupy the Team Leader
+// section and block a second leader assignment (blocker #2).
+const jobAwaitingLeader = {
+  ...jobSlotlessApproved,
+  id: 'job-awaiting-leader',
+  requiredWorkerCount: 1,
+  slots: [{ id: 'slot-mgr', requiredSkill: 'SHIFT_LEADER', label: null, filledByShiftId: null }],
+  shifts: [
+    {
+      id: 'shift-leader',
+      slotId: null,
+      workerNameSnapshot: 'דנה לוי',
+      attendanceStatus: 'SCHEDULED',
+      joinRequestStatus: 'AWAITING_WORKER',
+      assignmentRole: 'TEAM_LEADER',
+      formStatus: 'NOT_SUBMITTED',
+      worker: { firstName: 'דנה', lastName: 'לוי' },
+    },
+  ],
+};
+
+test.describe('Job detail page', () => {
+  test('shows header, details, and the publication action', async ({ page }) => {
+    await page.route('**/api/v1/jobs/job-slotless', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(jobSlotlessApproved) });
+    });
+    await page.goto('/jobs/job-slotless');
+
+    await expect(page.getByRole('heading', { name: 'אריזה · יעל כהן' })).toBeVisible();
+    // Details tab (default): address + contact.
+    await expect(page.getByText('תל אביב 1').first()).toBeVisible();
+    await expect(page.getByText('יעל כהן').first()).toBeVisible();
+    // Publication-readiness action is present (enabled state is readiness-driven).
+    await expect(page.getByRole('button', { name: 'שליחה שוב לעובדים' })).toBeVisible();
+    // The owner approval action is present for a real-customer reservation.
+    await expect(page.getByRole('button', { name: 'אישור העבודה' })).toBeVisible();
+  });
+});
+
 test.describe('Job detail — staffing consistency (PR-1)', () => {
   test('an APPROVED worker with slotId=null appears in BOTH Workers and Attendance', async ({ page }) => {
     await page.route('**/api/v1/jobs/job-slotless', async (route) => {
@@ -59,15 +96,11 @@ test.describe('Job detail — staffing consistency (PR-1)', () => {
     });
 
     await page.goto('/jobs/job-slotless');
-    await expect(page.getByRole('heading', { name: 'אריזה · יעל כהן' })).toBeVisible();
 
-    // Workers tab: the approved worker is listed (the bug showed only "מקום פנוי").
     await page.getByRole('tab', { name: 'עובדים' }).click();
     await expect(page.getByText('אורית וינוגרד')).toBeVisible();
-    // Required count is 1 and it is filled → no empty position shown.
     await expect(page.getByText('מקום פנוי')).toHaveCount(0);
 
-    // Attendance tab: the SAME worker is listed.
     await page.getByRole('tab', { name: 'נוכחות' }).click();
     await expect(page.getByText('אורית וינוגרד')).toBeVisible();
   });
@@ -89,5 +122,21 @@ test.describe('Job detail — staffing consistency (PR-1)', () => {
     await page.getByRole('button', { name: 'אישור', exact: true }).click();
 
     await expect.poll(() => approved).toBe(true);
+  });
+
+  test('an AWAITING_WORKER team leader occupies the Team Leader section and blocks a second leader assignment', async ({ page }) => {
+    await page.route('**/api/v1/jobs/job-awaiting-leader', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(jobAwaitingLeader) });
+    });
+
+    await page.goto('/jobs/job-awaiting-leader');
+    await page.getByRole('tab', { name: 'עובדים' }).click();
+
+    // The awaiting leader is shown (in the Team Leader section)…
+    await expect(page.getByText('דנה לוי')).toBeVisible();
+    // …no empty-leader "assign" affordance is offered while the invitation reserves it…
+    await expect(page.getByText('לא מאויש')).toHaveCount(0);
+    // …and the leader requirement is still unmet until she accepts.
+    await expect(page.getByText('חסר ראש צוות').first()).toBeVisible();
   });
 });

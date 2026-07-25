@@ -1121,13 +1121,13 @@ export default function JobDetailPage() {
           <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-gray-900 mb-3">עובדים</h2>
             {jobStaffing.regulars.length === 0 &&
-            jobStaffing.awaiting.length === 0 &&
-            jobStaffing.pending.length === 0 &&
+            jobStaffing.awaitingRegulars.length === 0 &&
+            jobStaffing.pendingRegulars.length === 0 &&
             jobStaffing.emptyRegularPositions === 0 ? (
               <p className="text-sm text-gray-400">לא הוגדרו עמדות עבודה</p>
             ) : (
               <ul className="space-y-2">
-                {[...jobStaffing.regulars, ...jobStaffing.awaiting, ...jobStaffing.pending].map((shift) => (
+                {[...jobStaffing.regulars, ...jobStaffing.awaitingRegulars, ...jobStaffing.pendingRegulars].map((shift) => (
                   <li key={shift.id} className="rounded-lg border border-gray-100 px-3 py-2">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm text-gray-800">{shift.workerNameSnapshot}</span>

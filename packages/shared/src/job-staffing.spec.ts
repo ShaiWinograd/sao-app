@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { deriveJobStaffing, type StaffingShift } from './job-staffing';
 
-// Shift factory. slotId is intentionally omitted from the derivation entirely —
-// these tests model the production-representative case where approved shifts have
-// no slot binding.
 function shift(joinRequestStatus: string, assignmentRole: string): StaffingShift {
   return { joinRequestStatus, assignmentRole };
 }
@@ -13,6 +10,7 @@ describe('deriveJobStaffing', () => {
     const r = deriveJobStaffing([shift('APPROVED', 'REGULAR')], { requiredWorkerCount: 1, requiresTeamLeader: false });
     expect(r.regulars).toHaveLength(1);
     expect(r.assignedWorkers).toBe(1);
+    expect(r.reservedRegular).toBe(1);
     expect(r.emptyRegularPositions).toBe(0);
     expect(r.breakdown.workerShortageSlots).toBe(0);
   });
@@ -21,30 +19,32 @@ describe('deriveJobStaffing', () => {
     const r = deriveJobStaffing([shift('APPROVED', 'TEAM_LEADER')], { requiredWorkerCount: 1, requiresTeamLeader: true });
     expect(r.leaderShift).not.toBeNull();
     expect(r.hasApprovedLeader).toBe(true);
+    expect(r.canAssignLeader).toBe(false);
     expect(r.assignedWorkers).toBe(1);
-    expect(r.emptyLeaderPosition).toBe(false);
     expect(r.breakdown.managerShortage).toBe(false);
     expect(r.breakdown.workerShortageSlots).toBe(0);
   });
 
-  it('3. an APPROVED BACKUP does not fill required capacity', () => {
+  it('3. an APPROVED BACKUP does not fill or reserve required capacity', () => {
     const r = deriveJobStaffing([shift('APPROVED', 'BACKUP')], { requiredWorkerCount: 2, requiresTeamLeader: false });
     expect(r.backups).toHaveLength(1);
     expect(r.assignedWorkers).toBe(0);
+    expect(r.reservedRegular).toBe(0);
     expect(r.emptyRegularPositions).toBe(2);
     expect(r.breakdown.workerShortageSlots).toBe(2);
   });
 
-  it('4. PENDING and AWAITING_WORKER are visible but do not count as approved filled', () => {
+  it('4. PENDING/AWAITING regulars are visible; AWAITING reserves capacity, PENDING does not', () => {
     const r = deriveJobStaffing(
       [shift('PENDING', 'REGULAR'), shift('AWAITING_WORKER', 'REGULAR')],
       { requiredWorkerCount: 2, requiresTeamLeader: false },
     );
-    expect(r.pending).toHaveLength(1);
-    expect(r.awaiting).toHaveLength(1);
-    expect(r.assignedWorkers).toBe(0);
-    expect(r.emptyRegularPositions).toBe(2); // required − approved (approved = 0)
-    expect(r.breakdown.workerShortageSlots).toBe(2);
+    expect(r.pendingRegulars).toHaveLength(1);
+    expect(r.awaitingRegulars).toHaveLength(1);
+    expect(r.assignedWorkers).toBe(0); // approved-only shortage numerator
+    expect(r.reservedRegular).toBe(1); // only AWAITING reserves
+    expect(r.emptyRegularPositions).toBe(1); // regularRequired 2 − reserved 1
+    expect(r.breakdown.workerShortageSlots).toBe(2); // shortage still approved-based
   });
 
   it('5. REJECTED (and CANCELLED) shifts are excluded from active staffing', () => {
@@ -73,23 +73,25 @@ describe('deriveJobStaffing', () => {
     const appearances = [
       ...(r.leaderShift ? [r.leaderShift] : []),
       ...r.regulars,
+      ...r.awaitingRegulars,
+      ...r.pendingRegulars,
       ...r.backups,
-      ...r.awaiting,
-      ...r.pending,
     ].filter((s) => s === bound);
     expect(appearances).toHaveLength(1);
   });
 
-  it('8. team-leader shortage shows when required-and-unfilled, and clears when an approved leader exists', () => {
+  it('8. team-leader shortage shows when required-and-unfilled, and clears when approved', () => {
     const missing = deriveJobStaffing([shift('APPROVED', 'REGULAR')], { requiredWorkerCount: 2, requiresTeamLeader: true });
-    expect(missing.emptyLeaderPosition).toBe(true);
+    expect(missing.leaderShift).toBeNull();
+    expect(missing.canAssignLeader).toBe(true);
     expect(missing.breakdown.managerShortage).toBe(true);
 
     const satisfied = deriveJobStaffing(
       [shift('APPROVED', 'TEAM_LEADER'), shift('APPROVED', 'REGULAR')],
       { requiredWorkerCount: 2, requiresTeamLeader: true },
     );
-    expect(satisfied.emptyLeaderPosition).toBe(false);
+    expect(satisfied.hasApprovedLeader).toBe(true);
+    expect(satisfied.canAssignLeader).toBe(false);
     expect(satisfied.breakdown.managerShortage).toBe(false);
     expect(satisfied.assignedWorkers).toBe(2);
     expect(satisfied.emptyRegularPositions).toBe(0);
@@ -109,14 +111,48 @@ describe('deriveJobStaffing', () => {
     );
     expect(r.hasApprovedLeader).toBe(true);
     expect(r.regulars).toHaveLength(1);
+    expect(r.awaitingRegulars).toHaveLength(1);
+    expect(r.pendingRegulars).toHaveLength(1);
     expect(r.backups).toHaveLength(1);
-    expect(r.pending).toHaveLength(1);
-    expect(r.awaiting).toHaveLength(1);
-    expect(r.assignedWorkers).toBe(2); // leader + 1 regular
-    // regularRequired = 3 − 1 (leader) = 2; approved regulars = 1 → 1 empty.
-    expect(r.emptyRegularPositions).toBe(1);
-    expect(r.emptyLeaderPosition).toBe(false);
-    expect(r.breakdown.workerShortageSlots).toBe(1); // required 3 − assigned 2
+    expect(r.assignedWorkers).toBe(2); // leader + 1 approved regular
+    // regularRequired = 3 − 1 (leader) = 2; reserved = approved 1 + awaiting 1 = 2 → 0 empty.
+    expect(r.emptyRegularPositions).toBe(0);
+    expect(r.breakdown.workerShortageSlots).toBe(1); // required 3 − approved 2
     expect(r.breakdown.managerShortage).toBe(false);
+  });
+
+  // ── Role preservation for non-approved states (blocker #2) ──────────────────
+
+  it('10. an AWAITING_WORKER TEAM_LEADER stays in the leader position and reserves it', () => {
+    const r = deriveJobStaffing([shift('AWAITING_WORKER', 'TEAM_LEADER')], { requiredWorkerCount: 1, requiresTeamLeader: true });
+    expect(r.leaderShift).not.toBeNull();
+    expect(r.leaderShift?.assignmentRole).toBe('TEAM_LEADER');
+    // Not approved → does not satisfy the requirement; no second "assign leader"
+    // affordance while the invitation reserves the position.
+    expect(r.hasApprovedLeader).toBe(false);
+    expect(r.canAssignLeader).toBe(false);
+    expect(r.breakdown.managerShortage).toBe(true);
+    expect(r.regulars).toHaveLength(0);
+    expect(r.awaitingRegulars).toHaveLength(0);
+  });
+
+  it('11. a PENDING TEAM_LEADER stays in the leader position (not among regulars)', () => {
+    const r = deriveJobStaffing([shift('PENDING', 'TEAM_LEADER')], { requiredWorkerCount: 1, requiresTeamLeader: true });
+    expect(r.leaderShift?.assignmentRole).toBe('TEAM_LEADER');
+    expect(r.hasApprovedLeader).toBe(false);
+    expect(r.canAssignLeader).toBe(false);
+    expect(r.pendingRegulars).toHaveLength(0);
+  });
+
+  it('12. a pending/awaiting BACKUP is identified as Backup and never fills normal capacity', () => {
+    const r = deriveJobStaffing(
+      [shift('AWAITING_WORKER', 'BACKUP'), shift('PENDING', 'BACKUP')],
+      { requiredWorkerCount: 2, requiresTeamLeader: false },
+    );
+    expect(r.backups).toHaveLength(2);
+    expect(r.reservedRegular).toBe(0);
+    expect(r.emptyRegularPositions).toBe(2);
+    expect(r.awaitingRegulars).toHaveLength(0);
+    expect(r.pendingRegulars).toHaveLength(0);
   });
 });

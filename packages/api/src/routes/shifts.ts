@@ -10,6 +10,7 @@ import {
 } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
 import { assertWorkerFreeOnDate, lockJob } from '../lib/commitment.js';
+import { assertDirectAssignCapacity } from '../domain/directAssign.js';
 import { AppError } from '../lib/errors.js';
 
 // After removing `outgoingShiftId`'s worker from `job`, does a team leader remain?
@@ -266,26 +267,22 @@ export async function shiftsRoutes(app: FastifyInstance) {
     // unavailability. Runs under the job lock + shared same-day commitment guard.
     const user = (req as any).user;
     const workerLeaderEligible = ((worker.skills as string[]) ?? []).includes(MANAGER_SKILL);
-    if (role === 'TEAM_LEADER' && !workerLeaderEligible) {
-      return reply.status(409).send({ error: 'NOT_LEADER_ELIGIBLE', message: 'רק עובדת שהוסמכה כראש צוות יכולה לשמש כראש צוות.' });
-    }
 
     const shift = await prisma.$transaction(async (tx) => {
       await lockJob(tx, job.id);
       await assertWorkerFreeOnDate(tx, worker.id, job.date);
 
-      // Only one team leader per job (§12.6).
-      if (role === 'TEAM_LEADER') {
-        const existingLeader = await tx.shift.findFirst({
-          where: { jobId, assignmentRole: 'TEAM_LEADER', joinRequestStatus: { in: ['APPROVED', 'AWAITING_WORKER'] } },
-        });
-        if (existingLeader) throw new AppError(409, 'LEADER_TAKEN', 'כבר קיים ראש צוות לעבודה זו');
-      }
-      // A pending-acceptance assignment still reserves the slot.
-      if (slotId) {
-        const slotTaken = await tx.shift.findFirst({ where: { slotId, joinRequestStatus: { in: ['APPROVED', 'AWAITING_WORKER'] } } });
-        if (slotTaken) throw new AppError(409, 'SLOT_TAKEN', 'This slot is already assigned');
-      }
+      // Role/count capacity guard (§12.4/§12.6/§12.7): counts APPROVED + AWAITING
+      // shifts as reservations — including approved workers with a null slotId — so
+      // a direct invitation cannot double-book a required position or a second
+      // leader. Backups are unlimited. Replaces the slotId-only SLOT_TAKEN check,
+      // which was unreliable once approved workers can have a null slotId.
+      await assertDirectAssignCapacity(tx, {
+        jobId: job.id,
+        requiredWorkerCount: job.requiredWorkerCount,
+        role: (role ?? 'REGULAR') as 'REGULAR' | 'TEAM_LEADER' | 'BACKUP',
+        workerLeaderEligible,
+      });
 
       const created = await tx.shift.create({
         data: {
