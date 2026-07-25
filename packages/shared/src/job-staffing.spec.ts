@@ -136,12 +136,27 @@ describe('deriveJobStaffing', () => {
     expect(r.awaitingRegulars).toHaveLength(0);
   });
 
-  it('11. a PENDING TEAM_LEADER stays in the leader position (not among regulars)', () => {
+  it('11. a PENDING TEAM_LEADER stays in the leader position and does NOT reserve capacity', () => {
     const r = deriveJobStaffing([shift('PENDING', 'TEAM_LEADER')], { requiredWorkerCount: 1, requiresTeamLeader: true });
     expect(r.leaderShift?.assignmentRole).toBe('TEAM_LEADER');
     expect(r.hasApprovedLeader).toBe(false);
-    expect(r.canAssignLeader).toBe(false);
     expect(r.pendingRegulars).toHaveLength(0);
+    // A pending leader does not reserve capacity, so a direct leader assignment is
+    // still permitted by the API (capacity available). The UI keeps showing the
+    // pending leader, so it never offers a second leader assignment in practice.
+    expect(r.reservedNonBackup).toBe(0);
+    expect(r.canAssignLeader).toBe(true);
+  });
+
+  it('13. capacity full with regulars + missing leader → no assign-leader (convert a role instead)', () => {
+    const r = deriveJobStaffing(
+      [shift('APPROVED', 'REGULAR'), shift('APPROVED', 'REGULAR')],
+      { requiredWorkerCount: 2, requiresTeamLeader: true },
+    );
+    expect(r.reservedNonBackup).toBe(2);
+    expect(r.canAssignLeader).toBe(false); // total capacity full → cannot add a leader
+    expect(r.breakdown.managerShortage).toBe(true); // leader still missing
+    expect(r.emptyRegularPositions).toBe(0);
   });
 
   it('12. a pending/awaiting BACKUP is identified as Backup and never fills normal capacity', () => {

@@ -1070,19 +1070,26 @@ export default function JobDetailPage() {
                 <div className="flex items-center justify-between">
                   <span className="inline-flex items-center gap-2 text-sm text-gray-800">
                     <UserCheck className="w-4 h-4 text-gray-400" />
-                    מקום פנוי
+                    {jobStaffing.canAssignLeader ? 'מקום פנוי' : 'לא מאויש'}
                   </span>
                   <div className="flex items-center gap-2">
                     <StatusBadge tone="warning" label="לא מאויש" />
-                    <button
-                      onClick={() => void openAssign('LEADER')}
-                      className="px-2.5 py-1 text-[11px] rounded-lg border border-primary-200 text-primary-700 hover:bg-primary-50"
-                    >
-                      שיבוץ
-                    </button>
+                    {jobStaffing.canAssignLeader && (
+                      <button
+                        onClick={() => void openAssign('LEADER')}
+                        className="px-2.5 py-1 text-[11px] rounded-lg border border-primary-200 text-primary-700 hover:bg-primary-50"
+                      >
+                        שיבוץ
+                      </button>
+                    )}
                   </div>
                 </div>
-                {assignTarget === 'LEADER' && (
+                {!jobStaffing.canAssignLeader && (
+                  <p className="mt-2 text-[11px] text-amber-700">
+                    כל העמדות מאוישות — יש להסב עובד/ת קיים/ת לתפקיד ראש צוות מרשימת העובדים.
+                  </p>
+                )}
+                {jobStaffing.canAssignLeader && assignTarget === 'LEADER' && (
                   <div className="mt-2 flex items-center gap-2">
                     <select
                       value={assignWorkerId}

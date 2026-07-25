@@ -24,15 +24,15 @@ export async function assertDirectAssignCapacity(
   const reservedBackup = await tx.shift.count({
     where: { jobId: params.jobId, assignmentRole: 'BACKUP', joinRequestStatus: { in: RESERVING } },
   });
-  // Non-backup, non-leader reservations. Derived by subtraction so a null
-  // assignmentRole (legacy REGULAR default) is counted as regular.
-  const reservedRegular = Math.max(totalReserved - reservedBackup - reservedLeader, 0);
+  // Total non-backup reservations (regular + leader). Derived by subtraction so a
+  // null assignmentRole (legacy REGULAR default) is counted as non-backup.
+  const reservedNonBackup = Math.max(totalReserved - reservedBackup, 0);
 
   const decision = decideDirectAssignment({
     role: params.role,
     requiredWorkerCount: params.requiredWorkerCount,
     requiresLeader,
-    reservedRegular,
+    reservedNonBackup,
     reservedLeader,
     workerLeaderEligible: params.workerLeaderEligible,
   });

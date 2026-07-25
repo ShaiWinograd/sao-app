@@ -1,41 +1,38 @@
 import { describe, expect, it } from 'vitest';
-import { decideDirectAssignment } from './direct-assign';
+import { decideDirectAssignment, type DirectAssignCapacityInput } from './direct-assign';
 
-const base = {
+const base: Omit<DirectAssignCapacityInput, 'role'> = {
   requiredWorkerCount: 1,
   requiresLeader: false,
-  reservedRegular: 0,
+  reservedNonBackup: 0,
   reservedLeader: 0,
   workerLeaderEligible: true,
 };
 
 describe('decideDirectAssignment', () => {
   it('reserves the first regular position, then rejects a second one (capacity full)', () => {
-    // 1 required, no reservations → the first direct regular assign is allowed.
-    expect(decideDirectAssignment({ ...base, role: 'REGULAR', reservedRegular: 0 }).ok).toBe(true);
-    // After it reserves the position (approved OR awaiting), a second is rejected.
-    const second = decideDirectAssignment({ ...base, role: 'REGULAR', reservedRegular: 1 });
+    expect(decideDirectAssignment({ ...base, role: 'REGULAR', reservedNonBackup: 0 }).ok).toBe(true);
+    const second = decideDirectAssignment({ ...base, role: 'REGULAR', reservedNonBackup: 1 });
     expect(second.ok).toBe(false);
     expect(second.ok === false && second.code).toBe('JOB_FULL');
   });
 
   it('counts an approved slotId=null worker toward capacity', () => {
-    // reservedRegular already 1 (an approved regular with no slot) → full.
-    const d = decideDirectAssignment({ ...base, role: 'REGULAR', reservedRegular: 1 });
+    const d = decideDirectAssignment({ ...base, role: 'REGULAR', reservedNonBackup: 1 });
     expect(d.ok).toBe(false);
     expect(d.ok === false && d.code).toBe('JOB_FULL');
   });
 
   it('backups never reserve or fill a required position (always allowed)', () => {
-    expect(decideDirectAssignment({ ...base, role: 'BACKUP', reservedRegular: 5 }).ok).toBe(true);
-    // A backup does not change regular capacity: with 1 required and 0 regulars, a
-    // regular assign is still allowed.
-    expect(decideDirectAssignment({ ...base, role: 'REGULAR', reservedRegular: 0 }).ok).toBe(true);
+    expect(decideDirectAssignment({ ...base, role: 'BACKUP', reservedNonBackup: 5 }).ok).toBe(true);
+    expect(decideDirectAssignment({ ...base, role: 'REGULAR', reservedNonBackup: 0 }).ok).toBe(true);
   });
 
   it('allows only one team leader', () => {
-    expect(decideDirectAssignment({ ...base, role: 'TEAM_LEADER', requiresLeader: true, reservedLeader: 0 }).ok).toBe(true);
-    const taken = decideDirectAssignment({ ...base, role: 'TEAM_LEADER', requiresLeader: true, reservedLeader: 1 });
+    expect(
+      decideDirectAssignment({ ...base, role: 'TEAM_LEADER', requiredWorkerCount: 2, requiresLeader: true, reservedNonBackup: 0, reservedLeader: 0 }).ok,
+    ).toBe(true);
+    const taken = decideDirectAssignment({ ...base, role: 'TEAM_LEADER', requiredWorkerCount: 2, requiresLeader: true, reservedNonBackup: 1, reservedLeader: 1 });
     expect(taken.ok).toBe(false);
     expect(taken.ok === false && taken.code).toBe('LEADER_TAKEN');
   });
@@ -46,15 +43,39 @@ describe('decideDirectAssignment', () => {
     expect(d.ok === false && d.code).toBe('NOT_LEADER_ELIGIBLE');
   });
 
-  it('reserves the leader position separately from regular capacity', () => {
-    // 2 required, leader required → regularRequired = 1. A reserved leader does not
-    // consume the single regular position.
-    expect(
-      decideDirectAssignment({ role: 'REGULAR', requiredWorkerCount: 2, requiresLeader: true, reservedRegular: 0, reservedLeader: 1, workerLeaderEligible: true }).ok,
-    ).toBe(true);
-    // …but once that regular position is reserved, the next regular is rejected.
-    const full = decideDirectAssignment({ role: 'REGULAR', requiredWorkerCount: 2, requiresLeader: true, reservedRegular: 1, reservedLeader: 1, workerLeaderEligible: true });
-    expect(full.ok).toBe(false);
-    expect(full.ok === false && full.code).toBe('JOB_FULL');
+  // ── Total-capacity guard for leaders (blocker #1) ───────────────────────────
+
+  it('rejects a leader when total capacity is already full with regulars (missing leader)', () => {
+    // required 2, leader required, both positions reserved by regulars, no leader.
+    const d = decideDirectAssignment({
+      role: 'TEAM_LEADER',
+      requiredWorkerCount: 2,
+      requiresLeader: true,
+      reservedNonBackup: 2, // two regulars
+      reservedLeader: 0,
+      workerLeaderEligible: true,
+    });
+    expect(d.ok).toBe(false);
+    expect(d.ok === false && d.code).toBe('JOB_FULL');
+  });
+
+  it('allows a leader when one total position remains and the leader is missing', () => {
+    const d = decideDirectAssignment({
+      role: 'TEAM_LEADER',
+      requiredWorkerCount: 2,
+      requiresLeader: true,
+      reservedNonBackup: 1, // one regular; one position free
+      reservedLeader: 0,
+      workerLeaderEligible: true,
+    });
+    expect(d.ok).toBe(true);
+  });
+
+  // ── Leader not required (blocker #2) ────────────────────────────────────────
+
+  it('rejects a TEAM_LEADER assignment when the job does not require a leader', () => {
+    const d = decideDirectAssignment({ ...base, role: 'TEAM_LEADER', requiresLeader: false });
+    expect(d.ok).toBe(false);
+    expect(d.ok === false && d.code).toBe('LEADER_NOT_REQUIRED');
   });
 });

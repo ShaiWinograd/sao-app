@@ -71,6 +71,19 @@ const jobAwaitingLeader = {
   ],
 };
 
+// Capacity full with regulars but the leader is still missing: "assign leader"
+// must NOT be offered; the owner converts an existing worker's role instead.
+const jobFullMissingLeader = {
+  ...jobSlotlessApproved,
+  id: 'job-full-missing-leader',
+  requiredWorkerCount: 2,
+  slots: [{ id: 'slot-mgr', requiredSkill: 'SHIFT_LEADER', label: null, filledByShiftId: null }],
+  shifts: [
+    { id: 's-a', slotId: null, workerNameSnapshot: 'רות בר', attendanceStatus: 'SCHEDULED', joinRequestStatus: 'APPROVED', assignmentRole: 'REGULAR', formStatus: 'NOT_SUBMITTED', worker: { firstName: 'רות', lastName: 'בר' } },
+    { id: 's-b', slotId: null, workerNameSnapshot: 'מיה גל', attendanceStatus: 'SCHEDULED', joinRequestStatus: 'APPROVED', assignmentRole: 'REGULAR', formStatus: 'NOT_SUBMITTED', worker: { firstName: 'מיה', lastName: 'גל' } },
+  ],
+};
+
 test.describe('Job detail page', () => {
   test('shows header, details, and the publication action', async ({ page }) => {
     await page.route('**/api/v1/jobs/job-slotless', async (route) => {
@@ -138,5 +151,23 @@ test.describe('Job detail — staffing consistency (PR-1)', () => {
     await expect(page.getByText('לא מאויש')).toHaveCount(0);
     // …and the leader requirement is still unmet until she accepts.
     await expect(page.getByText('חסר ראש צוות').first()).toBeVisible();
+  });
+
+  test('capacity full + missing leader: no "assign leader" is offered; role-change hint is shown', async ({ page }) => {
+    await page.route('**/api/v1/jobs/job-full-missing-leader', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(jobFullMissingLeader) });
+    });
+
+    await page.goto('/jobs/job-full-missing-leader');
+    await page.getByRole('tab', { name: 'עובדים' }).click();
+
+    // Both regular workers are shown, the leader is still missing…
+    await expect(page.getByText('רות בר')).toBeVisible();
+    await expect(page.getByText('מיה גל')).toBeVisible();
+    await expect(page.getByText('חסר ראש צוות').first()).toBeVisible();
+    // …no assign affordance (capacity is full)…
+    await expect(page.getByRole('button', { name: 'שיבוץ' })).toHaveCount(0);
+    // …and the supported resolution (convert an existing worker's role) is hinted.
+    await expect(page.getByText('יש להסב עובד/ת קיים/ת לתפקיד ראש צוות מרשימת העובדים.')).toBeVisible();
   });
 });

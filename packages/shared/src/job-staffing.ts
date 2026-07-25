@@ -43,11 +43,14 @@ export type JobStaffing<T extends StaffingShift> = {
   backups: T[];
   /** Approved non-backup workers (regular + leader) — the shortage numerator. */
   assignedWorkers: number;
-  /** Approved + awaiting regular — reserved regular positions (for the assign guard). */
+  /** Approved + awaiting regular — reserved regular positions. */
   reservedRegular: number;
-  /** Assignable open regular positions = regularRequired − reservedRegular (≥ 0). */
+  /** Approved + awaiting non-backup (regular + leader) — total reserved capacity. */
+  reservedNonBackup: number;
+  /** Assignable open regular positions (keeps one slot for an unfilled leader). */
   emptyRegularPositions: number;
-  /** Whether an "assign leader" affordance may be offered (no leader shift reserves it). */
+  /** Whether an "assign leader" affordance may be offered: leader required, none
+   *  reserved (approved/awaiting), and a required position still free. */
   canAssignLeader: boolean;
   breakdown: StaffingIssueBreakdown;
 };
@@ -82,13 +85,23 @@ export function deriveJobStaffing<T extends StaffingShift>(shifts: T[], input: J
   const backups = active.filter(isBackup);
 
   const hasApprovedLeader = approvedLeader != null;
+  // A leader reserves a required position only once APPROVED or AWAITING_WORKER —
+  // a PENDING leader request is visible but does not reserve capacity.
+  const leaderReserved = approvedLeader != null || awaitingLeader != null;
   // Approved non-backup workers fill required capacity (shared rule).
   const assignedWorkers = active.filter(fillsRequiredSlot).length;
 
-  const regularRequired = Math.max(input.requiredWorkerCount - (input.requiresTeamLeader ? 1 : 0), 0);
   const reservedRegular = regulars.length + awaitingRegulars.length;
-  const emptyRegularPositions = Math.max(regularRequired - reservedRegular, 0);
-  const canAssignLeader = input.requiresTeamLeader && leaderShift == null;
+  // Total reserved required capacity = non-backup (regular + leader), approved + awaiting.
+  const reservedNonBackup = reservedRegular + (leaderReserved ? 1 : 0);
+  const remainingCapacity = Math.max(input.requiredWorkerCount - reservedNonBackup, 0);
+  const leaderOpen = input.requiresTeamLeader && !leaderReserved;
+  // "assign leader" is offered only when a leader is required, none is reserved,
+  // AND a required position is still free. When capacity is full but the leader is
+  // missing, the owner converts an existing worker's role instead.
+  const canAssignLeader = leaderOpen && remainingCapacity > 0;
+  // Open regular positions keep one slot reserved for an unfilled leader position.
+  const emptyRegularPositions = leaderOpen ? Math.max(remainingCapacity - 1, 0) : remainingCapacity;
 
   const breakdown = getStaffingIssueBreakdown({
     requiredWorkers: input.requiredWorkerCount,
@@ -106,6 +119,7 @@ export function deriveJobStaffing<T extends StaffingShift>(shifts: T[], input: J
     backups,
     assignedWorkers,
     reservedRegular,
+    reservedNonBackup,
     emptyRegularPositions,
     canAssignLeader,
     breakdown,
