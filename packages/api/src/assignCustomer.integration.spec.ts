@@ -267,6 +267,88 @@ maybe('§10.1 assignRealCustomerToJob', () => {
     expect(await prisma.auditLog.count({ where: { entityId: job.id, reason: 'assign-customer' } })).toBe(1);
   });
 
+  it('blocks on the shift ROW lock when a non-cooperating clock-in holds it, then rejects ATTENDANCE_STARTED', async () => {
+    const owner = await seedOwner();
+    const gr = await seedCustomer({ isSystem: true });
+    const target = await seedCustomer();
+    const { job } = await seedGrJob(gr.id);
+    const { shift } = await addShift(job.id, 'APPROVED'); // SCHEDULED
+
+    // A clock-in transaction (which does NOT call lockJob) grabs the shift ROW lock,
+    // then on release writes CLOCKED_IN and commits — a non-cooperating write.
+    let lockHeld!: () => void;
+    const lockHeldP = new Promise<void>((r) => (lockHeld = r));
+    let release!: () => void;
+    const releaseP = new Promise<void>((r) => (release = r));
+
+    const clockInTx = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM shifts WHERE "jobId" = ${job.id} FOR UPDATE`;
+        lockHeld();
+        await releaseP;
+        await tx.shift.update({ where: { id: shift.id }, data: { attendanceStatus: 'CLOCKED_IN', actualStart: new Date() } });
+      },
+      { timeout: 20000 },
+    );
+
+    await lockHeldP; // the clock-in tx now holds the shift row lock
+
+    let assignSettled = false;
+    const assignP = assignRealCustomerToJob(prisma, { jobId: job.id, customerId: target.id, actor: { id: owner.id } })
+      .then((r) => { assignSettled = true; return r; })
+      .catch((e) => { assignSettled = true; throw e; });
+
+    // Without the row lock the assign would read SCHEDULED and succeed here; the
+    // row lock keeps it blocked while the clock-in holds the shift row.
+    await new Promise((r) => setTimeout(r, 250));
+    expect(assignSettled).toBe(false);
+
+    release();
+    await clockInTx;
+
+    await expect(assignP).rejects.toMatchObject({ code: 'ATTENDANCE_STARTED' });
+    expect((await prisma.job.findUnique({ where: { id: job.id } }))?.customerId).toBe(gr.id);
+    expect((await prisma.shift.findUnique({ where: { id: shift.id } }))?.attendanceStatus).toBe('CLOCKED_IN');
+  });
+
+  it('blocks on the customer ROW lock when a concurrent deactivation holds it, then rejects TARGET_INACTIVE', async () => {
+    const owner = await seedOwner();
+    const gr = await seedCustomer({ isSystem: true });
+    const target = await seedCustomer(); // active
+    const { job } = await seedGrJob(gr.id);
+
+    let lockHeld!: () => void;
+    const lockHeldP = new Promise<void>((r) => (lockHeld = r));
+    let release!: () => void;
+    const releaseP = new Promise<void>((r) => (release = r));
+
+    const deactivateTx = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM customers WHERE id = ${target.id} FOR UPDATE`;
+        lockHeld();
+        await releaseP;
+        await tx.customer.update({ where: { id: target.id }, data: { isActive: false } });
+      },
+      { timeout: 20000 },
+    );
+
+    await lockHeldP;
+
+    let assignSettled = false;
+    const assignP = assignRealCustomerToJob(prisma, { jobId: job.id, customerId: target.id, actor: { id: owner.id } })
+      .then((r) => { assignSettled = true; return r; })
+      .catch((e) => { assignSettled = true; throw e; });
+
+    await new Promise((r) => setTimeout(r, 250));
+    expect(assignSettled).toBe(false);
+
+    release();
+    await deactivateTx;
+
+    await expect(assignP).rejects.toMatchObject({ code: 'TARGET_INACTIVE' });
+    expect((await prisma.job.findUnique({ where: { id: job.id } }))?.customerId).toBe(gr.id);
+  });
+
   it('rolls back the entire reassignment if notification creation fails', async () => {
     const owner = await seedOwner();
     const gr = await seedCustomer({ isSystem: true });

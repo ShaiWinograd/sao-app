@@ -40,9 +40,18 @@ export async function assignRealCustomerToJob(
   params: { jobId: string; customerId: string; actor?: { id?: string } | null },
 ): Promise<AssignCustomerResult> {
   return client.$transaction(async (tx) => {
-    // Lock the job FIRST so concurrent assigns serialize, then read every value
-    // that a guard depends on under the lock (TOCTOU-safe).
+    // Serialize cooperating flows (advisory) AND take real ROW locks on the job,
+    // its existing shift rows and the target customer, so NON-cooperating writes —
+    // an attendance clock-in (UPDATE shifts) or a customer deactivation (UPDATE
+    // customers), neither of which calls lockJob — cannot commit between our guard
+    // read and our commit. A concurrent clock-in either commits first (then our
+    // FOR UPDATE reads the new attendanceStatus and we reject ATTENDANCE_STARTED)
+    // or blocks on our row lock until the reassignment commits. Locks are taken in
+    // a fixed order (job → shifts → target customer) to avoid deadlocks.
     await lockJob(tx, params.jobId);
+    await tx.$queryRaw`SELECT id FROM jobs WHERE id = ${params.jobId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM shifts WHERE "jobId" = ${params.jobId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM customers WHERE id = ${params.customerId} FOR UPDATE`;
 
     const job = await tx.job.findUnique({
       where: { id: params.jobId },
