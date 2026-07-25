@@ -15,8 +15,10 @@ const SuggestBody = z.object({ q: z.string().max(MAX_SUGGEST_QUERY_LEN * 2) });
 
 export async function geocodeRoutes(app: FastifyInstance) {
   // Owner/admin-only address autocomplete. The Azure key stays server-side; the
-  // response carries NO coordinates or provider secrets — only a clean display,
-  // city, coarse precision, an `exact` flag, and an opaque signed selection token.
+  // response has no separate coordinate fields — only a clean display, city,
+  // coarse precision, an `exact` flag, and a signed selection token. The token
+  // embeds the server coordinates: base64url-decodable but HMAC-protected (not
+  // encrypted), so they cannot be forged.
   app.post('/suggest', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { q } = SuggestBody.parse(req.body);
 

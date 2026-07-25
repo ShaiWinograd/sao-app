@@ -59,6 +59,16 @@ describe('resolveQuickCreateAddress — selected', () => {
     await expect(resolveQuickCreateAddress({ address: { mode: 'selected', token: bad } }, deps)).rejects.toMatchObject({ code: 'ADDRESS_NOT_RESOLVABLE' });
   });
 
+  it('independently rechecks IL completeness — a signed HOUSE token missing municipality does not RESOLVE', async () => {
+    const bad = token({ precision: 'HOUSE', components: { streetName: 'ישעיהו', streetNumber: '22', municipality: null, postalCode: null, countryCode: 'IL' } });
+    await expect(resolveQuickCreateAddress({ address: { mode: 'selected', token: bad } }, deps)).rejects.toMatchObject({ code: 'ADDRESS_NOT_RESOLVABLE' });
+  });
+
+  it('independently rechecks country — a signed HOUSE token with a non-IL country does not RESOLVE', async () => {
+    const bad = token({ precision: 'HOUSE', city: 'NYC', display: 'Main 5, NYC', components: { streetName: 'Main', streetNumber: '5', municipality: 'NYC', postalCode: null, countryCode: 'US' } });
+    await expect(resolveQuickCreateAddress({ address: { mode: 'selected', token: bad } }, deps)).rejects.toMatchObject({ code: 'ADDRESS_NOT_RESOLVABLE' });
+  });
+
   it('rejects a tampered token', async () => {
     const t = token();
     const [body, sig] = t.split('.');

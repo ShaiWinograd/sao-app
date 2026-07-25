@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeAzureResults } from './azureMapsProvider.js';
-import { buildDisplayAddress, buildSuggestions, isExactHouse, MAX_SUGGESTIONS } from './suggest.js';
+import { buildDisplayAddress, buildSuggestions, hasCompleteIsraeliHouse, isExactHouse, MAX_SUGGESTIONS } from './suggest.js';
 import { verifySelectionToken } from './selectionToken.js';
+import { resolveQuickCreateAddress } from '../../domain/quickCreateAddress.js';
 import type { GeocodeCandidate, GeocodeProvider, GeocodeProviderResponse } from './types.js';
 
 const SECRET = 'test-selection-secret-0123456789';
@@ -60,6 +61,34 @@ describe('structured normalization', () => {
     expect(isExactHouse(house())).toBe(true);
     expect(isExactHouse(house({ components: { streetName: 'ישעיהו', streetNumber: null, municipality: 'רמת גן', postalCode: null, countryCode: 'IL' } }))).toBe(false);
   });
+
+  it('requires a complete Israeli address (street, number, municipality, IL country) to be exact', () => {
+    // Missing municipality → not exact.
+    expect(hasCompleteIsraeliHouse({ streetName: 'ישעיהו', streetNumber: '22', municipality: null, postalCode: null, countryCode: 'IL' })).toBe(false);
+    // Non-IL country → not exact.
+    expect(hasCompleteIsraeliHouse({ streetName: 'Main', streetNumber: '5', municipality: 'NYC', postalCode: null, countryCode: 'US' })).toBe(false);
+    // Case-insensitive IL normalization.
+    expect(hasCompleteIsraeliHouse({ streetName: 'ישעיהו', streetNumber: '22', municipality: 'רמת גן', postalCode: null, countryCode: 'il' })).toBe(true);
+    // Complete IL address.
+    expect(hasCompleteIsraeliHouse({ streetName: 'ישעיהו', streetNumber: '22', municipality: 'רמת גן', postalCode: null, countryCode: 'IL' })).toBe(true);
+  });
+
+  it('labels a HOUSE point without a municipality as approximate (never exact)', async () => {
+    const noCity = house({ providerPlaceId: 'p-nocity', components: { streetName: 'ישעיהו', streetNumber: '22', municipality: null, postalCode: null, countryCode: 'IL' } });
+    const res = await buildSuggestions({ provider: fakeProvider({ ok: true, candidates: [noCity] }), secret: SECRET, query: 'ישעיהו 22' });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.candidates[0].exact).toBe(false);
+    expect(res.candidates[0].precision).toBe('STREET');
+  });
+
+  it('labels a HOUSE point in a non-IL country as approximate (never exact)', async () => {
+    const foreign = house({ providerPlaceId: 'p-us', city: 'NYC', components: { streetName: 'Main', streetNumber: '5', municipality: 'NYC', postalCode: null, countryCode: 'US' } });
+    const res = await buildSuggestions({ provider: fakeProvider({ ok: true, candidates: [foreign] }), secret: SECRET, query: 'Main 5' });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.candidates[0].exact).toBe(false);
+  });
 });
 
 describe('buildSuggestions', () => {
@@ -102,5 +131,24 @@ describe('buildSuggestions', () => {
     const res = await buildSuggestions({ provider: fakeProvider({ ok: true, candidates: many }), secret: SECRET, query: 'ישעיהו רמת גן' });
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.candidates.length).toBeLessThanOrEqual(MAX_SUGGESTIONS);
+  });
+
+  it('marks a lower-ranked candidate ambiguous by its NEAREST competitor (not just the top), and it cannot RESOLVE', async () => {
+    // c0 is the clear top; c1 is far from c0 but nearly tied with c2.
+    const c0 = house({ providerPlaceId: 'p0', confidence: 0.95, components: { streetName: 'ישעיהו', streetNumber: '10', municipality: 'רמת גן', postalCode: null, countryCode: 'IL' } });
+    const c1 = house({ providerPlaceId: 'p1', confidence: 0.70, components: { streetName: 'ישעיהו', streetNumber: '22', municipality: 'רמת גן', postalCode: null, countryCode: 'IL' } });
+    const c2 = house({ providerPlaceId: 'p2', confidence: 0.68, components: { streetName: 'ישעיהו', streetNumber: '24', municipality: 'רמת גן', postalCode: null, countryCode: 'IL' } });
+    const res = await buildSuggestions({ provider: fakeProvider({ ok: true, candidates: [c1, c0, c2] }), secret: SECRET, query: 'ישעיהו רמת גן' });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    // Sorted: [c0, c1, c2]. The top is unambiguous; the near-tied c1 is ambiguous.
+    const top = verifySelectionToken(res.candidates[0].token, SECRET);
+    const mid = verifySelectionToken(res.candidates[1].token, SECRET);
+    expect(top.ok && top.payload.ambiguous).toBe(false);
+    expect(mid.ok && mid.payload.ambiguous).toBe(true);
+    // The ambiguous lower-ranked selection cannot become RESOLVED on submit.
+    await expect(
+      resolveQuickCreateAddress({ address: { mode: 'selected', token: res.candidates[1].token } }, { provider: null, secret: SECRET }),
+    ).rejects.toMatchObject({ code: 'ADDRESS_NOT_RESOLVABLE' });
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { signSelectionToken, verifySelectionToken, type SignSelectionInput } from './selectionToken.js';
+import { createHmac } from 'node:crypto';
+import { getSelectionSecret, signSelectionToken, verifySelectionToken, type SignSelectionInput } from './selectionToken.js';
 import type { GeocodeAddressComponents } from './types.js';
 
 const SECRET = 'test-selection-secret-0123456789';
@@ -10,6 +11,21 @@ const components: GeocodeAddressComponents = {
   postalCode: '5223392',
   countryCode: 'IL',
 };
+
+// Sign an ARBITRARY payload object with the real secret — used to test that shape
+// and numeric-bounds validation reject correctly-signed-but-invalid payloads.
+function b64url(buf: Buffer): string {
+  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function forgeSigned(payload: Record<string, unknown>, secret = SECRET): string {
+  const body = b64url(Buffer.from(JSON.stringify(payload), 'utf8'));
+  const sig = b64url(createHmac('sha256', secret).update(body).digest());
+  return `${body}.${sig}`;
+}
+function basePayload(iat = 1_900_000_000): Record<string, unknown> {
+  return { v: 1, provider: 'azure-maps', providerPlaceId: 'p', lat: 32.08, lon: 34.81, precision: 'HOUSE', confidence: 0.9, city: 'רמת גן', components, display: 'ישעיהו 22, רמת גן', ambiguous: false, query: 'q', iat, exp: iat + 900 };
+}
+const atSec = (s: number) => new Date(s * 1000);
 
 const input: SignSelectionInput = {
   provider: 'azure-maps',
@@ -66,5 +82,55 @@ describe('selection token', () => {
     expect(verifySelectionToken('', SECRET).ok).toBe(false);
     expect(verifySelectionToken('no-dot', SECRET).ok).toBe(false);
     expect(verifySelectionToken('a.', SECRET).ok).toBe(false);
+  });
+});
+
+describe('selection token — payload shape + numeric bounds (post-signature)', () => {
+  const now = atSec(1_900_000_100);
+
+  it('accepts a well-formed signed payload (sanity)', () => {
+    expect(verifySelectionToken(forgeSigned(basePayload()), SECRET, now).ok).toBe(true);
+  });
+
+  it('rejects out-of-range coordinates even when correctly signed', () => {
+    expect(verifySelectionToken(forgeSigned({ ...basePayload(), lat: 99 }), SECRET, now)).toEqual({ ok: false, reason: 'MALFORMED' });
+    expect(verifySelectionToken(forgeSigned({ ...basePayload(), lon: 200 }), SECRET, now)).toEqual({ ok: false, reason: 'MALFORMED' });
+  });
+
+  it('rejects confidence outside [0,1]', () => {
+    expect(verifySelectionToken(forgeSigned({ ...basePayload(), confidence: 1.5 }), SECRET, now)).toEqual({ ok: false, reason: 'MALFORMED' });
+  });
+
+  it('rejects an invalid precision', () => {
+    expect(verifySelectionToken(forgeSigned({ ...basePayload(), precision: 'BOGUS' }), SECRET, now)).toEqual({ ok: false, reason: 'MALFORMED' });
+  });
+
+  it('rejects exp <= iat and an over-long TTL', () => {
+    const iat = 1_900_000_000;
+    expect(verifySelectionToken(forgeSigned({ ...basePayload(iat), exp: iat }), SECRET, now)).toEqual({ ok: false, reason: 'MALFORMED' });
+    expect(verifySelectionToken(forgeSigned({ ...basePayload(iat), exp: iat + 7200 }), SECRET, now)).toEqual({ ok: false, reason: 'MALFORMED' });
+  });
+
+  it('rejects a token issued too far in the future (beyond clock-skew tolerance)', () => {
+    const iat = 1_900_000_100 + 1000; // 1000s in the future relative to `now`
+    expect(verifySelectionToken(forgeSigned({ ...basePayload(iat) }), SECRET, now)).toEqual({ ok: false, reason: 'MALFORMED' });
+  });
+});
+
+describe('getSelectionSecret — strong secret required', () => {
+  const KEY = 'GEOCODE_SELECTION_SECRET';
+  it('returns null for a missing or short (<32 byte) secret and the value for a strong one', () => {
+    const prev = process.env[KEY];
+    try {
+      delete process.env[KEY];
+      expect(getSelectionSecret()).toBeNull();
+      process.env[KEY] = 'too-short';
+      expect(getSelectionSecret()).toBeNull();
+      process.env[KEY] = 'x'.repeat(32);
+      expect(getSelectionSecret()).toBe('x'.repeat(32));
+    } finally {
+      if (prev === undefined) delete process.env[KEY];
+      else process.env[KEY] = prev;
+    }
   });
 });

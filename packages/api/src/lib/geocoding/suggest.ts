@@ -1,13 +1,16 @@
 // Address-suggestion service (PR-A). Turns the owner's partial query into a small
 // set of candidates for display, each carrying a server-signed selection token.
 //
-// SAFETY: the response NEVER contains coordinates or provider secrets — only a
-// clean display, the city, a coarse precision label, an `exact` flag, and the
-// opaque token. Coordinates live only inside the signed token (server-vouched).
+// RESPONSE SHAPE: the response has no separate coordinate fields — only a clean
+// display, the city, a coarse precision label, an `exact` flag, and the signed
+// token. The coordinates live inside that token: base64url-ENCODED (decodable by
+// the browser) but HMAC-protected, so they cannot be forged. They are integrity-
+// protected, NOT confidential.
 //
 // PRECISION: a candidate is `exact` (HOUSE) ONLY when Azure returned a point
-// address AND the structured components include a street name and a house number.
-// Anything else is labelled approximate and can never become RESOLVED on submit.
+// address AND the structured components form a complete Israeli address — street
+// name, house number, municipality, and countryCode === 'IL'. Anything else is
+// labelled approximate and can never become RESOLVED on submit.
 
 import { DEFAULT_THRESHOLDS } from './decision.js';
 import { signSelectionToken } from './selectionToken.js';
@@ -16,6 +19,7 @@ import type { GeocodeAddressComponents, GeocodeCandidate, GeocodeProvider } from
 export const MIN_SUGGEST_QUERY_LEN = 3;
 export const MAX_SUGGEST_QUERY_LEN = 200;
 export const MAX_SUGGESTIONS = 6;
+const IL_COUNTRY = 'IL';
 
 export interface SuggestCandidate {
   token: string;
@@ -24,7 +28,7 @@ export interface SuggestCandidate {
   city: string | null;
   /** Coarse precision label for UI (HOUSE | STREET | LOCALITY | REGION | OTHER). */
   precision: string;
-  /** True only for a house-level point with street + number — the only kind that can RESOLVE. */
+  /** True only for a complete Israeli house address — the only kind that can RESOLVE. */
   exact: boolean;
 }
 
@@ -35,8 +39,8 @@ export type SuggestResult =
 /**
  * Build a clean Hebrew display from validated structured components. Postal code
  * is deliberately EXCLUDED (kept separate from street/number), preventing malformed
- * output such as `רחוב ישעיהו, 5223392, רמת גן, 22`. Falls back to the coarsest
- * available component so an approximate result still shows something meaningful.
+ * output such as `רחוב ישעיהו, 5223392, רמת גן, 22`. Includes the municipality when
+ * present; falls back to the coarsest available component otherwise.
  */
 export function buildDisplayAddress(c: GeocodeAddressComponents): string {
   const streetLine = [c.streetName, c.streetNumber].filter(Boolean).join(' ').trim();
@@ -44,12 +48,35 @@ export function buildDisplayAddress(c: GeocodeAddressComponents): string {
   return parts.join(', ');
 }
 
-/** A house-level point that actually carries a street name AND a house number. */
-export function isExactHouse(cand: GeocodeCandidate): boolean {
-  return (
-    cand.precision === 'HOUSE' &&
-    Boolean(cand.components?.streetName && cand.components?.streetNumber)
+/** Normalize a country code for case-insensitive comparison. */
+function normCountry(code: string | null | undefined): string {
+  return (code ?? '').trim().toUpperCase();
+}
+
+/**
+ * A complete Israeli house-level address: street name, house number, municipality,
+ * and countryCode === 'IL' (case-insensitive). This is the ONLY shape that may
+ * become RESOLVED — a result missing the municipality or in another country may be
+ * shown as approximate but never resolves.
+ */
+export function hasCompleteIsraeliHouse(components: GeocodeAddressComponents | null | undefined): boolean {
+  return Boolean(
+    components &&
+      components.streetName &&
+      components.streetNumber &&
+      components.municipality &&
+      normCountry(components.countryCode) === IL_COUNTRY,
   );
+}
+
+/** A house-level point that carries a complete Israeli address. */
+export function isExactHouse(cand: GeocodeCandidate): boolean {
+  return cand.precision === 'HOUSE' && hasCompleteIsraeliHouse(cand.components);
+}
+
+/** True when any OTHER candidate is within `ambiguityDelta` of this candidate's confidence. */
+function isAmbiguousAgainst(cand: GeocodeCandidate, all: GeocodeCandidate[]): boolean {
+  return all.some((other) => other !== cand && Math.abs(other.confidence - cand.confidence) < DEFAULT_THRESHOLDS.ambiguityDelta);
 }
 
 /**
@@ -86,16 +113,16 @@ export async function buildSuggestions(args: {
 
   const sorted = [...response.candidates].sort((a, b) => b.confidence - a.confidence).slice(0, MAX_SUGGESTIONS);
 
-  const candidates: SuggestCandidate[] = sorted.map((cand, i) => {
+  const candidates: SuggestCandidate[] = sorted.map((cand) => {
     const components: GeocodeAddressComponents =
       cand.components ?? { streetName: null, streetNumber: null, municipality: cand.city, postalCode: null, countryCode: null };
     const exact = isExactHouse(cand);
-    // An exact candidate that has a close-scoring neighbour is ambiguous — bind
-    // that verdict so submit revalidation downgrades it to NEEDS_REVIEW.
-    const neighbour = sorted[i === 0 ? 1 : 0];
-    const ambiguous = Boolean(neighbour && neighbour !== cand && Math.abs(neighbour.confidence - cand.confidence) < DEFAULT_THRESHOLDS.ambiguityDelta);
-    // The precision we bind for RESOLVED must reflect the street+number check:
-    // a "point" without a house number is only street-accurate.
+    // Ambiguous when ANY other returned candidate is within ambiguityDelta of THIS
+    // candidate's confidence — not merely the top result. Bound so submit
+    // revalidation downgrades an ambiguous selection to NEEDS_REVIEW.
+    const ambiguous = isAmbiguousAgainst(cand, sorted);
+    // The precision we bind for RESOLVED must reflect the complete-Israeli-house
+    // check: a "point" that is not a full IL house is only street-accurate.
     const precision = exact ? 'HOUSE' : cand.precision === 'HOUSE' ? 'STREET' : cand.precision;
     const display = buildDisplayAddress(components) || cand.city || cand.formattedAddress;
 

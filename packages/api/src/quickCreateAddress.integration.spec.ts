@@ -8,6 +8,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { resolveQuickCreateAddress } from './domain/quickCreateAddress.js';
+import { lockIdempotencyKey } from './lib/commitment.js';
 import { signSelectionToken, type SignSelectionInput } from './lib/geocoding/selectionToken.js';
 import type { GeocodeAddressComponents } from './lib/geocoding/types.js';
 
@@ -56,6 +57,39 @@ async function createQuickJob(customerId: string, caseId: string, args: Paramete
     });
     return { address, job };
   });
+}
+
+// Mirrors the FULL /jobs/quick idempotency ordering: (1) a pre-resolution fast-path
+// replay lookup, (2) address resolution (may throw), (3) an in-transaction advisory
+// lock + recheck before create. Used to prove a replay never depends on a still-valid
+// token/config.
+async function quickCreateIdem(
+  customerId: string,
+  caseId: string,
+  args: Parameters<typeof resolveQuickCreateAddress>[0],
+  opts: { secret: string | null; now?: Date; idempotencyKey?: string },
+): Promise<{ jobId: string; replay: boolean }> {
+  const key = opts.idempotencyKey;
+  // (1) Fast-path replay — BEFORE any address resolution or token/config check.
+  if (key) {
+    const existing = await prisma.job.findFirst({ where: { idempotencyKey: key } });
+    if (existing) return { jobId: existing.id, replay: true };
+  }
+  // (2) Resolve (throws on a bad selection → nothing written).
+  const resolved = await resolveQuickCreateAddress(args, { provider: null, secret: opts.secret, now: opts.now ?? NOW });
+  // (3) Atomic create with an in-tx lock + recheck.
+  const job = await prisma.$transaction(async (tx) => {
+    if (key) {
+      await lockIdempotencyKey(tx, key);
+      const existing = await tx.job.findFirst({ where: { idempotencyKey: key } });
+      if (existing) return existing;
+    }
+    const address = await tx.address.create({ data: { customerId, fullAddress: resolved.fullAddress, label: 'OTHER', ...(resolved.apply ?? {}) } });
+    return tx.job.create({
+      data: { caseId, customerId, addressId: address.id, jobType: 'PACKING', date: DATE, plannedStart: DATE, plannedEnd: DATE, requiredWorkerCount: 1, status: 'RESERVATION', idempotencyKey: key ?? null },
+    });
+  });
+  return { jobId: job.id, replay: false };
 }
 
 const maybe = TEST_DB ? describe : describe.skip;
@@ -120,5 +154,64 @@ maybe('PR-A Quick Create address contract', () => {
     expect(address.latitude).toBeNull();
     expect(address.longitude).toBeNull();
     expect(address.fullAddress).toBe('ישעיהו 22 רמת גן');
+  });
+});
+
+maybe('PR-A Quick Create idempotent replay (does not depend on a valid token/config)', () => {
+  beforeEach(clean);
+  afterAll(async () => { await clean(); await prisma.$disconnect(); });
+
+  it('a retry with the same key returns the original job even after the selection token expired', async () => {
+    const { customer, kase } = await seed();
+    const key = 'idem-expired-1';
+    const first = await quickCreateIdem(customer.id, kase.id, { address: { mode: 'selected', token: token() } }, { secret: SECRET, idempotencyKey: key });
+    expect(first.replay).toBe(false);
+    // Retry with the SAME key but a now-expired token and a future clock — the
+    // fast-path replay must return the original job without touching resolution.
+    const expiredToken = token({}, { now: NOW, ttlSeconds: 60 });
+    const later = new Date(NOW.getTime() + 61_000);
+    const retry = await quickCreateIdem(customer.id, kase.id, { address: { mode: 'selected', token: expiredToken } }, { secret: SECRET, now: later, idempotencyKey: key });
+    expect(retry).toEqual({ jobId: first.jobId, replay: true });
+    expect(await prisma.job.count({ where: { idempotencyKey: key } })).toBe(1);
+  });
+
+  it('a retry returns the original job even after signing config becomes unavailable', async () => {
+    const { customer, kase } = await seed();
+    const key = 'idem-noconfig-1';
+    const first = await quickCreateIdem(customer.id, kase.id, { address: { mode: 'selected', token: token() } }, { secret: SECRET, idempotencyKey: key });
+    // secret=null simulates the signing secret being removed; the replay still works.
+    const retry = await quickCreateIdem(customer.id, kase.id, { address: { mode: 'selected', token: token() } }, { secret: null, idempotencyKey: key });
+    expect(retry).toEqual({ jobId: first.jobId, replay: true });
+    expect(await prisma.job.count({ where: { idempotencyKey: key } })).toBe(1);
+  });
+
+  it('two concurrent first submissions with the same key create exactly one job + address', async () => {
+    const { customer, kase } = await seed();
+    const key = 'idem-concurrent-1';
+    const [a, b] = await Promise.all([
+      quickCreateIdem(customer.id, kase.id, { address: { mode: 'selected', token: token() } }, { secret: SECRET, idempotencyKey: key }),
+      quickCreateIdem(customer.id, kase.id, { address: { mode: 'selected', token: token() } }, { secret: SECRET, idempotencyKey: key }),
+    ]);
+    expect(a.jobId).toBe(b.jobId); // both observers see the same single job
+    expect(await prisma.job.count({ where: { idempotencyKey: key } })).toBe(1);
+    const jobs = await prisma.job.findMany({ where: { idempotencyKey: key }, select: { addressId: true } });
+    expect(jobs).toHaveLength(1);
+    expect(await prisma.address.count()).toBe(1); // no orphaned second address
+  });
+
+  it('a failed first submission creates nothing and does not poison the idempotency key', async () => {
+    const { customer, kase } = await seed();
+    const key = 'idem-failed-1';
+    const expiredToken = token({}, { now: NOW, ttlSeconds: 60 });
+    const later = new Date(NOW.getTime() + 61_000);
+    await expect(
+      quickCreateIdem(customer.id, kase.id, { address: { mode: 'selected', token: expiredToken } }, { secret: SECRET, now: later, idempotencyKey: key }),
+    ).rejects.toMatchObject({ code: 'ADDRESS_SELECTION_EXPIRED' });
+    expect(await prisma.job.count()).toBe(0);
+    expect(await prisma.address.count()).toBe(0);
+    // The key is not poisoned — a subsequent valid submission with the SAME key succeeds.
+    const ok = await quickCreateIdem(customer.id, kase.id, { address: { mode: 'selected', token: token() } }, { secret: SECRET, idempotencyKey: key });
+    expect(ok.replay).toBe(false);
+    expect(await prisma.job.count({ where: { idempotencyKey: key } })).toBe(1);
   });
 });

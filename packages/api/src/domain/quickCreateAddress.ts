@@ -22,6 +22,7 @@
 import type { GeocodeStatus } from '@workforce/shared';
 import { AppError } from '../lib/errors.js';
 import { classifyCandidate } from '../lib/geocoding/decision.js';
+import { hasCompleteIsraeliHouse } from '../lib/geocoding/suggest.js';
 import { verifySelectionToken } from '../lib/geocoding/selectionToken.js';
 import { computeAddressGeocode } from '../lib/geocoding/service.js';
 import type { AddressGeoPersistence } from '../lib/geocoding/service.js';
@@ -107,24 +108,30 @@ export async function resolveQuickCreateAddress(
     }
     const p = verified.payload;
 
-    // Defense-in-depth: a HOUSE claim must carry a street name and house number.
-    const hasStreetAndNumber = Boolean(p.components?.streetName && p.components?.streetNumber);
+    // Independently recheck the RESOLVED prerequisites from the STRUCTURED
+    // components — never trust a bound `precision: 'HOUSE'` on its own. A complete
+    // Israeli house address requires street name, house number, municipality, and
+    // countryCode === 'IL'. Anything short of that is downgraded so classify
+    // rejects it (no silent RESOLVED for an incomplete/foreign address).
+    const qualifies = p.precision === 'HOUSE' && hasCompleteIsraeliHouse(p.components);
     const candidate: GeocodeCandidate = {
       provider: p.provider,
       providerPlaceId: p.providerPlaceId,
       formattedAddress: p.display,
       latitude: p.lat,
       longitude: p.lon,
-      precision: p.precision === 'HOUSE' && !hasStreetAndNumber ? 'STREET' : p.precision,
+      precision: qualifies ? 'HOUSE' : p.precision === 'HOUSE' ? 'STREET' : p.precision,
       city: p.city,
       confidence: p.confidence,
       components: p.components,
     };
 
     // Revalidate through the EXACT same rules used for a server-initiated geocode.
+    // The municipality is enforced above via hasCompleteIsraeliHouse; pass it as
+    // the expected city so a component/city inconsistency is also caught.
     const { status, reason } = classifyCandidate(candidate, {
       ambiguous: p.ambiguous,
-      expectedCity: null,
+      expectedCity: p.components?.municipality ?? null,
       requireHouseLevel: true,
     });
 
