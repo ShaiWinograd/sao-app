@@ -51,6 +51,43 @@ function review(
 }
 
 /**
+ * The single rule set that decides whether ONE best candidate is RESOLVED or
+ * downgraded to NEEDS_REVIEW. Shared by `decideGeocode` (which computes
+ * `ambiguous` from the full candidate list) and the signed-selection-token path
+ * (which carries the server's own `ambiguous` verdict), so both go through the
+ * exact same gates. Never returns FAILED — a provider error is handled upstream.
+ */
+export function classifyCandidate(
+  best: GeocodeCandidate,
+  ctx: { ambiguous: boolean; expectedCity?: string | null; requireHouseLevel: boolean; thresholds?: GeocodeThresholds },
+): { status: 'RESOLVED' | 'NEEDS_REVIEW'; reason: GeocodeDecisionReason } {
+  const thresholds = ctx.thresholds ?? DEFAULT_THRESHOLDS;
+  // Coarse / centroid results can never be RESOLVED, regardless of the flag.
+  if (best.precision === 'LOCALITY' || best.precision === 'REGION') {
+    return { status: 'NEEDS_REVIEW', reason: 'CENTROID_RESULT' };
+  }
+  if (best.precision === 'OTHER') {
+    return { status: 'NEEDS_REVIEW', reason: 'NOT_HOUSE_LEVEL' };
+  }
+  if (ctx.requireHouseLevel && best.precision !== 'HOUSE') {
+    return { status: 'NEEDS_REVIEW', reason: 'NOT_HOUSE_LEVEL' };
+  }
+  // A close-scoring runner-up means the match is ambiguous.
+  if (ctx.ambiguous) {
+    return { status: 'NEEDS_REVIEW', reason: 'AMBIGUOUS' };
+  }
+  // City mismatch (only when an expected city was supplied).
+  if (ctx.expectedCity && normalizeCity(best.city) !== normalizeCity(ctx.expectedCity)) {
+    return { status: 'NEEDS_REVIEW', reason: 'CITY_MISMATCH' };
+  }
+  // Valid but low-confidence → owner review (distinct from a transient failure).
+  if (best.confidence < thresholds.resolvedMinConfidence) {
+    return { status: 'NEEDS_REVIEW', reason: 'LOW_CONFIDENCE' };
+  }
+  return { status: 'RESOLVED', reason: 'RESOLVED_EXACT' };
+}
+
+/**
  * Decide the outcome for a query given a provider response. A provider error is
  * mapped to FAILED (with `transient` reflecting retryability); a valid but weak
  * result is NEEDS_REVIEW (never FAILED), so callers can always tell a retryable
@@ -79,34 +116,17 @@ export function decideGeocode(
   if (candidates.length === 0) return fail('NO_MATCH', false);
 
   const best = candidates[0];
-  const requireHouse = query.requireHouseLevel !== false; // default true
-
-  // Coarse / centroid results can never be RESOLVED, regardless of the flag.
-  if (best.precision === 'LOCALITY' || best.precision === 'REGION') {
-    return review('CENTROID_RESULT', best, candidates);
-  }
-  if (best.precision === 'OTHER') {
-    return review('NOT_HOUSE_LEVEL', best, candidates);
-  }
-  if (requireHouse && best.precision !== 'HOUSE') {
-    return review('NOT_HOUSE_LEVEL', best, candidates);
-  }
-
-  // A close-scoring runner-up means the match is ambiguous.
   const second = candidates[1];
-  if (second && best.confidence - second.confidence < thresholds.ambiguityDelta) {
-    return review('AMBIGUOUS', best, candidates);
-  }
+  const ambiguous = Boolean(second && best.confidence - second.confidence < thresholds.ambiguityDelta);
 
-  // City mismatch (only when an expected city was supplied).
-  if (query.city && normalizeCity(best.city) !== normalizeCity(query.city)) {
-    return review('CITY_MISMATCH', best, candidates);
+  const { status, reason } = classifyCandidate(best, {
+    ambiguous,
+    expectedCity: query.city,
+    requireHouseLevel: query.requireHouseLevel !== false, // default true
+    thresholds,
+  });
+  if (status === 'RESOLVED') {
+    return { status: 'RESOLVED', reason, candidate: best, candidates, transient: false };
   }
-
-  // Valid but low-confidence → owner review (distinct from a transient failure).
-  if (best.confidence < thresholds.resolvedMinConfidence) {
-    return review('LOW_CONFIDENCE', best, candidates);
-  }
-
-  return { status: 'RESOLVED', reason: 'RESOLVED_EXACT', candidate: best, candidates, transient: false };
+  return review(reason, best, candidates);
 }

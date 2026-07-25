@@ -10,6 +10,7 @@
 // a mocked fetch, so no real key and no network call are ever used in CI.
 
 import type {
+  GeocodeAddressComponents,
   GeocodeCandidate,
   GeocodeProvider,
   GeocodeProviderResponse,
@@ -70,11 +71,31 @@ function clamp01(n: unknown): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
+/** Trim a provider string field to a non-empty value or null. */
+function str(v: unknown): string | null {
+  const s = v == null ? '' : String(v).trim();
+  return s.length > 0 ? s : null;
+}
+
+/** Extract the structured components we validate/display from an Azure `address`. */
+function extractComponents(address: any): GeocodeAddressComponents {
+  return {
+    streetName: str(address?.streetName),
+    // Azure uses `streetNumber`; some payloads carry it in `houseNumber`.
+    streetNumber: str(address?.streetNumber) ?? str(address?.houseNumber),
+    municipality: str(address?.municipality),
+    postalCode: str(address?.postalCode),
+    countryCode: str(address?.countryCode),
+  };
+}
+
 /**
  * Normalize an Azure Maps `search/address/json` payload into provider-neutral
  * candidates. Confidence comes from Azure's per-result `matchConfidence.score`
  * (0..1); when absent it defaults to 0 so the decision layer treats it as
- * low-confidence (owner review) rather than silently trusting it.
+ * low-confidence (owner review) rather than silently trusting it. Structured
+ * components are captured separately so callers can build a clean display and
+ * validate house-level precision without trusting `freeformAddress`.
  */
 export function normalizeAzureResults(payload: any): GeocodeCandidate[] {
   const results = Array.isArray(payload?.results) ? payload.results : [];
@@ -89,6 +110,7 @@ export function normalizeAzureResults(payload: any): GeocodeCandidate[] {
       precision: azureTypeToPrecision(r.type, r.entityType),
       city: r.address?.municipality != null ? String(r.address.municipality) : null,
       confidence: clamp01(r.matchConfidence?.score),
+      components: extractComponents(r.address),
     }));
 }
 
@@ -116,7 +138,10 @@ export function createAzureMapsProvider(opts: AzureMapsProviderOptions): Geocode
       url.searchParams.set('subscription-key', opts.apiKey);
       url.searchParams.set('language', language);
       url.searchParams.set('countrySet', countrySet);
-      url.searchParams.set('limit', '6');
+      // Bounded result count (defensive cap regardless of caller input).
+      const limit = Math.min(Math.max(Math.trunc(query.limit ?? 6), 1), 10);
+      url.searchParams.set('limit', String(limit));
+      if (query.typeahead) url.searchParams.set('typeahead', 'true');
       url.searchParams.set('query', q);
 
       const controller = new AbortController();

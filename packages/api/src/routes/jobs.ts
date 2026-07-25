@@ -13,7 +13,9 @@ import { isUnavailableOn } from '@workforce/shared';
 import { evaluateJobCompletion } from '@workforce/shared';
 import type { AvailabilityBlock } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
-import { computeAddressGeocode, getConfiguredProvider } from '../lib/geocoding/service.js';
+import { getConfiguredProvider } from '../lib/geocoding/service.js';
+import { getSelectionSecret } from '../lib/geocoding/selectionToken.js';
+import { resolveQuickCreateAddress } from '../domain/quickCreateAddress.js';
 import { AppError } from '../lib/errors.js';
 import { lockJob, lockIdempotencyKey } from '../lib/commitment.js';
 import { resolveOrCreateCaseForJob } from '../domain/caseResolution.js';
@@ -384,7 +386,17 @@ export async function jobsRoutes(app: FastifyInstance) {
     date: z.string(),
     startTime: z.string(),
     endTime: z.string(),
-    cityOrAddress: z.string().min(1),
+    // Legacy free-text address (kept optional for the current production client).
+    cityOrAddress: z.string().min(1).optional(),
+    // New additive contract: a server-signed selected suggestion, or an explicit
+    // manual unresolved fallback. Exactly one of cityOrAddress/address is required
+    // (enforced in resolveQuickCreateAddress with a structured error).
+    address: z
+      .discriminatedUnion('mode', [
+        z.object({ mode: z.literal('selected'), token: z.string().min(1) }),
+        z.object({ mode: z.literal('manual'), text: z.string().min(1), confirmedUnresolved: z.literal(true) }),
+      ])
+      .optional(),
     requiredWorkerCount: z.number().int().min(1),
     requiresTeamLeader: z.boolean().optional(),
     initialStatus: z.enum(['RESERVATION', 'APPROVED']).optional(),
@@ -408,6 +420,17 @@ export async function jobsRoutes(app: FastifyInstance) {
         return { job: existing, capacityWarning: false, availableWorkers: 0, idempotentReplay: true };
       }
     }
+
+    // Resolve the address FIRST — before any customer/case/job write — so a
+    // selection failure (expired/tampered token, low-precision, provider/config
+    // error) throws a structured AppError and NOTHING is written (no orphan
+    // customer). Legacy `cityOrAddress` keeps its exact prior behavior; `selected`
+    // is validated purely from the server-signed token (no network call); `manual`
+    // requires an explicit confirmation and yields NEEDS_REVIEW with null coords.
+    const resolvedAddress = await resolveQuickCreateAddress(
+      { address: body.address, cityOrAddress: body.cityOrAddress },
+      { provider: getConfiguredProvider(), secret: getSelectionSecret() },
+    );
 
     // 1) Resolve the customer. Job-first: prefer an explicit general reservation,
     //    then a selected existing customer, then an inline new customer. The owner
@@ -450,14 +473,6 @@ export async function jobsRoutes(app: FastifyInstance) {
     //    lock on it and re-check inside the transaction so two concurrent submits
     //    with the same key cannot create two jobs (no DB unique index required).
     let idempotentReplay = false;
-    // Geocode the address text BEFORE opening the transaction so the provider
-    // HTTP call never holds a DB transaction open. Never blocks quick-create:
-    // any failure yields NOT_REQUESTED/FAILED. latitude/longitude are not written
-    // yet — see TODO(PR-5) in lib/geocoding/service.ts.
-    const addressGeo = await computeAddressGeocode({
-      provider: getConfiguredProvider(),
-      fullAddress: body.cityOrAddress.trim(),
-    }).catch(() => ({ apply: null }));
 
     const job = await prisma.$transaction(async (tx) => {
       if (body.idempotencyKey) {
@@ -477,7 +492,7 @@ export async function jobsRoutes(app: FastifyInstance) {
       });
 
       const address = await tx.address.create({
-        data: { customerId, fullAddress: body.cityOrAddress.trim(), label: 'OTHER', ...(addressGeo.apply ?? {}) },
+        data: { customerId, fullAddress: resolvedAddress.fullAddress, label: 'OTHER', ...(resolvedAddress.apply ?? {}) },
       });
 
       return tx.job.create({
