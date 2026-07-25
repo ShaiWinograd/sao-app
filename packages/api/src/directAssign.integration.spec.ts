@@ -317,5 +317,92 @@ maybe('§10–§11 role-change (changeShiftRole)', () => {
     expect(await auditCount(reg.id)).toBe(0);
     expect(await leaderCount(job.id)).toBe(0);
   });
+
+  it('8. re-reads the shift under the lock: a concurrent approval that lands while waiting is respected (no over-capacity)', async () => {
+    const owner = await seedOwner();
+    const job = await seedJob(1); // exactly one required position, no leader
+    // Y already fills the single required position.
+    await addShift(job.id, 'APPROVED', 'REGULAR', null);
+    // X is a NON-reserving PENDING backup — pre-lock it would look like it consumes
+    // nothing, so a stale BACKUP→REGULAR could be wrongly allowed.
+    const x = await addShift(job.id, 'PENDING', 'BACKUP', null);
+
+    // Transaction A grabs the job advisory lock and holds it until released.
+    let lockHeld!: () => void;
+    const lockHeldP = new Promise<void>((r) => (lockHeld = r));
+    let release!: () => void;
+    const releaseP = new Promise<void>((r) => (release = r));
+    const txA = prisma.$transaction(
+      async (tx) => {
+        await lockJob(tx, job.id);
+        lockHeld();
+        await releaseP;
+        // While the role-change waits for the lock, approve X so it now reserves.
+        await tx.shift.update({ where: { id: x.id }, data: { joinRequestStatus: 'APPROVED' } });
+      },
+      { timeout: 20000 },
+    );
+
+    await lockHeldP; // A holds the advisory lock
+
+    let settled = false;
+    const changeP = changeShiftRole(prisma, owner, { shiftId: x.id, role: 'REGULAR' })
+      .then((r) => { settled = true; return r; })
+      .catch((e) => { settled = true; throw e; });
+
+    // The role-change did its preliminary jobId lookup (X still PENDING) and is now
+    // blocked on lockJob — it must NOT have decided anything yet.
+    await new Promise((r) => setTimeout(r, 250));
+    expect(settled).toBe(false);
+
+    release();
+    await txA; // A approves X and commits, releasing the lock
+
+    // Now X is APPROVED BACKUP; converting it to REGULAR would be a 2nd required
+    // position on a required=1 job. The post-lock re-read sees APPROVED → JOB_FULL.
+    await expect(changeP).rejects.toMatchObject({ code: 'JOB_FULL' });
+    expect(await roleOf(x.id)).toBe('BACKUP'); // unchanged
+    expect(await auditCount(x.id)).toBe(0); // no incorrect audit row
+    // Only Y remains a non-backup reservation — capacity was not exceeded.
+    expect(await reservingNonBackup(job.id)).toBe(1);
+  });
+
+  it('9. fails safely when the shift is deleted while waiting for the lock', async () => {
+    const owner = await seedOwner();
+    const job = await seedJob(2, { requiresLeader: true });
+    const reg = await addShift(job.id, 'APPROVED', 'REGULAR', null, { leaderEligible: true });
+
+    let lockHeld!: () => void;
+    const lockHeldP = new Promise<void>((r) => (lockHeld = r));
+    let release!: () => void;
+    const releaseP = new Promise<void>((r) => (release = r));
+    const txA = prisma.$transaction(
+      async (tx) => {
+        await lockJob(tx, job.id);
+        lockHeld();
+        await releaseP;
+        await tx.shift.delete({ where: { id: reg.id } });
+      },
+      { timeout: 20000 },
+    );
+
+    await lockHeldP;
+
+    let settled = false;
+    const changeP = changeShiftRole(prisma, owner, { shiftId: reg.id, role: 'TEAM_LEADER' })
+      .then((r) => { settled = true; return r; })
+      .catch((e) => { settled = true; throw e; });
+
+    await new Promise((r) => setTimeout(r, 250));
+    expect(settled).toBe(false);
+
+    release();
+    await txA; // deletes the shift and commits
+
+    // The post-lock re-read finds no shift → 404, no mutation/audit.
+    await expect(changeP).rejects.toMatchObject({ code: 'SHIFT_NOT_FOUND' });
+    expect(await prisma.shift.findUnique({ where: { id: reg.id } })).toBeNull();
+    expect(await auditCount(reg.id)).toBe(0);
+  });
 });
 
