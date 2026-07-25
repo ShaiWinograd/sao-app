@@ -1,82 +1,204 @@
 import { expect, test } from '@playwright/test';
 
-const job = {
-  id: 'job-1',
+// Production-representative case (job cms0bntts…): an APPROVED REGULAR shift whose
+// slotId is null. Before PR-1 it was invisible in the slot-based Workers tab while
+// visible in the shift-based Attendance tab. The shared derivation fixes this.
+const jobSlotlessApproved = {
+  id: 'job-slotless',
   caseId: 'case-1',
   jobType: 'PACKING',
   date: '2026-08-01T08:00:00.000Z',
   plannedStart: '2026-08-01T08:00:00.000Z',
   plannedEnd: '2026-08-01T13:00:00.000Z',
   status: 'RESERVATION',
-  requiredWorkerCount: 2,
+  requiredWorkerCount: 1,
   addressId: 'addr-1',
-  jobNotes: 'להביא ארגזים נוספים',
+  jobNotes: null,
   workerVisibleNotes: null,
   address: { fullAddress: 'תל אביב 1' },
   customer: { firstName: 'יעל', lastName: 'כהן', phone: '0501111111' },
-  slots: [
-    { id: 'slot-mgr', requiredSkill: 'SHIFT_LEADER', label: null, filledByShiftId: 'shift-1' },
-    { id: 'slot-w1', requiredSkill: null, label: null, filledByShiftId: null },
-    { id: 'slot-w2', requiredSkill: null, label: null, filledByShiftId: null },
-  ],
+  slots: [{ id: 'slot-x', requiredSkill: null, label: null, filledByShiftId: null }],
   shifts: [
     {
-      id: 'shift-1',
-      slotId: 'slot-mgr',
-      workerNameSnapshot: 'דנה לוי',
+      id: 'shift-orit',
+      slotId: null,
+      workerNameSnapshot: 'אורית וינוגרד',
       attendanceStatus: 'SCHEDULED',
       joinRequestStatus: 'APPROVED',
+      assignmentRole: 'REGULAR',
       formStatus: 'NOT_SUBMITTED',
-      worker: { firstName: 'דנה', lastName: 'לוי' },
+      worker: { firstName: 'אורית', lastName: 'וינוגרד' },
     },
+  ],
+};
+
+const jobPending = {
+  ...jobSlotlessApproved,
+  id: 'job-pending',
+  requiredWorkerCount: 2,
+  shifts: [
     {
-      id: 'shift-2',
-      slotId: 'slot-w1',
+      id: 'shift-pending',
+      slotId: null,
       workerNameSnapshot: 'רון כהן',
       attendanceStatus: 'SCHEDULED',
       joinRequestStatus: 'PENDING',
+      assignmentRole: 'REGULAR',
       formStatus: 'NOT_SUBMITTED',
       worker: { firstName: 'רון', lastName: 'כהן' },
     },
   ],
 };
 
-test.describe('Job detail page', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.route('**/api/v1/jobs/job-1', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(job) });
-    });
-  });
+// An AWAITING_WORKER team leader (slotId null): must occupy the Team Leader
+// section and block a second leader assignment (blocker #2).
+const jobAwaitingLeader = {
+  ...jobSlotlessApproved,
+  id: 'job-awaiting-leader',
+  requiredWorkerCount: 1,
+  slots: [{ id: 'slot-mgr', requiredSkill: 'SHIFT_LEADER', label: null, filledByShiftId: null }],
+  shifts: [
+    {
+      id: 'shift-leader',
+      slotId: null,
+      workerNameSnapshot: 'דנה לוי',
+      attendanceStatus: 'SCHEDULED',
+      joinRequestStatus: 'AWAITING_WORKER',
+      assignmentRole: 'TEAM_LEADER',
+      formStatus: 'NOT_SUBMITTED',
+      worker: { firstName: 'דנה', lastName: 'לוי' },
+    },
+  ],
+};
 
-  test('shows header, readiness checklist, and slot-based staffing', async ({ page }) => {
-    await page.goto('/jobs/job-1');
+// Two approved regulars on a leader-requiring job: one is leader-eligible
+// (skills include SHIFT_LEADER), one is not. The role selector must offer
+// TEAM_LEADER only for the eligible worker (the API stays authoritative).
+const jobRoleSelector = {
+  ...jobSlotlessApproved,
+  id: 'job-role-selector',
+  requiredWorkerCount: 3,
+  slots: [{ id: 'slot-mgr', requiredSkill: 'SHIFT_LEADER', label: null, filledByShiftId: null }],
+  shifts: [
+    { id: 's-eligible', slotId: null, workerNameSnapshot: 'נועה שמש', attendanceStatus: 'SCHEDULED', joinRequestStatus: 'APPROVED', assignmentRole: 'REGULAR', formStatus: 'NOT_SUBMITTED', worker: { firstName: 'נועה', lastName: 'שמש', skills: ['SHIFT_LEADER'] } },
+    { id: 's-ineligible', slotId: null, workerNameSnapshot: 'עדי כץ', attendanceStatus: 'SCHEDULED', joinRequestStatus: 'APPROVED', assignmentRole: 'REGULAR', formStatus: 'NOT_SUBMITTED', worker: { firstName: 'עדי', lastName: 'כץ', skills: [] } },
+  ],
+};
+
+// Capacity full with regulars but the leader is still missing: "assign leader"
+// must NOT be offered; the owner converts an existing worker's role instead.
+const jobFullMissingLeader = {
+  ...jobSlotlessApproved,
+  id: 'job-full-missing-leader',
+  requiredWorkerCount: 2,
+  slots: [{ id: 'slot-mgr', requiredSkill: 'SHIFT_LEADER', label: null, filledByShiftId: null }],
+  shifts: [
+    { id: 's-a', slotId: null, workerNameSnapshot: 'רות בר', attendanceStatus: 'SCHEDULED', joinRequestStatus: 'APPROVED', assignmentRole: 'REGULAR', formStatus: 'NOT_SUBMITTED', worker: { firstName: 'רות', lastName: 'בר' } },
+    { id: 's-b', slotId: null, workerNameSnapshot: 'מיה גל', attendanceStatus: 'SCHEDULED', joinRequestStatus: 'APPROVED', assignmentRole: 'REGULAR', formStatus: 'NOT_SUBMITTED', worker: { firstName: 'מיה', lastName: 'גל' } },
+  ],
+};
+
+test.describe('Job detail page', () => {
+  test('shows header, details, and the publication action', async ({ page }) => {
+    await page.route('**/api/v1/jobs/job-slotless', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(jobSlotlessApproved) });
+    });
+    await page.goto('/jobs/job-slotless');
 
     await expect(page.getByRole('heading', { name: 'אריזה · יעל כהן' })).toBeVisible();
+    // Details tab (default): address + contact.
+    await expect(page.getByText('תל אביב 1').first()).toBeVisible();
+    await expect(page.getByText('יעל כהן').first()).toBeVisible();
+    // Publication-readiness action is present (enabled state is readiness-driven).
+    await expect(page.getByRole('button', { name: 'שליחה שוב לעובדים' })).toBeVisible();
+    // The owner approval action is present for a real-customer reservation.
+    await expect(page.getByRole('button', { name: 'אישור העבודה' })).toBeVisible();
+  });
+});
 
-    // Readiness checklist (details tab)
-    await expect(page.getByText('מוכנות לעבודה')).toBeVisible();
-    await expect(page.getByText('מוכן לפרסום')).toBeVisible();
+test.describe('Job detail — staffing consistency (PR-1)', () => {
+  test('an APPROVED worker with slotId=null appears in BOTH Workers and Attendance', async ({ page }) => {
+    await page.route('**/api/v1/jobs/job-slotless', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(jobSlotlessApproved) });
+    });
 
-    // Staffing tab — manager slot filled, worker slots empty
+    await page.goto('/jobs/job-slotless');
+
     await page.getByRole('tab', { name: 'עובדים' }).click();
-    await expect(page.getByText('מנהל עבודה')).toBeVisible();
-    await expect(page.getByText('דנה לוי')).toBeVisible();
-    await expect(page.getByText('מקום פנוי').first()).toBeVisible();
+    await expect(page.getByText('אורית וינוגרד')).toBeVisible();
+    await expect(page.getByText('מקום פנוי')).toHaveCount(0);
+
+    await page.getByRole('tab', { name: 'נוכחות' }).click();
+    await expect(page.getByText('אורית וינוגרד')).toBeVisible();
   });
 
-  test('approves a pending join request from the staffing tab', async ({ page }) => {
+  test('approves a pending join request (slotId=null) from the Workers tab', async ({ page }) => {
     let approved = false;
-    await page.route('**/api/v1/shifts/shift-2/approve', async (route) => {
+    await page.route('**/api/v1/jobs/job-pending', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(jobPending) });
+    });
+    await page.route('**/api/v1/shifts/shift-pending/approve', async (route) => {
       approved = true;
       await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
     });
 
-    await page.goto('/jobs/job-1');
+    await page.goto('/jobs/job-pending');
     await page.getByRole('tab', { name: 'עובדים' }).click();
 
     await expect(page.getByText('רון כהן')).toBeVisible();
-    await page.getByRole('button', { name: 'אישור' }).click();
+    await page.getByRole('button', { name: 'אישור', exact: true }).click();
 
     await expect.poll(() => approved).toBe(true);
+  });
+
+  test('an AWAITING_WORKER team leader occupies the Team Leader section and blocks a second leader assignment', async ({ page }) => {
+    await page.route('**/api/v1/jobs/job-awaiting-leader', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(jobAwaitingLeader) });
+    });
+
+    await page.goto('/jobs/job-awaiting-leader');
+    await page.getByRole('tab', { name: 'עובדים' }).click();
+
+    // The awaiting leader is shown (in the Team Leader section)…
+    await expect(page.getByText('דנה לוי')).toBeVisible();
+    // …no empty-leader "assign" affordance is offered while the invitation reserves it…
+    await expect(page.getByText('לא מאויש')).toHaveCount(0);
+    // …and the leader requirement is still unmet until she accepts.
+    await expect(page.getByText('חסר ראש צוות').first()).toBeVisible();
+  });
+
+  test('capacity full + missing leader: no "assign leader" is offered; role-change hint is shown', async ({ page }) => {
+    await page.route('**/api/v1/jobs/job-full-missing-leader', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(jobFullMissingLeader) });
+    });
+
+    await page.goto('/jobs/job-full-missing-leader');
+    await page.getByRole('tab', { name: 'עובדים' }).click();
+
+    // Both regular workers are shown, the leader is still missing…
+    await expect(page.getByText('רות בר')).toBeVisible();
+    await expect(page.getByText('מיה גל')).toBeVisible();
+    await expect(page.getByText('חסר ראש צוות').first()).toBeVisible();
+    // …no assign affordance (capacity is full)…
+    await expect(page.getByRole('button', { name: 'שיבוץ' })).toHaveCount(0);
+    // …and the supported resolution (convert an existing worker's role) is hinted.
+    await expect(page.getByText('יש להסב עובד/ת קיים/ת לתפקיד ראש צוות מרשימת העובדים.')).toBeVisible();
+  });
+
+  test('role selector offers TEAM_LEADER only for a leader-eligible worker', async ({ page }) => {
+    await page.route('**/api/v1/jobs/job-role-selector', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(jobRoleSelector) });
+    });
+
+    await page.goto('/jobs/job-role-selector');
+    await page.getByRole('tab', { name: 'עובדים' }).click();
+
+    // The eligible worker's role selector includes the TEAM_LEADER option…
+    const eligibleSelect = page.locator('li', { hasText: 'נועה שמש' }).locator('select[title="תפקיד בעבודה"]');
+    await expect(eligibleSelect.locator('option', { hasText: 'ראש צוות' })).toHaveCount(1);
+    // …the ineligible worker's does not (only עובד / גיבוי).
+    const ineligibleSelect = page.locator('li', { hasText: 'עדי כץ' }).locator('select[title="תפקיד בעבודה"]');
+    await expect(ineligibleSelect.locator('option', { hasText: 'ראש צוות' })).toHaveCount(0);
+    await expect(ineligibleSelect.locator('option')).toHaveCount(2);
   });
 });
