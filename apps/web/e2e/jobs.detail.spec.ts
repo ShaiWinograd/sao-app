@@ -71,6 +71,20 @@ const jobAwaitingLeader = {
   ],
 };
 
+// Two approved regulars on a leader-requiring job: one is leader-eligible
+// (skills include SHIFT_LEADER), one is not. The role selector must offer
+// TEAM_LEADER only for the eligible worker (the API stays authoritative).
+const jobRoleSelector = {
+  ...jobSlotlessApproved,
+  id: 'job-role-selector',
+  requiredWorkerCount: 3,
+  slots: [{ id: 'slot-mgr', requiredSkill: 'SHIFT_LEADER', label: null, filledByShiftId: null }],
+  shifts: [
+    { id: 's-eligible', slotId: null, workerNameSnapshot: 'נועה שמש', attendanceStatus: 'SCHEDULED', joinRequestStatus: 'APPROVED', assignmentRole: 'REGULAR', formStatus: 'NOT_SUBMITTED', worker: { firstName: 'נועה', lastName: 'שמש', skills: ['SHIFT_LEADER'] } },
+    { id: 's-ineligible', slotId: null, workerNameSnapshot: 'עדי כץ', attendanceStatus: 'SCHEDULED', joinRequestStatus: 'APPROVED', assignmentRole: 'REGULAR', formStatus: 'NOT_SUBMITTED', worker: { firstName: 'עדי', lastName: 'כץ', skills: [] } },
+  ],
+};
+
 // Capacity full with regulars but the leader is still missing: "assign leader"
 // must NOT be offered; the owner converts an existing worker's role instead.
 const jobFullMissingLeader = {
@@ -169,5 +183,22 @@ test.describe('Job detail — staffing consistency (PR-1)', () => {
     await expect(page.getByRole('button', { name: 'שיבוץ' })).toHaveCount(0);
     // …and the supported resolution (convert an existing worker's role) is hinted.
     await expect(page.getByText('יש להסב עובד/ת קיים/ת לתפקיד ראש צוות מרשימת העובדים.')).toBeVisible();
+  });
+
+  test('role selector offers TEAM_LEADER only for a leader-eligible worker', async ({ page }) => {
+    await page.route('**/api/v1/jobs/job-role-selector', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(jobRoleSelector) });
+    });
+
+    await page.goto('/jobs/job-role-selector');
+    await page.getByRole('tab', { name: 'עובדים' }).click();
+
+    // The eligible worker's role selector includes the TEAM_LEADER option…
+    const eligibleSelect = page.locator('li', { hasText: 'נועה שמש' }).locator('select[title="תפקיד בעבודה"]');
+    await expect(eligibleSelect.locator('option', { hasText: 'ראש צוות' })).toHaveCount(1);
+    // …the ineligible worker's does not (only עובד / גיבוי).
+    const ineligibleSelect = page.locator('li', { hasText: 'עדי כץ' }).locator('select[title="תפקיד בעבודה"]');
+    await expect(ineligibleSelect.locator('option', { hasText: 'ראש צוות' })).toHaveCount(0);
+    await expect(ineligibleSelect.locator('option')).toHaveCount(2);
   });
 });

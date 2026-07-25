@@ -11,6 +11,7 @@ import {
 import { logAudit } from '../lib/audit.js';
 import { assertWorkerFreeOnDate, lockJob } from '../lib/commitment.js';
 import { assertDirectAssignCapacity } from '../domain/directAssign.js';
+import { changeShiftRole } from '../domain/roleChange.js';
 import { AppError } from '../lib/errors.js';
 
 // After removing `outgoingShiftId`'s worker from `job`, does a team leader remain?
@@ -428,32 +429,17 @@ export async function shiftsRoutes(app: FastifyInstance) {
   });
 
   // Admin: change a worker's role on a job — regular / team leader / backup
-  // (spec §10–§11: owner may change backup to regular at any time).
+  // (spec §10–§11). All validation + mutation + audit run in one transaction under
+  // the per-job lock (see domain/roleChange): leader eligibility, leader
+  // uniqueness, leader-requirement and total-capacity are enforced atomically so a
+  // race cannot create two leaders or exceed required capacity.
   app.post('/:id/role', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const { role } = req.body as { role?: 'REGULAR' | 'TEAM_LEADER' | 'BACKUP' };
     if (!role || !['REGULAR', 'TEAM_LEADER', 'BACKUP'].includes(role)) {
       return reply.status(400).send({ error: 'Invalid role' });
     }
-    const shift = await prisma.shift.findUnique({ where: { id } });
-    if (!shift) return reply.status(404).send({ error: 'Shift not found' });
-
-    // Only one team leader per job (spec §10).
-    if (role === 'TEAM_LEADER') {
-      const existingLeader = await prisma.shift.findFirst({
-        where: {
-          jobId: shift.jobId,
-          id: { not: id },
-          assignmentRole: 'TEAM_LEADER',
-          joinRequestStatus: { in: ['APPROVED', 'AWAITING_WORKER'] },
-        },
-      });
-      if (existingLeader) return reply.status(409).send({ error: 'כבר קיים ראש צוות לעבודה זו' });
-    }
-
-    const updated = await prisma.shift.update({ where: { id }, data: { assignmentRole: role } });
-    await logAudit((req as any).user, 'UPDATE', 'Shift', id, { assignmentRole: shift.assignmentRole }, { assignmentRole: role }, 'role-change');
-    return updated;
+    return changeShiftRole(prisma, (req as any).user, { shiftId: id, role });
   });
 
   // Admin: promote a backup into an open regular position (§13). Promotion is by

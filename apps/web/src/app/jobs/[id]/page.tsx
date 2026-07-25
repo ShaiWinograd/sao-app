@@ -27,7 +27,7 @@ type ApiJobShift = {
   formStatus: string;
   requiresReview?: boolean;
   formOverdue?: boolean;
-  worker?: { firstName: string; lastName: string } | null;
+  worker?: { firstName: string; lastName: string; skills?: string[] } | null;
   replacementRequests?: {
     id: string;
     reason: string;
@@ -665,6 +665,11 @@ export default function JobDetailPage() {
 
   const renderShiftStatus = (shift: ApiJobShift) => {
     const pendingReplacement = (shift.replacementRequests ?? []).find((r) => r.status === 'PENDING');
+    // The API is authoritative on leader eligibility; when worker skills are present
+    // in the response we also hide the option so an ineligible worker is never
+    // offered TEAM_LEADER. The current role is always kept selectable.
+    const leaderEligible = (shift.worker?.skills ?? []).includes(MANAGER_SKILL);
+    const showLeaderOption = leaderEligible || shift.assignmentRole === 'TEAM_LEADER';
     return (
       <div className="flex flex-col items-end gap-1">
         {shift.joinRequestStatus === 'PENDING' ? (
@@ -697,7 +702,7 @@ export default function JobDetailPage() {
                 className="text-[11px] rounded-lg border border-gray-200 bg-white px-1.5 py-1 text-gray-700 disabled:opacity-50"
               >
                 <option value="REGULAR">עובד</option>
-                <option value="TEAM_LEADER">ראש צוות</option>
+                {showLeaderOption && <option value="TEAM_LEADER">ראש צוות</option>}
                 <option value="BACKUP">גיבוי</option>
               </select>
             )}

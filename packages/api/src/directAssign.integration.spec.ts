@@ -9,6 +9,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { assertDirectAssignCapacity } from './domain/directAssign.js';
+import { changeShiftRole } from './domain/roleChange.js';
 import { lockJob } from './lib/commitment.js';
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
@@ -50,16 +51,20 @@ async function seedJob(requiredWorkerCount: number, opts: { requiresLeader?: boo
   return job;
 }
 
-async function seedWorker() {
+async function seedOwner() {
+  return prisma.user.create({ data: { id: uid('owner'), email: `${uid('o')}@t.test`, firstName: 'O', lastName: 'wner', role: 'OWNER' } });
+}
+
+async function seedWorker(opts: { leaderEligible?: boolean } = {}) {
   const id = uid('w');
   const user = await prisma.user.create({ data: { id: uid('u'), email: `${id}@t.test`, firstName: 'T', lastName: id, role: 'WORKER' } });
   return prisma.worker.create({
-    data: { id, userId: user.id, firstName: 'T', lastName: id, phone: '0500000000', email: `${id}.w@t.test`, hourlyWage: new Prisma.Decimal(50), dailyPaymentAmount: new Prisma.Decimal(400), paymentMethod: 'BANK_TRANSFER', skills: [] },
+    data: { id, userId: user.id, firstName: 'T', lastName: id, phone: '0500000000', email: `${id}.w@t.test`, hourlyWage: new Prisma.Decimal(50), dailyPaymentAmount: new Prisma.Decimal(400), paymentMethod: 'BANK_TRANSFER', skills: opts.leaderEligible ? ['SHIFT_LEADER'] : [] },
   });
 }
 
-async function addShift(jobId: string, status: string, role: string, slotId: string | null = null) {
-  const worker = await seedWorker();
+async function addShift(jobId: string, status: string, role: string, slotId: string | null = null, opts: { leaderEligible?: boolean } = {}) {
+  const worker = await seedWorker(opts);
   return prisma.shift.create({
     data: { jobId, workerId: worker.id, slotId, scheduledStart: DATE, scheduledEnd: DATE, joinRequestStatus: status as any, assignmentRole: role as any, attendanceStatus: 'SCHEDULED', hourlyWageSnapshot: new Prisma.Decimal(50), dailyPaymentSnapshot: new Prisma.Decimal(400), workerNameSnapshot: 'T' },
   });
@@ -78,6 +83,26 @@ async function assignInTx(job: { id: string; requiredWorkerCount: number }, role
       data: { jobId: job.id, workerId, scheduledStart: DATE, scheduledEnd: DATE, joinRequestStatus: 'AWAITING_WORKER', assignmentRole: role as any, attendanceStatus: 'SCHEDULED', hourlyWageSnapshot: new Prisma.Decimal(50), dailyPaymentSnapshot: new Prisma.Decimal(400), workerNameSnapshot: 'T' },
     });
   });
+}
+
+// A client whose in-transaction audit write always fails — used to prove the role
+// update and audit row commit atomically (the update must roll back with the audit).
+function clientWithFailingAudit(base: PrismaClient) {
+  return {
+    $transaction: (cb: (tx: any) => Promise<any>) =>
+      base.$transaction((tx: any) => {
+        const wrapped = new Proxy(tx, {
+          get(t, prop) {
+            if (prop === 'auditLog') {
+              return { create: async () => { throw new Error('audit-boom'); } };
+            }
+            const v = (t as any)[prop];
+            return typeof v === 'function' ? v.bind(t) : v;
+          },
+        });
+        return cb(wrapped);
+      }),
+  } as unknown as PrismaClient;
 }
 
 const maybe = TEST_DB ? describe : describe.skip;
@@ -146,16 +171,18 @@ maybe('§12.4 direct-assignment capacity guard', () => {
     await expect(guard(job, 'TEAM_LEADER')).resolves.toBeUndefined();
   });
 
-  it('role-changing an existing regular to TEAM_LEADER resolves a full job without exceeding capacity', async () => {
+  it('role-changing an existing regular to TEAM_LEADER (via changeShiftRole) resolves a full job without exceeding capacity', async () => {
+    const owner = await seedOwner();
     const job = await seedJob(2, { requiresLeader: true });
-    const reg1 = await addShift(job.id, 'APPROVED', 'REGULAR', null);
+    const reg1 = await addShift(job.id, 'APPROVED', 'REGULAR', null, { leaderEligible: true });
     await addShift(job.id, 'APPROVED', 'REGULAR', null); // full, no leader
-    // Adding a leader is blocked…
+    const before = await prisma.shift.count({ where: { jobId: job.id } });
+    // Adding a new leader is blocked…
     await expect(guard(job, 'TEAM_LEADER')).rejects.toMatchObject({ code: 'JOB_FULL' });
-    // …but converting an existing regular's role (as POST /shifts/:id/role does) is
-    // the supported resolution: no new shift, capacity unchanged.
-    await prisma.shift.update({ where: { id: reg1.id }, data: { assignmentRole: 'TEAM_LEADER' } });
-    expect(await prisma.shift.count({ where: { jobId: job.id } })).toBe(2);
+    // …but converting the existing regular through the REAL role-change flow is the
+    // supported resolution: no new shift, capacity unchanged, leader now present.
+    await changeShiftRole(prisma, owner, { shiftId: reg1.id, role: 'TEAM_LEADER' });
+    expect(await prisma.shift.count({ where: { jobId: job.id } })).toBe(before);
     const leaders = await prisma.shift.count({ where: { jobId: job.id, assignmentRole: 'TEAM_LEADER', joinRequestStatus: { in: ['APPROVED', 'AWAITING_WORKER'] } } });
     expect(leaders).toBe(1);
     // A further direct leader is now rejected as a duplicate leader.
@@ -179,3 +206,116 @@ maybe('§12.4 direct-assignment capacity guard', () => {
     expect(await prisma.shift.count({ where: { jobId: job.id } })).toBe(1);
   });
 });
+
+maybe('§10–§11 role-change (changeShiftRole)', () => {
+  beforeEach(clean);
+  afterAll(async () => {
+    await clean();
+    await prisma.$disconnect();
+  });
+
+  const reservingNonBackup = (jobId: string) =>
+    prisma.shift.count({ where: { jobId, joinRequestStatus: { in: ['APPROVED', 'AWAITING_WORKER'] }, assignmentRole: { not: 'BACKUP' } } });
+  const leaderCount = (jobId: string) =>
+    prisma.shift.count({ where: { jobId, assignmentRole: 'TEAM_LEADER', joinRequestStatus: { in: ['APPROVED', 'AWAITING_WORKER'] } } });
+  const roleOf = async (shiftId: string) => (await prisma.shift.findUnique({ where: { id: shiftId } }))?.assignmentRole;
+  const auditCount = (shiftId: string) => prisma.auditLog.count({ where: { entityType: 'Shift', entityId: shiftId, reason: 'role-change' } });
+
+  it('1. eligible REGULAR → TEAM_LEADER on a full job succeeds without increasing the non-backup count', async () => {
+    const owner = await seedOwner();
+    const job = await seedJob(2, { requiresLeader: true });
+    const reg = await addShift(job.id, 'APPROVED', 'REGULAR', null, { leaderEligible: true });
+    await addShift(job.id, 'APPROVED', 'REGULAR', null); // full, no leader
+    const before = await reservingNonBackup(job.id);
+    await changeShiftRole(prisma, owner, { shiftId: reg.id, role: 'TEAM_LEADER' });
+    expect(await reservingNonBackup(job.id)).toBe(before); // capacity unchanged
+    expect(await leaderCount(job.id)).toBe(1);
+    expect(await roleOf(reg.id)).toBe('TEAM_LEADER');
+    expect(await auditCount(reg.id)).toBe(1); // update + audit both committed
+  });
+
+  it('2. ineligible REGULAR → TEAM_LEADER is rejected with no mutation and no audit', async () => {
+    const owner = await seedOwner();
+    const job = await seedJob(2, { requiresLeader: true });
+    const reg = await addShift(job.id, 'APPROVED', 'REGULAR', null); // not leader-eligible
+    await expect(changeShiftRole(prisma, owner, { shiftId: reg.id, role: 'TEAM_LEADER' })).rejects.toMatchObject({ code: 'NOT_LEADER_ELIGIBLE' });
+    expect(await roleOf(reg.id)).toBe('REGULAR');
+    expect(await auditCount(reg.id)).toBe(0);
+    expect(await leaderCount(job.id)).toBe(0);
+  });
+
+  it('3. concurrent conversions cannot create two leaders', async () => {
+    const owner = await seedOwner();
+    const job = await seedJob(3, { requiresLeader: true }); // room for both as regulars
+    const a = await addShift(job.id, 'APPROVED', 'REGULAR', null, { leaderEligible: true });
+    const b = await addShift(job.id, 'APPROVED', 'REGULAR', null, { leaderEligible: true });
+    const results = await Promise.allSettled([
+      changeShiftRole(prisma, owner, { shiftId: a.id, role: 'TEAM_LEADER' }),
+      changeShiftRole(prisma, owner, { shiftId: b.id, role: 'TEAM_LEADER' }),
+    ]);
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason).toMatchObject({ code: 'LEADER_TAKEN' });
+    expect(await leaderCount(job.id)).toBe(1);
+  });
+
+  it('4. TEAM_LEADER on a job that does not require a leader is rejected', async () => {
+    const owner = await seedOwner();
+    const job = await seedJob(2); // no leader slot
+    const reg = await addShift(job.id, 'APPROVED', 'REGULAR', null, { leaderEligible: true });
+    await expect(changeShiftRole(prisma, owner, { shiftId: reg.id, role: 'TEAM_LEADER' })).rejects.toMatchObject({ code: 'LEADER_NOT_REQUIRED' });
+    expect(await roleOf(reg.id)).toBe('REGULAR');
+  });
+
+  it('5. BACKUP → REGULAR is rejected when full and allowed when capacity is available', async () => {
+    const owner = await seedOwner();
+    // Full: the single required position is already reserved by a regular.
+    const full = await seedJob(1);
+    await addShift(full.id, 'APPROVED', 'REGULAR', null);
+    const backupFull = await addShift(full.id, 'APPROVED', 'BACKUP', null);
+    await expect(changeShiftRole(prisma, owner, { shiftId: backupFull.id, role: 'REGULAR' })).rejects.toMatchObject({ code: 'JOB_FULL' });
+    expect(await roleOf(backupFull.id)).toBe('BACKUP');
+    // Available: one of two positions is free.
+    const free = await seedJob(2);
+    await addShift(free.id, 'APPROVED', 'REGULAR', null);
+    const backupFree = await addShift(free.id, 'APPROVED', 'BACKUP', null);
+    await changeShiftRole(prisma, owner, { shiftId: backupFree.id, role: 'REGULAR' });
+    expect(await roleOf(backupFree.id)).toBe('REGULAR');
+  });
+
+  it('6. BACKUP → TEAM_LEADER respects both eligibility and total capacity', async () => {
+    const owner = await seedOwner();
+    // Ineligible backup (capacity available) → NOT_LEADER_ELIGIBLE.
+    const j1 = await seedJob(2, { requiresLeader: true });
+    const ineligible = await addShift(j1.id, 'APPROVED', 'BACKUP', null);
+    await expect(changeShiftRole(prisma, owner, { shiftId: ineligible.id, role: 'TEAM_LEADER' })).rejects.toMatchObject({ code: 'NOT_LEADER_ELIGIBLE' });
+    // Eligible backup but the job is full → JOB_FULL (a leader consumes a position).
+    const j2 = await seedJob(1, { requiresLeader: true });
+    await addShift(j2.id, 'APPROVED', 'REGULAR', null);
+    const eligibleFull = await addShift(j2.id, 'APPROVED', 'BACKUP', null, { leaderEligible: true });
+    await expect(changeShiftRole(prisma, owner, { shiftId: eligibleFull.id, role: 'TEAM_LEADER' })).rejects.toMatchObject({ code: 'JOB_FULL' });
+    expect(await roleOf(eligibleFull.id)).toBe('BACKUP');
+    // Eligible backup with capacity → succeeds.
+    const j3 = await seedJob(2, { requiresLeader: true });
+    await addShift(j3.id, 'APPROVED', 'REGULAR', null);
+    const eligibleOk = await addShift(j3.id, 'APPROVED', 'BACKUP', null, { leaderEligible: true });
+    await changeShiftRole(prisma, owner, { shiftId: eligibleOk.id, role: 'TEAM_LEADER' });
+    expect(await roleOf(eligibleOk.id)).toBe('TEAM_LEADER');
+    expect(await leaderCount(j3.id)).toBe(1);
+  });
+
+  it('7. the role update and audit entry are atomic (audit failure rolls back the role change)', async () => {
+    const owner = await seedOwner();
+    const job = await seedJob(2, { requiresLeader: true });
+    const reg = await addShift(job.id, 'APPROVED', 'REGULAR', null, { leaderEligible: true });
+    await addShift(job.id, 'APPROVED', 'REGULAR', null);
+    await expect(changeShiftRole(clientWithFailingAudit(prisma), owner, { shiftId: reg.id, role: 'TEAM_LEADER' })).rejects.toThrow('audit-boom');
+    // Neither the role nor an audit row survived — they commit together.
+    expect(await roleOf(reg.id)).toBe('REGULAR');
+    expect(await auditCount(reg.id)).toBe(0);
+    expect(await leaderCount(job.id)).toBe(0);
+  });
+});
+
