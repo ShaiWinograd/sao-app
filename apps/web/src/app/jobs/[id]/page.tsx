@@ -134,6 +134,12 @@ export default function JobDetailPage() {
   // approval awaiting confirmation, plus any leader-slot warning to surface.
   const [backupConfirm, setBackupConfirm] = useState<{ shiftId: string; message: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // §10.1: assign a real customer to a General-Reservation job. The owner searches
+  // existing customers and links one; the backend re-groups the job's project.
+  const [assignCustomerOpen, setAssignCustomerOpen] = useState(false);
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [customerMatches, setCustomerMatches] = useState<Array<{ id: string; firstName: string; lastName: string; phone: string }>>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   // Editing the required worker count (§13). Reducing below the number of assigned
   // regular/leader workers opens a backup picker driven by the backend
   // MUST_SELECT_BACKUPS contract (no auto-selection, leader must be preserved).
@@ -166,6 +172,50 @@ export default function JobDetailPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // §10.1 assign-customer: live-search existing (non-system) customers.
+  const searchCustomers = useCallback(
+    async (term: string) => {
+      setCustomerQuery(term);
+      setSelectedCustomerId(null);
+      if (term.trim().length < 2) {
+        setCustomerMatches([]);
+        return;
+      }
+      try {
+        const auth = await authHeaders(getToken);
+        const res = await api.get<Array<{ id: string; firstName: string; lastName: string; phone: string }>>(
+          `/customers?search=${encodeURIComponent(term.trim())}`,
+          auth,
+        );
+        setCustomerMatches(res.data.filter((c) => c.id !== 'general-reservation').slice(0, 8));
+      } catch {
+        setCustomerMatches([]);
+      }
+    },
+    [getToken],
+  );
+
+  const assignCustomer = useCallback(async () => {
+    if (!jobId || !selectedCustomerId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const auth = await authHeaders(getToken);
+      await api.post(`/jobs/${jobId}/assign-customer`, { customerId: selectedCustomerId }, auth);
+      setAssignCustomerOpen(false);
+      setCustomerQuery('');
+      setCustomerMatches([]);
+      setSelectedCustomerId(null);
+      setNotice('העבודה שויכה ללקוח.');
+      await load();
+    } catch (err) {
+      const data = (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
+      setError(data?.message ?? data?.error ?? 'שיוך הלקוח נכשל');
+    } finally {
+      setBusy(false);
+    }
+  }, [jobId, selectedCustomerId, getToken, load]);
 
   const readiness = useMemo(() => {
     if (!job) return null;
@@ -772,6 +822,16 @@ export default function JobDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           {jobBadge && <StatusBadge tone={jobBadge.tone} label={jobBadge.label} />}
+          {job.customer.isSystem && job.status !== 'COMPLETED' && job.status !== 'ARCHIVED' && (
+            <button
+              onClick={() => setAssignCustomerOpen(true)}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+            >
+              <UserCheck className="w-4 h-4" />
+              שייך ללקוח
+            </button>
+          )}
           {job.status === 'RESERVATION' && (
             <button
               onClick={() => void approveJob()}
@@ -1269,6 +1329,64 @@ export default function JobDetailPage() {
             </ul>
           )}
         </section>
+      )}
+
+      {assignCustomerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" dir="rtl">
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+            <h2 className="text-base font-bold text-gray-900 mb-1">שיוך העבודה ללקוח</h2>
+            <p className="text-xs text-gray-500 mb-4">
+              חיפוש לקוח קיים לשיוך העבודה שנמצאת כעת בשריון כללי. העבודה תקושר לפרויקט הפתוח המתאים של הלקוח (או ייווצר חדש). העובדים המשובצים יעודכנו ללא צורך באישור מחדש.
+            </p>
+            <input
+              value={customerQuery}
+              onChange={(e) => void searchCustomers(e.target.value)}
+              placeholder="חיפוש לפי שם או טלפון"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm mb-2"
+            />
+            <div className="max-h-56 overflow-auto rounded-lg border border-gray-100 mb-2">
+              {customerMatches.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-gray-500">
+                  {customerQuery.trim().length < 2 ? 'הקלד/י לפחות 2 תווים לחיפוש.' : 'לא נמצאו לקוחות תואמים. '}
+                  {customerQuery.trim().length >= 2 && (
+                    <Link href="/customers" className="underline text-primary-700">ליצירת לקוח חדש</Link>
+                  )}
+                </p>
+              ) : (
+                customerMatches.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setSelectedCustomerId(c.id)}
+                    className={`block w-full px-3 py-2 text-right text-sm hover:bg-gray-50 ${selectedCustomerId === c.id ? 'bg-primary-50 font-medium text-primary-800' : 'text-gray-700'}`}
+                  >
+                    {c.firstName} {c.lastName} · {c.phone}
+                  </button>
+                ))
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setAssignCustomerOpen(false);
+                  setCustomerQuery('');
+                  setCustomerMatches([]);
+                  setSelectedCustomerId(null);
+                }}
+                className="px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+              >
+                ביטול
+              </button>
+              <button
+                onClick={() => void assignCustomer()}
+                disabled={busy || !selectedCustomerId}
+                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                שיוך ללקוח
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {backupConfirm && (

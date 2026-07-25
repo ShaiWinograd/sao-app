@@ -17,6 +17,7 @@ import { computeAddressGeocode, getConfiguredProvider } from '../lib/geocoding/s
 import { AppError } from '../lib/errors.js';
 import { lockJob, lockIdempotencyKey } from '../lib/commitment.js';
 import { resolveOrCreateCaseForJob } from '../domain/caseResolution.js';
+import { assignRealCustomerToJob } from '../domain/assignCustomer.js';
 import { getCaseReadiness } from '../domain/customerReport.js';
 import { z } from 'zod';
 
@@ -804,7 +805,20 @@ export async function jobsRoutes(app: FastifyInstance) {
     return updated;
   });
 
-  // Owner manually marks a job Completed (spec §17.2). Every assigned regular
+  // Assign a real customer to a General-Reservation job (spec §10.1). See
+  // domain/assignCustomer for the guarded, transactional behavior. Owner-only.
+  app.post('/:id/assign-customer', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({ customerId: z.string().min(1) }).parse(req.body);
+    const result = await assignRealCustomerToJob(prisma, {
+      jobId: id,
+      customerId: body.customerId,
+      actor: (req as any).user,
+    });
+    return result.job;
+  });
+
+
   // worker and team leader must have a resolved attendance outcome first. The
   // owner may resolve any that are missing inline via `resolutions`: each is
   // either { outcome: 'DID_NOT_WORK' } or { outcome: 'WORKED', clockIn, clockOut }.
