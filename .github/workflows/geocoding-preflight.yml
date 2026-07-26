@@ -9,8 +9,9 @@ name: Geocoding Preflight (read-only)
 # GEOCODE_SELECTION_SECRET, DATABASE_URL). The read-only step below:
 #   1. captures `az ... appsettings list -o json` via command substitution into a
 #      shell variable — command substitution sends stdout to the variable, NOT to
-#      the log; az's stderr (secret-free) is redirected to a file and only shown on
-#      failure;
+#      the log; az's stderr is redirected to a private mktemp file that is NEVER
+#      printed and is deleted (via a cleanup trap) — on failure only a fixed,
+#      sanitized message (resource group, app name, az exit status) is emitted;
 #   2. NEVER echo/cat/printf the JSON to stdout — it is only piped (as a printf arg
 #      → stdin) into jq;
 #   3. uses jq filters that emit ONLY boolean scalars (true/false); the `.value`
@@ -23,6 +24,9 @@ name: Geocoding Preflight (read-only)
 #   7. writes nothing to $GITHUB_ENV/$GITHUB_OUTPUT and uploads no artifacts, so
 #      there is no persisted/exported copy;
 #   8. relies on azure/login@v2 to auto-mask the AZURE_CREDENTIALS secret.
+# Note on Azure CLI stderr: we do NOT assume az error output is secret-free.
+# Captured stderr is never printed and is always deleted; only a fixed sanitized
+# message is surfaced on failure.
 # Residual note: jq `length` counts UTF-8 codepoints; for ASCII/base64/hex secrets
 # this equals bytes, and the app enforces the true byte check at runtime
 # (Buffer.byteLength >= 32). Only a boolean is emitted, so this leaks nothing.
@@ -30,10 +34,10 @@ name: Geocoding Preflight (read-only)
 on:
   workflow_dispatch: {}
 
-# Minimal token scopes: no checkout, no repo writes, no OIDC. Azure auth uses the
-# production environment's AZURE_CREDENTIALS secret, which needs no GITHUB_TOKEN scope.
-permissions:
-  contents: read
+# No GITHUB_TOKEN scopes are required: the workflow performs no checkout and makes
+# no GitHub API calls. Azure auth uses the production environment's
+# AZURE_CREDENTIALS secret, which needs no GITHUB_TOKEN permission.
+permissions: {}
 
 env:
   AZURE_RESOURCE_GROUP: workforce-rg
@@ -69,11 +73,21 @@ jobs:
           RG="${AZURE_RESOURCE_GROUP}"
           APP="${AZURE_API_APP_NAME}"
 
-          # Capture the App Settings JSON WITHOUT ever echoing it. Only az's own
-          # (secret-free) error text is shown, and only on failure.
-          if ! SETTINGS_JSON="$(az webapp config appsettings list --resource-group "$RG" --name "$APP" --output json 2>/tmp/az.err)"; then
-            echo "::error::Failed to read App Settings for '$APP' in '$RG'."
-            cat /tmp/az.err || true
+          # Redirect az's stderr to a PRIVATE temp file that is never printed and is
+          # always removed (cleanup trap). We do not assume az error output is
+          # secret-free, so it is never surfaced.
+          ERR_FILE="$(mktemp)"
+          trap 'rm -f "$ERR_FILE"' EXIT
+
+          # Capture the App Settings JSON WITHOUT ever echoing it.
+          if SETTINGS_JSON="$(az webapp config appsettings list --resource-group "$RG" --name "$APP" --output json 2>"$ERR_FILE")"; then
+            :
+          else
+            AZ_RC=$?
+            # Never print the captured stderr; delete it and emit only a fixed,
+            # sanitized message (known RG/app + az exit status).
+            rm -f "$ERR_FILE"
+            echo "::error::Failed to read App Settings for app '$APP' in resource group '$RG' (az CLI exit status ${AZ_RC})."
             exit 1
           fi
 
