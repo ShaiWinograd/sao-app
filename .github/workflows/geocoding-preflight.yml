@@ -1,0 +1,106 @@
+name: Geocoding Preflight (read-only)
+
+# Manually triggered, READ-ONLY preflight that verifies the API App Service has the
+# server-side geocoding settings PR-A needs, WITHOUT revealing any value. It makes
+# NO configuration writes, restarts, deployments, or endpoint calls.
+#
+# ── Logging safety (why raw App Settings cannot reach the workflow log) ──────────
+# The only sensitive data is the App Settings *values* (e.g. AZURE_MAPS_KEY,
+# GEOCODE_SELECTION_SECRET, DATABASE_URL). The read-only step below:
+#   1. captures `az ... appsettings list -o json` via command substitution into a
+#      shell variable — command substitution sends stdout to the variable, NOT to
+#      the log; az's stderr (secret-free) is redirected to a file and only shown on
+#      failure;
+#   2. NEVER echo/cat/printf the JSON to stdout — it is only piped (as a printf arg
+#      → stdin) into jq;
+#   3. uses jq filters that emit ONLY boolean scalars (true/false); the `.value`
+#      fields are consumed inside jq (length>0, ==, length>=32) and never emitted —
+#      no value, no name+value pair, no length integer leaves jq;
+#   4. echoes ONLY those booleans (not sensitive);
+#   5. deliberately does NOT enable `set -x` (xtrace), which would echo expanded
+#      command lines containing the JSON/values;
+#   6. `unset`s the JSON immediately after deriving the booleans;
+#   7. writes nothing to $GITHUB_ENV/$GITHUB_OUTPUT and uploads no artifacts, so
+#      there is no persisted/exported copy;
+#   8. relies on azure/login@v2 to auto-mask the AZURE_CREDENTIALS secret.
+# Residual note: jq `length` counts UTF-8 codepoints; for ASCII/base64/hex secrets
+# this equals bytes, and the app enforces the true byte check at runtime
+# (Buffer.byteLength >= 32). Only a boolean is emitted, so this leaks nothing.
+
+on:
+  workflow_dispatch: {}
+
+# Minimal token scopes: no checkout, no repo writes, no OIDC. Azure auth uses the
+# production environment's AZURE_CREDENTIALS secret, which needs no GITHUB_TOKEN scope.
+permissions:
+  contents: read
+
+env:
+  AZURE_RESOURCE_GROUP: workforce-rg
+  AZURE_API_APP_NAME: spaceorder-api-app-poc
+
+jobs:
+  geocoding-preflight:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Validate Azure credentials are configured
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+        run: |
+          set -euo pipefail
+          if [ -z "$AZURE_CREDENTIALS" ]; then
+            echo "::error::AZURE_CREDENTIALS is not configured in the production environment."
+            exit 1
+          fi
+
+      - name: Azure login (read-only session)
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Read-only geocoding settings preflight (booleans only)
+        run: |
+          set -euo pipefail
+          # NOTE: `set -x` is intentionally NOT enabled — see the logging-safety
+          # note at the top of this file.
+
+          RG="${AZURE_RESOURCE_GROUP}"
+          APP="${AZURE_API_APP_NAME}"
+
+          # Capture the App Settings JSON WITHOUT ever echoing it. Only az's own
+          # (secret-free) error text is shown, and only on failure.
+          if ! SETTINGS_JSON="$(az webapp config appsettings list --resource-group "$RG" --name "$APP" --output json 2>/tmp/az.err)"; then
+            echo "::error::Failed to read App Settings for '$APP' in '$RG'."
+            cat /tmp/az.err || true
+            exit 1
+          fi
+
+          # Derive booleans ONLY. No value, name+value pair, or length ever leaves jq.
+          MAPS_OK="$(printf '%s' "$SETTINGS_JSON" | jq -r '([.[] | select(.name=="AZURE_MAPS_KEY")][0].value // "") | (length > 0)')"
+          FLAG_TRUE="$(printf '%s' "$SETTINGS_JSON" | jq -r '([.[] | select(.name=="ADDRESS_GEOCODING_ENABLED")][0].value // "") == "true"')"
+          SECRET_OK="$(printf '%s' "$SETTINGS_JSON" | jq -r '([.[] | select(.name=="GEOCODE_SELECTION_SECRET")][0].value // "") | (length >= 32)')"
+          # Drop the raw settings from memory immediately after deriving booleans.
+          unset SETTINGS_JSON
+
+          echo "AZURE_MAPS_KEY present and non-empty: ${MAPS_OK}"
+          echo "ADDRESS_GEOCODING_ENABLED present and exactly 'true': ${FLAG_TRUE}"
+          echo "GEOCODE_SELECTION_SECRET present and >= 32 bytes: ${SECRET_OK}"
+
+          # AZURE_MAPS_KEY is a hard prerequisite — fail clearly if absent/empty.
+          if [ "$MAPS_OK" != "true" ]; then
+            echo "::error::AZURE_MAPS_KEY is missing or empty on '$APP'. Geocoding cannot be enabled until it is set."
+            exit 1
+          fi
+
+          # The flag and the selection secret are EXPECTED to be absent before the
+          # rollout — report as notices, do NOT fail.
+          if [ "$FLAG_TRUE" != "true" ]; then
+            echo "::notice::ADDRESS_GEOCODING_ENABLED is not exactly 'true' (expected pre-rollout)."
+          fi
+          if [ "$SECRET_OK" != "true" ]; then
+            echo "::notice::GEOCODE_SELECTION_SECRET is absent or shorter than 32 bytes (expected pre-rollout)."
+          fi
+
+          echo "Preflight complete — read-only; no writes, restarts, deployments, or endpoint calls performed."
