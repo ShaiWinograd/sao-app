@@ -1,13 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
 import {
   CalendarDays, CalendarCheck, BarChart3, User, Bell, History, Bug,
 } from 'lucide-react';
 import RoleSwitcher from './RoleSwitcher';
+import { BrandLockup } from './BrandLockup';
 
 // Worker navigation (worker_web_spec §1). "משמרות" is the consolidated board
 // (general + my shifts as tabs).
@@ -27,15 +27,7 @@ export default function WorkerSidebar({ onNavigate }: { onNavigate?: () => void 
     <aside className="no-print flex h-full w-full flex-col overflow-hidden border-l border-[#e7e3dc] bg-[#fbfaf7]">
       {/* Logo */}
       <div className="border-b border-[#ebe7df] px-5 py-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-[#e7e3dc] bg-white shadow-sm">
-            <Image src="/so-logo.jpg" alt="Space and Order" width={40} height={40} className="object-cover" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight text-gray-900">S&amp;O</h1>
-            <p className="text-sm text-gray-500">אזור העובדות</p>
-          </div>
-        </div>
+        <BrandLockup area="worker" onNavigate={onNavigate} />
       </div>
 
       {/* Navigation */}

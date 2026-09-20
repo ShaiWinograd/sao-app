@@ -1,13 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
 import { LayoutDashboard, Users, Calendar, BarChart3, Settings, Contact, Bug } from 'lucide-react';
 import { canViewReports } from '../../lib/viewer-access';
 import { useViewerRole } from '../../lib/use-viewer-role';
 import RoleSwitcher from './RoleSwitcher';
+import { BrandLockup } from './BrandLockup';
 
 // Owner primary navigation (spec §5.1). Projects are an internal grouping
 // entity only (§10) and are not a top-level destination. Worker/monthly reports
@@ -31,21 +31,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
     <aside className="flex h-screen w-full flex-col overflow-hidden border-l border-[#e7e3dc] bg-[#fbfaf7]">
       {/* Logo */}
       <div className="border-b border-[#ebe7df] px-5 py-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-[#e7e3dc] bg-white shadow-sm">
-            <Image
-              src="/so-logo.jpg"
-              alt="Space and Order"
-              width={40}
-              height={40}
-              className="object-cover"
-            />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight text-gray-900">S&amp;O</h1>
-            <p className="text-sm text-gray-500">ניהול עסק</p>
-          </div>
-        </div>
+        <BrandLockup area="owner" onNavigate={onNavigate} />
       </div>
 
       {/* Navigation */}

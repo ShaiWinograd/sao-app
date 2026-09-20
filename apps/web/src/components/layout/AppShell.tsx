@@ -1,12 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import Image from 'next/image';
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import Sidebar from './Sidebar';
 import WorkerSidebar from './WorkerSidebar';
+import { BrandLockup } from './BrandLockup';
 
 type AppArea = 'owner' | 'worker';
 
@@ -176,22 +175,7 @@ export default function AppShell({ area, children }: { area: AppArea; children: 
             >
               <Menu className="h-6 w-6" />
             </button>
-            <Link
-              href={area === 'worker' ? '/worker' : '/dashboard'}
-              aria-label={area === 'worker' ? 'מעבר למסך המשמרות' : 'מעבר ללוח הבקרה'}
-              className="flex items-center gap-2 rounded-xl py-1"
-            >
-              <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white">
-                <Image
-                  src="/so-logo.jpg"
-                  alt="Space and Order"
-                  width={32}
-                  height={32}
-                  className="object-cover"
-                />
-              </div>
-              <span className="text-base font-bold text-gray-900">S&amp;O · {config.label}</span>
-            </Link>
+            <BrandLockup area={area} compact />
           </div>
         </header>
 
