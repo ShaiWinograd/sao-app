@@ -49,7 +49,7 @@ export default function SignInPage() {
 
         {/* Footer */}
         <p className="text-center text-xs text-gray-500 mt-6">
-          אתה יכול להשתמש בכל כתובת דוא"ל לבדיקה
+          הכניסה מיועדת לעובדות ולמנהלות שהוזמנו למערכת
         </p>
       </div>
     </div>
