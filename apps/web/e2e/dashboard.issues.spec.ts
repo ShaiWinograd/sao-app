@@ -113,4 +113,16 @@ test.describe('Dashboard urgent and workflow sections', () => {
     expect(firstNameBounds?.width).toBeGreaterThanOrEqual(300);
     expect(lastNameBounds?.y).toBeGreaterThan((firstNameBounds?.y ?? 0) + 30);
   });
+
+  test('uses the spacious desktop shell without mobile navigation', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/dashboard');
+
+    await expect(page.getByRole('button', { name: 'פתיחת תפריט' })).toBeHidden();
+    const sidebarBounds = await page.locator('aside').first().boundingBox();
+    const mainBounds = await page.locator('main').boundingBox();
+    expect(sidebarBounds?.width).toBe(240);
+    expect(mainBounds?.width).toBeGreaterThanOrEqual(1190);
+    await expect(page.getByRole('heading', { name: 'לוח בקרה' })).toBeVisible();
+  });
 });

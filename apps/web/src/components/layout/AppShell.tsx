@@ -76,7 +76,7 @@ export default function AppShell({ area, children }: { area: AppArea; children: 
 
   return (
     <div className={`${config.themeClass} flex h-screen overflow-x-hidden bg-[#f7f6f2]`} dir="rtl">
-      <div className="hidden h-screen w-60 shrink-0 md:block">{renderSidebar()}</div>
+      <div className="hidden h-screen w-[240px] shrink-0 md:block">{renderSidebar()}</div>
 
       <div
         className={`fixed inset-0 z-40 bg-black/40 transition-opacity duration-200 md:hidden ${
@@ -135,7 +135,7 @@ export default function AppShell({ area, children }: { area: AppArea; children: 
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden">
+        <main className="app-main flex-1 overflow-y-auto overflow-x-hidden">
           <div className="mx-auto w-full max-w-[1440px] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-6 lg:p-8">
             {children}
           </div>
