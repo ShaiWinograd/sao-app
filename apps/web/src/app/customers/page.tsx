@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Mail, MessageCircle, Plus, Search } from 'lucide-react';
+import { Contact, Mail, MessageCircle, Plus, Search } from 'lucide-react';
 import Link from 'next/link';
 import type { AddressSelection } from '../../components/forms/AzureMapsAddressInput';
 import { SidePanel } from '../../components/ui/SidePanel';
 import { api } from '../../lib/api';
 import { StatusBadge } from '../../components/ui/StatusBadge';
+import { PageHeader } from '../../components/ui/PageHeader';
 import type { StatusTone } from '@workforce/shared';
 
 type CustomerAddress = {
@@ -533,24 +534,24 @@ export default function CustomersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">לקוחות</h1>
-          <p className="text-gray-600 mt-1">רשימת לקוחות + פתיחת כרטיס לקוח בלחיצה ישירה על השורה</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        eyebrow="קשרי לקוחות"
+        title="לקוחות"
+        description="כל פרטי הלקוחות, הפרויקטים והתקשורת במקום אחד."
+        icon={<Contact className="h-6 w-6" />}
+        action={
           <button
             type="button"
             onClick={openCreateCustomerCard}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(78,105,92,0.18)] hover:bg-primary-700"
           >
             <Plus className="w-4 h-4" />
             לקוח חדש
           </button>
-        </div>
-      </div>
+        }
+      />
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="overflow-hidden rounded-[24px] border border-[#e7e3dc] bg-white shadow-[0_2px_12px_rgba(38,38,38,0.04)]">
         <div className="px-5 py-4 border-b border-gray-100">
           <h3 className="font-semibold text-gray-900 text-sm">ספר לקוחות</h3>
           <p className="text-xs text-gray-500 mt-1">סינון לפי סטטוסים: משוריין / מאושר לביצוע / עבודה הסתיימה / עבודה שולמה / עבודה לא בוצעה</p>

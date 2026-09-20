@@ -6,6 +6,7 @@ import { Briefcase, Check, Mail, MessageCircle, Plus, Search, Users, Wallet } fr
 import { canViewSensitiveFinancials } from '../../lib/viewer-access';
 import { useViewerRole } from '../../lib/use-viewer-role';
 import { api } from '../../lib/api';
+import { PageHeader } from '../../components/ui/PageHeader';
 
 type WorkerRole = 'ראש צוות' | 'עובדת';
 
@@ -367,23 +368,25 @@ export default function WorkersPage() {
       {dataError && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{dataError}</div>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">עובדים</h1>
-          <p className="text-gray-600 mt-1">ניהול צוות העובדות, תפקידים ושכר שעתי</p>
-        </div>
+      <PageHeader
+        eyebrow="הצוות"
+        title="עובדים"
+        description="ניהול צוות העובדות, תפקידים ושכר שעתי."
+        icon={<Users className="h-6 w-6" />}
+        action={
         <button
           type="button"
           onClick={() => {
             setMessage('');
             setIsCreateModalOpen(true);
           }}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+          className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(78,105,92,0.18)] hover:bg-primary-700"
         >
           <Plus className="w-4 h-4" />
           עובדת חדשה
         </button>
-      </div>
+        }
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-lg border border-gray-200 p-4">

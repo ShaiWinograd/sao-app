@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { usePathname } from 'next/navigation';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import Sidebar from './Sidebar';
 import WorkerSidebar from './WorkerSidebar';
@@ -20,14 +21,25 @@ const areaConfig = {
   },
 } satisfies Record<AppArea, { label: string; themeClass: string }>;
 
+const workerRoutes = [
+  '/worker',
+  '/worker/history',
+  '/worker/availability',
+  '/worker/reports',
+  '/worker/notifications',
+  '/worker/profile',
+];
+
 export default function AppShell({ area, children }: { area: AppArea; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
   const drawerRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
+  const touchStart = useRef<{ x: number; y: number; fromRightEdge: boolean; ignored: boolean } | null>(null);
   const config = areaConfig[area];
   const renderSidebar = (onNavigate?: () => void) =>
     area === 'owner' ? (
@@ -63,6 +75,47 @@ export default function AppShell({ area, children }: { area: AppArea; children: 
     };
   }, [open]);
 
+  const startTouch = (event: React.PointerEvent) => {
+    if (event.pointerType !== 'touch' || window.innerWidth >= 768) return;
+    const target = event.target as HTMLElement;
+    touchStart.current = {
+      x: event.clientX,
+      y: event.clientY,
+      fromRightEdge: window.innerWidth - event.clientX <= 28,
+      ignored: Boolean(target.closest('a, button, input, select, textarea, [data-swipe-navigation="ignore"]')),
+    };
+  };
+
+  const finishTouch = (event: React.PointerEvent) => {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!start || start.ignored || event.pointerType !== 'touch' || area !== 'worker') return;
+
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    if (Math.abs(deltaX) < 64 || Math.abs(deltaX) < Math.abs(deltaY) * 1.25) return;
+
+    if (start.fromRightEdge && deltaX < 0) {
+      setOpen(true);
+      return;
+    }
+    if (start.x <= 28) return;
+
+    const currentIndex = workerRoutes.findIndex((route) =>
+      route === '/worker' ? pathname === route : pathname === route || pathname.startsWith(`${route}/`),
+    );
+    if (currentIndex < 0) return;
+    const nextIndex = deltaX < 0 ? currentIndex + 1 : currentIndex - 1;
+    if (nextIndex >= 0 && nextIndex < workerRoutes.length) router.push(workerRoutes[nextIndex]);
+  };
+
+  const closeDrawerWithSwipe = (event: React.PointerEvent) => {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!start || event.pointerType !== 'touch') return;
+    if (event.clientX - start.x > 56 && Math.abs(event.clientY - start.y) < 80) setOpen(false);
+  };
+
   useEffect(() => {
     if (drawerRef.current) drawerRef.current.inert = !open;
     if (mainRef.current) mainRef.current.inert = open;
@@ -94,6 +147,9 @@ export default function AppShell({ area, children }: { area: AppArea; children: 
         role="dialog"
         aria-modal="true"
         aria-label="תפריט ניווט"
+        aria-hidden={!open}
+        onPointerDown={startTouch}
+        onPointerUp={closeDrawerWithSwipe}
       >
         <button
           type="button"
@@ -120,7 +176,11 @@ export default function AppShell({ area, children }: { area: AppArea; children: 
             >
               <Menu className="h-6 w-6" />
             </button>
-            <div className="flex items-center gap-2">
+            <Link
+              href={area === 'worker' ? '/worker' : '/dashboard'}
+              aria-label={area === 'worker' ? 'מעבר למסך המשמרות' : 'מעבר ללוח הבקרה'}
+              className="flex items-center gap-2 rounded-xl py-1"
+            >
               <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white">
                 <Image
                   src="/so-logo.jpg"
@@ -131,11 +191,15 @@ export default function AppShell({ area, children }: { area: AppArea; children: 
                 />
               </div>
               <span className="text-base font-bold text-gray-900">S&amp;O · {config.label}</span>
-            </div>
+            </Link>
           </div>
         </header>
 
-        <main className="app-main flex-1 overflow-y-auto overflow-x-hidden">
+        <main
+          className="app-main flex-1 touch-pan-y overflow-y-auto overflow-x-hidden"
+          onPointerDown={startTouch}
+          onPointerUp={finishTouch}
+        >
           <div className="mx-auto w-full max-w-[1440px] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-6 lg:p-8">
             {children}
           </div>

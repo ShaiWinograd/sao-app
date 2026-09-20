@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
-import { ChevronLeft, ChevronRight, Loader2, Plus, Repeat } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Plus, Repeat } from 'lucide-react';
 import { api, authHeaders } from '../../lib/api';
+import { PageHeader } from '../../components/ui/PageHeader';
 
 type ApiJob = {
   id: string;
@@ -105,31 +106,33 @@ export default function JobsPage() {
     setMonthAnchor((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
 
   return (
-    <div dir="rtl" className="p-6 space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">יומן עבודות</h1>
-          <p className="text-sm text-gray-600 mt-1">כל העבודות, לפי תאריך וסוג. ניתן ליצור עבודה חדשה לשריון עובדים.</p>
-        </div>
-        <div className="flex items-center gap-2">
+    <div dir="rtl" className="space-y-6">
+      <PageHeader
+        eyebrow="תכנון ותפעול"
+        title="יומן עבודות"
+        description="כל העבודות לפי תאריך וסוג, עם תמונת מצב ברורה של האיוש."
+        icon={<CalendarDays className="h-6 w-6" />}
+        action={
+          <div className="flex items-center gap-2">
           <Link
             href="/shifts/swaps"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#d8d3ca] bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
           >
-            <Repeat className="w-3.5 h-3.5" />
+            <Repeat className="h-4 w-4" />
             החלפות משמרות
           </Link>
           <Link
             href="/jobs/new"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(78,105,92,0.18)] hover:bg-primary-700"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="h-4 w-4" />
             עבודה חדשה
           </Link>
-        </div>
-      </div>
+          </div>
+        }
+      />
 
-      <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-[24px] border border-[#e7e3dc] bg-white shadow-[0_2px_12px_rgba(38,38,38,0.04)]">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
           <button
             type="button"

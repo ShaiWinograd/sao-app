@@ -11,6 +11,7 @@ import AzureMapsAddressInput, { type AddressSelection } from '../../components/f
 import { QuickCreateForm } from '../../components/jobs/QuickCreateForm';
 import { JoinRequestsPanel } from '../../components/owner/JoinRequestsPanel';
 import { SidePanel } from '../../components/ui/SidePanel';
+import { PageHeader } from '../../components/ui/PageHeader';
 import { api, authHeaders } from '../../lib/api';
 
 type JobType = 'אריזה' | 'פריקה' | 'סידור';
@@ -962,24 +963,22 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      {/* Header with Actions */}
-      <div className="flex flex-col gap-4 overflow-hidden rounded-3xl bg-gradient-to-l from-primary-700 to-primary-500 p-5 text-white shadow-[0_8px_24px_rgba(78,105,92,0.16)] sm:flex-row sm:items-center sm:justify-between sm:p-6">
-        <div>
-          <p className="mb-1 text-sm font-medium text-white/75">היום ב-S&amp;O</p>
-          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">לוח בקרה</h1>
-          <p className="mt-1 text-base text-white/85" suppressHydrationWarning>{mounted ? greetingText : '\u00A0'}</p>
-        </div>
-        <div className="flex items-center">
+      <PageHeader
+        eyebrow="תמונת מצב יומית"
+        title="לוח בקרה"
+        description={mounted ? greetingText : '\u00A0'}
+        icon={<CalendarDays className="h-6 w-6" />}
+        action={
           <button
             type="button"
             onClick={() => setQuickCreateDate(todayDateKey)}
-            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-primary-700 shadow-sm transition-transform hover:-translate-y-0.5 sm:w-auto"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(78,105,92,0.2)] transition-colors hover:bg-primary-700 sm:w-auto"
           >
             <Plus className="h-4 w-4" />
             יצירת עבודה
           </button>
-        </div>
-      </div>
+        }
+      />
 
       {(priorityAttention.length > 0 || attentionItems.length > 0) && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2" data-testid="requires-attention">
