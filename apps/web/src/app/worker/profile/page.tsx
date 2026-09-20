@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { Phone, Mail, Briefcase, MapPin, Pencil, Check, X } from 'lucide-react';
 import { api, authHeaders } from '../../../lib/api';
+import { PageHeader } from '../../../components/ui/PageHeader';
 
 type WorkerProfile = {
   id: string;
@@ -88,27 +89,30 @@ export default function WorkerProfilePage() {
   if (loading) return <p className="text-sm text-gray-400">טוען…</p>;
 
   return (
-    <div className="space-y-4 max-w-2xl">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-900">הפרופיל שלי</h1>
-        {profile && !editing && (
+    <div className="mx-auto w-full max-w-[960px] space-y-6">
+      <PageHeader
+        eyebrow="פרטים אישיים"
+        title="הפרופיל שלי"
+        description="פרטי הקשר, אזור העבודה והתפקידים שלך."
+        icon={<Briefcase className="h-6 w-6" />}
+        action={profile && !editing ? (
           <button
             type="button"
             onClick={startEdit}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#d8d3ca] bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
           >
-            <Pencil className="w-3.5 h-3.5" />
+            <Pencil className="h-4 w-4" />
             עריכה
           </button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {error || !profile ? (
         <p className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500">
           לא נמצא פרופיל עובד/ת לחשבון זה.
         </p>
       ) : (
-        <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+        <div className="space-y-5 rounded-[24px] border border-[#e7e3dc] bg-white p-6 shadow-[0_2px_12px_rgba(38,38,38,0.04)]">
           <div>
             <p className="text-lg font-bold text-gray-900">
               {`${profile.firstName ?? ''} ${profile.lastName ?? ''}`.trim() || 'עובד/ת'}

@@ -327,7 +327,7 @@ export default function WorkerShiftDetailPage() {
   if (loading) return <p className="text-sm text-gray-400">טוען…</p>;
   if (notFound || !shift) {
     return (
-      <div className="max-w-2xl">
+      <div className="mx-auto max-w-[960px]">
         <BackLink />
         <p className="mt-3 rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500">המשמרת לא נמצאה.</p>
       </div>
@@ -343,7 +343,7 @@ export default function WorkerShiftDetailPage() {
   const phone = shift.job.customer?.phone;
 
   return (
-    <div className="max-w-2xl space-y-4">
+    <div className="mx-auto max-w-[960px] space-y-5">
       <BackLink />
 
       {isCancelled && (

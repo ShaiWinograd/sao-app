@@ -65,7 +65,7 @@ body {
 }
 
 html {
-  font-size: 14px;
+  font-size: 16px;
   background: var(--color-background);
   scroll-behavior: smooth;
 }
@@ -76,9 +76,7 @@ html {
 }
 
 .app-main {
-  background:
-    radial-gradient(circle at 100% 0%, rgb(var(--tw-primary-100) / 0.52), transparent 28rem),
-    var(--color-background);
+  background: var(--color-background);
 }
 
 .app-main input:not([type='checkbox']):not([type='radio']),
@@ -210,4 +208,3 @@ input[type='radio']:disabled {
 .print-only {
   display: none;
 }
-

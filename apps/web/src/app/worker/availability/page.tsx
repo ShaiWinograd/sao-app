@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { CalendarOff, Trash2, Plus } from 'lucide-react';
 import { api, authHeaders } from '../../../lib/api';
+import { PageHeader } from '../../../components/ui/PageHeader';
 
 type BlockType = 'DATE' | 'RANGE' | 'WEEKLY';
 type Block = {
@@ -116,18 +117,20 @@ export default function WorkerAvailabilityPage() {
   const today = new Date().toLocaleDateString('en-CA');
 
   return (
-    <div className="space-y-5 max-w-2xl">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">הזמינות שלי</h1>
-        <p className="text-sm text-gray-500 mt-0.5">סמני תאריכים או ימים קבועים שבהם אינך זמינה לעבודה.</p>
-      </div>
+    <div className="mx-auto w-full max-w-[1120px] space-y-6">
+      <PageHeader
+        eyebrow="תכנון מראש"
+        title="הזמינות שלי"
+        description="סמני תאריכים או ימים קבועים שבהם אינך זמינה לעבודה."
+        icon={<CalendarOff className="h-6 w-6" />}
+      />
 
       {error ? (
         <p className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500">לא נמצא פרופיל עובד/ת לחשבון זה.</p>
       ) : (
         <>
           {/* Add block */}
-          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+          <div className="space-y-4 rounded-[24px] border border-[#e7e3dc] bg-white p-5 shadow-[0_2px_12px_rgba(38,38,38,0.04)] sm:p-6">
             <h2 className="text-sm font-semibold text-gray-900">הוספת חסימה</h2>
             <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 text-xs">
               {([['DATE', 'תאריך בודד'], ['RANGE', 'טווח תאריכים'], ['WEEKLY', 'יום קבוע בשבוע']] as [BlockType, string][]).map(([v, label]) => (

@@ -1,0 +1,58 @@
+import { expect, test } from '@playwright/test';
+
+test.describe('Worker desktop layout', () => {
+  test('centers history content and presents an intentional empty state', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.route('**/api/v1/shifts/mine', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    });
+
+    await page.goto('/worker/history');
+
+    const content = page.getByTestId('worker-history-page');
+    const mainBounds = await page.locator('main').boundingBox();
+    const bounds = await content.boundingBox();
+    expect(bounds?.width).toBeGreaterThanOrEqual(1000);
+    const leftGap = (bounds?.x ?? 0) - (mainBounds?.x ?? 0);
+    const rightGap =
+      (mainBounds?.x ?? 0) + (mainBounds?.width ?? 0) - ((bounds?.x ?? 0) + (bounds?.width ?? 0));
+    expect(Math.abs(leftGap - rightGap)).toBeLessThan(4);
+    await expect(page.getByRole('heading', { name: 'היסטוריית עבודות' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'אין משמרות בתקופה הזו' })).toBeVisible();
+  });
+
+  test('supports worker mobile home and swipe navigation gestures', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.route('**/api/v1/jobs/board', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    );
+    await page.route('**/api/v1/shifts/swaps/mine', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    );
+    await page.route('**/api/v1/shifts/replacement-requests/open', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    );
+    await page.route('**/api/v1/shifts/mine', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    );
+
+    await page.goto('/worker/history');
+    await page.getByRole('link', { name: 'מעבר למסך המשמרות' }).click();
+    await expect(page).toHaveURL(/\/worker$/);
+    await expect(page.getByRole('button', { name: 'השבוע הבא' })).toBeVisible();
+
+    const main = page.locator('main');
+    await main.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: 300, clientY: 400 });
+    await main.dispatchEvent('pointerup', { pointerType: 'touch', clientX: 180, clientY: 405 });
+    await expect(page).toHaveURL(/\/worker\/history$/);
+
+    await main.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: 385, clientY: 400 });
+    await main.dispatchEvent('pointerup', { pointerType: 'touch', clientX: 290, clientY: 405 });
+    await expect(page.getByRole('dialog', { name: 'תפריט ניווט' })).toBeVisible();
+
+    const drawer = page.getByRole('dialog', { name: 'תפריט ניווט' });
+    await drawer.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: 120, clientY: 400 });
+    await drawer.dispatchEvent('pointerup', { pointerType: 'touch', clientX: 210, clientY: 405 });
+    await expect(page.getByRole('dialog', { name: 'תפריט ניווט' })).toHaveCount(0);
+  });
+});

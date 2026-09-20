@@ -78,7 +78,7 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await expect(page.getByText('עבודות היום', { exact: true })).toBeVisible();
 
     // Header quick action
-    await expect(page.getByRole('link', { name: 'יצירת פרויקט חדש' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'יצירת עבודה' })).toBeVisible();
 
     // The separate 'must handle' urgent panel was removed.
     await expect(page.getByTestId('dashboard-urgent-panel')).toHaveCount(0);

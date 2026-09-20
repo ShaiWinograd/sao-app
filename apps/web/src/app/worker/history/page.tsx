@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { History, MapPin, Clock, LogIn, LogOut, FileText, ChevronLeft } from 'lucide-react';
 import { api, authHeaders } from '../../../lib/api';
+import { EmptyState } from '../../../components/ui/EmptyState';
+import { PageHeader } from '../../../components/ui/PageHeader';
 import {
   type WorkerShift,
   jobTypeLabel,
@@ -88,26 +90,31 @@ export default function WorkerHistoryPage() {
   if (loading) return <p className="text-sm text-gray-400">טוען…</p>;
 
   return (
-    <div className="space-y-4 max-w-2xl">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">היסטוריית עבודות</h1>
-        <p className="text-sm text-gray-500 mt-0.5">כל המשמרות שביצעת, כולל שעות הנוכחות המאושרות.</p>
-      </div>
+    <div className="mx-auto w-full max-w-[1120px] space-y-6" data-testid="worker-history-page">
+      <PageHeader
+        eyebrow="מעקב אישי"
+        title="היסטוריית עבודות"
+        description="כל המשמרות שביצעת, כולל שעות הנוכחות המאושרות."
+        icon={<History className="h-6 w-6" />}
+      />
 
       {/* Period filter */}
-      <div className="flex flex-wrap gap-1.5">
-        {(Object.keys(PERIOD_LABEL) as Period[]).map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => setPeriod(p)}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-              period === p ? 'bg-primary-600 text-white' : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            {PERIOD_LABEL[p]}
-          </button>
-        ))}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm font-semibold text-gray-700">סיכום לפי תקופה</p>
+        <div className="inline-grid grid-cols-2 gap-1 rounded-xl border border-[#ded9d0] bg-white p-1 sm:flex">
+          {(Object.keys(PERIOD_LABEL) as Period[]).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setPeriod(p)}
+              className={`min-h-10 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                period === p ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-primary-50'
+              }`}
+            >
+              {PERIOD_LABEL[p]}
+            </button>
+          ))}
+        </div>
       </div>
 
       {error ? (
@@ -115,7 +122,7 @@ export default function WorkerHistoryPage() {
       ) : (
         <>
           {/* Summary */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <SummaryStat label="משמרות" value={String(summary.count)} />
             <SummaryStat label="ימי עבודה" value={String(summary.days)} />
             <SummaryStat label="שעות מאושרות" value={String(summary.hours)} />
@@ -128,12 +135,13 @@ export default function WorkerHistoryPage() {
 
           {/* List */}
           {past.length === 0 ? (
-            <div className="rounded-xl border border-gray-200 bg-white p-6 text-center">
-              <History className="mx-auto w-6 h-6 text-gray-300" />
-              <p className="mt-1.5 text-sm text-gray-500">אין משמרות בתקופה זו.</p>
-            </div>
+            <EmptyState
+              icon={<History className="h-7 w-7" />}
+              title="אין משמרות בתקופה הזו"
+              description="כאשר עבודות יושלמו, שעות הנוכחות והטפסים שלהן יופיעו כאן באופן מסודר."
+            />
           ) : (
-            <div className="space-y-2.5">
+            <div className="grid gap-4 lg:grid-cols-2">
               {past.map((s) => {
                 const att = attendanceBadge(s.attendanceStatus);
                 const address = s.job.address?.fullAddress ?? '';
@@ -141,7 +149,7 @@ export default function WorkerHistoryPage() {
                   <Link
                     key={s.id}
                     href={`/worker/shifts/${s.id}`}
-                    className="block rounded-xl border border-gray-200 bg-white p-3.5 hover:border-primary-300 transition-colors"
+                    className="block rounded-2xl border border-[#e7e3dc] bg-white p-5 shadow-[0_2px_10px_rgba(38,38,38,0.04)] transition-all hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-[0_8px_24px_rgba(38,38,38,0.07)]"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="flex items-center gap-1.5">
@@ -208,9 +216,9 @@ export default function WorkerHistoryPage() {
 
 function SummaryStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-center">
-      <p className="text-lg font-bold text-gray-900">{value}</p>
-      <p className="text-[11px] text-gray-500">{label}</p>
+    <div className="rounded-2xl border border-[#e7e3dc] bg-white px-5 py-4 shadow-[0_2px_10px_rgba(38,38,38,0.04)]">
+      <p className="text-2xl font-bold tracking-tight text-gray-950">{value}</p>
+      <p className="mt-1 text-sm text-gray-500">{label}</p>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { ChevronRight, ChevronLeft, CalendarDays, Clock, Wallet, CheckCircle2, MessageSquareWarning, MessageSquarePlus, Trash2, Download } from 'lucide-react';
 import { api, authHeaders } from '../../../lib/api';
+import { PageHeader } from '../../../components/ui/PageHeader';
 import { workerReportStatusLabel } from '@workforce/shared';
 
 type EarningsLine = {
@@ -195,20 +196,23 @@ export default function WorkerReportsPage() {
   );
 
   return (
-    <div className="space-y-4 max-w-2xl">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-900">הדוחות שלי</h1>
-        {data && !loading && !error && (
+    <div className="mx-auto w-full max-w-[1120px] space-y-6">
+      <PageHeader
+        eyebrow="שכר ושעות"
+        title="הדוחות שלי"
+        description="סיכום חודשי של משמרות, שעות ותשלומים."
+        icon={<Wallet className="h-6 w-6" />}
+        action={data && !loading && !error ? (
           <button
             type="button"
             onClick={() => window.print()}
-            className="no-print inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            className="no-print inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#d8d3ca] bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
           >
-            <Download className="w-3.5 h-3.5" />
+            <Download className="h-4 w-4" />
             הורדת PDF
           </button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {/* Print-only report header */}
       <div className="print-only">
