@@ -11,14 +11,12 @@ type AppArea = 'owner' | 'worker';
 
 const areaConfig = {
   owner: {
-    label: 'ניהול עסק',
     themeClass: '',
   },
   worker: {
-    label: 'אזור העובדות',
     themeClass: 'worker-theme',
   },
-} satisfies Record<AppArea, { label: string; themeClass: string }>;
+} satisfies Record<AppArea, { themeClass: string }>;
 
 const workerRoutes = [
   '/worker',
