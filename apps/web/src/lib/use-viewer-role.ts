@@ -15,7 +15,7 @@ export const ViewerRoleContext = createContext<AppViewerRole | null>(null);
 export function readRoleOverride(): AppViewerRole | null {
   if (typeof window === 'undefined') return null;
   const value = window.localStorage.getItem(OVERRIDE_KEY);
-  return value === 'OWNER' || value === 'ADMIN' || value === 'WORKER' ? value : null;
+  return value === 'OWNER' || value === 'WORKER' ? value : null;
 }
 
 export function writeRoleOverride(role: AppViewerRole | null) {
@@ -36,7 +36,7 @@ function accountCanSwitchRole(user: Parameters<typeof resolveAppViewerRole>[0]):
  * The effective viewer role. On the first (SSR-matching) render it returns the
  * Clerk/base role; after mount it applies the persisted preview override when
  * the account is allowed to switch. This avoids hydration mismatches while still
- * letting the developer flip between owner and admin views.
+ * letting the owner preview the worker experience.
  */
 export function useViewerRole(): AppViewerRole {
   const { user } = useUser();
