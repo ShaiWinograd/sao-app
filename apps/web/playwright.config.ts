@@ -4,6 +4,7 @@ const hasExternalBaseUrl = Boolean(process.env.E2E_BASE_URL);
 
 export default defineConfig({
   testDir: './e2e',
+  testMatch: hasExternalBaseUrl ? '**/deployed.smoke.spec.ts' : '**/*.spec.ts',
   fullyParallel: true,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 2 : undefined,
