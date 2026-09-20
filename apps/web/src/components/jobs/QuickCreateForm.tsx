@@ -78,16 +78,13 @@ export function QuickCreateForm({
       }
       try {
         const auth = await authHeaders(getToken);
-        const res = await api.get<CustomerMatch[]>(
-          `/customers?search=${encodeURIComponent(term.trim())}`,
-          auth
-        );
+        const res = await api.get<CustomerMatch[]>(`/customers?search=${encodeURIComponent(term.trim())}`, auth);
         setMatches(res.data.filter((c) => c.id !== 'general-reservation').slice(0, 8));
       } catch {
         setMatches([]);
       }
     },
-    [getToken]
+    [getToken],
   );
 
   // Any edit to a customer field means the owner is no longer pointing at a
@@ -98,7 +95,7 @@ export function QuickCreateForm({
       setSelectedCustomerId(null);
       void searchCustomers(value);
     },
-    [searchCustomers]
+    [searchCustomers],
   );
 
   const selectExistingCustomer = useCallback((c: CustomerMatch) => {
@@ -153,49 +150,24 @@ export function QuickCreateForm({
         notes: notes.trim() || undefined,
         idempotencyKey: idemKeyRef.current,
       };
-      const res = await api.post<{
-        job: { id: string };
-        capacityWarning: boolean;
-        availableWorkers: number;
-      }>('/jobs/quick', payload, auth);
+      const res = await api.post<{ job: { id: string }; capacityWarning: boolean; availableWorkers: number }>(
+        '/jobs/quick',
+        payload,
+        auth,
+      );
       // Show a durable success + link so a slow/failed view refresh never invites
       // a second submission; regenerate the key so the next job is distinct.
       setCreatedJobId(res.data.job.id);
       idemKeyRef.current = makeIdemKey();
-      onCreated(res.data.job.id, {
-        warning: res.data.capacityWarning,
-        available: res.data.availableWorkers,
-      });
+      onCreated(res.data.job.id, { warning: res.data.capacityWarning, available: res.data.availableWorkers });
     } catch (err) {
-      const data = (
-        err as {
-          response?: { data?: { error?: string; message?: string; correlationId?: string } };
-        }
-      )?.response?.data;
+      const data = (err as { response?: { data?: { error?: string; message?: string; correlationId?: string } } })?.response?.data;
       const base = data?.message ?? data?.error ?? 'יצירת העבודה נכשלה.';
       setError(base + (data?.correlationId ? ` (מזהה: ${data.correlationId})` : ''));
     } finally {
       setBusy(false);
     }
-  }, [
-    generalReservation,
-    selectedCustomerId,
-    custFirst,
-    custLast,
-    custPhone,
-    custEmail,
-    jobType,
-    date,
-    startTime,
-    endTime,
-    cityOrAddress,
-    workerCount,
-    requiresTeamLeader,
-    initialStatus,
-    notes,
-    getToken,
-    onCreated,
-  ]);
+  }, [generalReservation, selectedCustomerId, custFirst, custLast, custPhone, custEmail, jobType, date, startTime, endTime, cityOrAddress, workerCount, requiresTeamLeader, initialStatus, notes, getToken, onCreated]);
 
   return (
     <div className="space-y-5" dir="rtl">
@@ -208,12 +180,8 @@ export function QuickCreateForm({
 
       {createdJobId && (
         <div className="flex items-center justify-between gap-2 rounded-lg bg-green-50 border border-green-200 text-green-800 text-sm px-4 py-3">
-          <span className="inline-flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4" /> העבודה נוצרה בהצלחה.
-          </span>
-          <Link href={`/jobs/${createdJobId}`} className="font-medium underline">
-            מעבר לעבודה
-          </Link>
+          <span className="inline-flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> העבודה נוצרה בהצלחה.</span>
+          <Link href={`/jobs/${createdJobId}`} className="font-medium underline">מעבר לעבודה</Link>
         </div>
       )}
 
@@ -239,17 +207,12 @@ export function QuickCreateForm({
         </div>
 
         {generalReservation ? (
-          <p className="text-sm text-gray-500">
-            העבודה תשויך לשריון כללי. ניתן לשייך ללקוח אמיתי מאוחר יותר.
-          </p>
+          <p className="text-sm text-gray-500">העבודה תשויך לשריון כללי. ניתן לשייך ללקוח אמיתי מאוחר יותר.</p>
         ) : (
           <div className="space-y-3">
             {selectedCustomerId && (
               <div className="flex items-center justify-between rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-800">
-                <span>
-                  לקוח קיים נבחר: {custFirst} {custLast}
-                  {custPhone ? ` · ${custPhone}` : ''}
-                </span>
+                <span>לקוח קיים נבחר: {custFirst} {custLast}{custPhone ? ` · ${custPhone}` : ''}</span>
                 <button
                   type="button"
                   onClick={() => setSelectedCustomerId(null)}
@@ -260,38 +223,14 @@ export function QuickCreateForm({
               </div>
             )}
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <input
-                value={custFirst}
-                onChange={(e) => onCustomerFieldChange(setCustFirst, e.target.value)}
-                placeholder="שם פרטי"
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-              <input
-                value={custLast}
-                onChange={(e) => onCustomerFieldChange(setCustLast, e.target.value)}
-                placeholder="שם משפחה"
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-              <input
-                value={custPhone}
-                onChange={(e) => onCustomerFieldChange(setCustPhone, e.target.value)}
-                placeholder="טלפון"
-                inputMode="tel"
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-              <input
-                value={custEmail}
-                onChange={(e) => setCustEmail(e.target.value)}
-                placeholder="אימייל (אופציונלי)"
-                inputMode="email"
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
+              <input value={custFirst} onChange={(e) => onCustomerFieldChange(setCustFirst, e.target.value)} placeholder="שם פרטי" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <input value={custLast} onChange={(e) => onCustomerFieldChange(setCustLast, e.target.value)} placeholder="שם משפחה" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <input value={custPhone} onChange={(e) => onCustomerFieldChange(setCustPhone, e.target.value)} placeholder="טלפון" inputMode="tel" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <input value={custEmail} onChange={(e) => setCustEmail(e.target.value)} placeholder="אימייל (אופציונלי)" inputMode="email" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </div>
             {!selectedCustomerId && matches.length > 0 && (
               <div className="max-h-44 overflow-auto rounded-lg border border-gray-100">
-                <p className="px-3 py-1.5 text-[11px] text-gray-500 bg-gray-50">
-                  לקוחות קיימים תואמים — לבחירה, או המשיכו ליצירת לקוח חדש
-                </p>
+                <p className="px-3 py-1.5 text-[11px] text-gray-500 bg-gray-50">לקוחות קיימים תואמים — לבחירה, או המשיכו ליצירת לקוח חדש</p>
                 {matches.map((c) => (
                   <button
                     key={c.id}
@@ -312,83 +251,38 @@ export function QuickCreateForm({
       <section className="grid grid-cols-1 gap-3 rounded-2xl border border-[#e7e3dc] bg-white p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)] sm:grid-cols-2 sm:p-5">
         <label className="text-sm">
           <span className="block text-gray-600 mb-1">סוג עבודה</span>
-          <select
-            value={jobType}
-            onChange={(e) => setJobType(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-2.5 py-2 bg-white"
-          >
-            {JOB_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
+          <select value={jobType} onChange={(e) => setJobType(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2 bg-white">
+            {JOB_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </label>
         <label className="text-sm">
           <span className="block text-gray-600 mb-1">תאריך</span>
-          <input
-            type="date"
-            value={date}
-            min={todayKey()}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-2.5 py-2"
-          />
+          <input type="date" value={date} min={todayKey()} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
         </label>
         <label className="text-sm">
           <span className="block text-gray-600 mb-1">שעת התחלה</span>
-          <input
-            type="time"
-            value={startTime}
-            onChange={(e) => setStartTime(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-2.5 py-2"
-          />
+          <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
         </label>
         <label className="text-sm">
           <span className="block text-gray-600 mb-1">שעת סיום</span>
-          <input
-            type="time"
-            value={endTime}
-            onChange={(e) => setEndTime(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-2.5 py-2"
-          />
+          <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
         </label>
         <label className="text-sm sm:col-span-2">
           <span className="block text-gray-600 mb-1">עיר או כתובת</span>
-          <input
-            value={cityOrAddress}
-            onChange={(e) => setCityOrAddress(e.target.value)}
-            placeholder="לדוגמה: תל אביב, או הרצל 10 תל אביב"
-            className="w-full rounded-lg border border-gray-300 px-2.5 py-2"
-          />
-          <span className="mt-1 block text-[11px] text-amber-700">
-            חיפוש/אימות כתובת אינו פעיל עדיין — ניטור מיקום לא זמין עד שהכתובת תעודכן (גיאוקוד).
-          </span>
+          <input value={cityOrAddress} onChange={(e) => setCityOrAddress(e.target.value)} placeholder="לדוגמה: תל אביב, או הרצל 10 תל אביב" className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
+          <span className="mt-1 block text-[11px] text-amber-700">חיפוש/אימות כתובת אינו פעיל עדיין — ניטור מיקום לא זמין עד שהכתובת תעודכן (גיאוקוד).</span>
         </label>
         <label className="text-sm">
           <span className="block text-gray-600 mb-1">מספר עובדים</span>
-          <input
-            type="number"
-            min={1}
-            value={workerCount}
-            onChange={(e) => setWorkerCount(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-2.5 py-2"
-          />
+          <input type="number" min={1} value={workerCount} onChange={(e) => setWorkerCount(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
         </label>
         <label className="text-sm flex items-end gap-2 pb-2">
-          <input
-            type="checkbox"
-            checked={requiresTeamLeader}
-            onChange={(e) => setRequiresTeamLeader(e.target.checked)}
-          />
+          <input type="checkbox" checked={requiresTeamLeader} onChange={(e) => setRequiresTeamLeader(e.target.checked)} />
           <span className="text-gray-700">דרוש ראש צוות</span>
         </label>
         <label className="text-sm sm:col-span-2">
           <span className="block text-gray-600 mb-1">הערות (אופציונלי)</span>
-          <input
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-2.5 py-2"
-          />
+          <input value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
         </label>
       </section>
 
@@ -416,11 +310,7 @@ export function QuickCreateForm({
       </section>
 
       <div className="flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
-        >
+        <button type="button" onClick={onCancel} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
           ביטול
         </button>
         <button

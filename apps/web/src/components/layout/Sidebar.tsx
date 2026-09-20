@@ -61,7 +61,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
               aria-current={isActive ? 'page' : undefined}
               className={`flex min-h-11 items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm transition-all ${
                 isActive
-                  ? 'bg-primary-100 font-semibold text-primary-800 shadow-[inset_-3px_0_0_rgb(var(--tw-primary-600))]'
+                  ? 'bg-primary-100 font-semibold text-primary-800'
                   : 'font-medium text-gray-600 hover:bg-white hover:text-primary-700'
               }`}
             >
