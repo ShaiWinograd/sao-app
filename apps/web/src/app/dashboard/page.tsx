@@ -961,20 +961,21 @@ export default function DashboardPage() {
   const shiftGridStyle = { gridTemplateColumns: shiftGridTemplate, minWidth: `${shiftGridMinWidth}px` };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Header with Actions */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 overflow-hidden rounded-3xl bg-gradient-to-l from-primary-700 to-primary-500 p-5 text-white shadow-[0_8px_24px_rgba(78,105,92,0.16)] sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">לוח בקרה</h1>
-          <p className="text-sm text-gray-600 mt-0.5" suppressHydrationWarning>{mounted ? greetingText : '\u00A0'}</p>
+          <p className="mb-1 text-sm font-medium text-white/75">היום ב-S&amp;O</p>
+          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">לוח בקרה</h1>
+          <p className="mt-1 text-base text-white/85" suppressHydrationWarning>{mounted ? greetingText : '\u00A0'}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center">
           <button
             type="button"
             onClick={() => setQuickCreateDate(todayDateKey)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-primary-700 shadow-sm transition-transform hover:-translate-y-0.5 sm:w-auto"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="h-4 w-4" />
             יצירת עבודה
           </button>
         </div>
@@ -1048,9 +1049,9 @@ export default function DashboardPage() {
       )}
 
       {/* At-a-glance stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="rounded-xl border border-danger/30 bg-danger-bg p-3 flex items-center gap-3">
-          <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/70">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="flex items-center gap-3 rounded-2xl border border-danger/20 bg-danger-bg p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)]">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80">
             <AlertTriangle className="w-5 h-5 text-danger" />
           </span>
           <div>
@@ -1061,8 +1062,8 @@ export default function DashboardPage() {
             </p>
           </div>
         </div>
-        <div className="rounded-xl border border-warning/30 bg-warning-bg p-3 flex items-center gap-3">
-          <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/70">
+        <div className="flex items-center gap-3 rounded-2xl border border-warning/20 bg-warning-bg p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)]">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80">
             <Clock className="w-5 h-5 text-warning" />
           </span>
           <div>
@@ -1073,8 +1074,8 @@ export default function DashboardPage() {
             </p>
           </div>
         </div>
-        <div className="rounded-xl border border-success/30 bg-success-bg p-3 flex items-center gap-3">
-          <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/70">
+        <div className="flex items-center gap-3 rounded-2xl border border-success/20 bg-success-bg p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)]">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80">
             <CalendarCheck className="w-5 h-5 text-success" />
           </span>
           <div>
@@ -1085,8 +1086,8 @@ export default function DashboardPage() {
             </p>
           </div>
         </div>
-        <div className="rounded-xl border border-info/30 bg-info-bg p-3 flex items-center gap-3">
-          <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/70">
+        <div className="flex items-center gap-3 rounded-2xl border border-info/20 bg-info-bg p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)]">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80">
             <CalendarDays className="w-5 h-5 text-info" />
           </span>
           <div>
@@ -1100,7 +1101,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Owner KPI Bar */}
-      <div className="bg-white rounded-lg border border-gray-200 p-2 space-y-2">
+      <div className="space-y-2 rounded-2xl border border-[#e7e3dc] bg-white p-3 shadow-[0_2px_8px_rgba(38,38,38,0.04)]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <span className="inline-flex mt-1.5 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-semibold">

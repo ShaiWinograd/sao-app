@@ -186,7 +186,7 @@ export function QuickCreateForm({
       )}
 
       {/* Customer (job-first: a normal customer form with live suggestions) */}
-      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-[#e7e3dc] bg-white p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)] sm:p-5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-900">לקוח</h2>
           <label className="inline-flex items-center gap-2 text-xs text-gray-600">
@@ -222,7 +222,7 @@ export function QuickCreateForm({
                 </button>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <input value={custFirst} onChange={(e) => onCustomerFieldChange(setCustFirst, e.target.value)} placeholder="שם פרטי" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
               <input value={custLast} onChange={(e) => onCustomerFieldChange(setCustLast, e.target.value)} placeholder="שם משפחה" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
               <input value={custPhone} onChange={(e) => onCustomerFieldChange(setCustPhone, e.target.value)} placeholder="טלפון" inputMode="tel" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
@@ -248,7 +248,7 @@ export function QuickCreateForm({
       </section>
 
       {/* Job details */}
-      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm grid grid-cols-2 gap-3">
+      <section className="grid grid-cols-1 gap-3 rounded-2xl border border-[#e7e3dc] bg-white p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)] sm:grid-cols-2 sm:p-5">
         <label className="text-sm">
           <span className="block text-gray-600 mb-1">סוג עבודה</span>
           <select value={jobType} onChange={(e) => setJobType(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2 bg-white">
@@ -267,7 +267,7 @@ export function QuickCreateForm({
           <span className="block text-gray-600 mb-1">שעת סיום</span>
           <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
         </label>
-        <label className="text-sm col-span-2">
+        <label className="text-sm sm:col-span-2">
           <span className="block text-gray-600 mb-1">עיר או כתובת</span>
           <input value={cityOrAddress} onChange={(e) => setCityOrAddress(e.target.value)} placeholder="לדוגמה: תל אביב, או הרצל 10 תל אביב" className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
           <span className="mt-1 block text-[11px] text-amber-700">חיפוש/אימות כתובת אינו פעיל עדיין — ניטור מיקום לא זמין עד שהכתובת תעודכן (גיאוקוד).</span>
@@ -280,14 +280,14 @@ export function QuickCreateForm({
           <input type="checkbox" checked={requiresTeamLeader} onChange={(e) => setRequiresTeamLeader(e.target.checked)} />
           <span className="text-gray-700">דרוש ראש צוות</span>
         </label>
-        <label className="text-sm col-span-2">
+        <label className="text-sm sm:col-span-2">
           <span className="block text-gray-600 mb-1">הערות (אופציונלי)</span>
           <input value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
         </label>
       </section>
 
       {/* Status */}
-      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-[#e7e3dc] bg-white p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)] sm:p-5">
         <h2 className="text-sm font-semibold text-gray-900 mb-3">סטטוס התחלתי</h2>
         <div className="flex gap-2">
           <button
@@ -316,7 +316,7 @@ export function QuickCreateForm({
         <button
           onClick={() => void submit()}
           disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-5 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+          className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50 sm:flex-none"
         >
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
           יצירת העבודה

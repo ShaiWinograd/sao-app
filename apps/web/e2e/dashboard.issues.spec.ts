@@ -67,7 +67,9 @@ test.describe('Dashboard urgent and workflow sections', () => {
     });
   });
 
-  test('shows workflow sections with direct actions and no separate urgent panel', async ({ page }) => {
+  test('shows workflow sections with direct actions and no separate urgent panel', async ({
+    page,
+  }) => {
     await page.goto('/dashboard');
 
     // At-a-glance stat cards
@@ -86,5 +88,29 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await expect(workflow.getByText('מחכה לאישור הצעת מחיר')).toBeVisible();
     await expect(workflow.getByText('עבודות לא מאוישות')).toBeVisible();
     await expect(workflow.getByText('חסר ראש צוות')).toBeVisible();
+  });
+
+  test('uses the full viewport and a navigation drawer on mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/dashboard');
+
+    const main = page.locator('main');
+    const bounds = await main.boundingBox();
+    expect(bounds?.width).toBeGreaterThanOrEqual(380);
+    await expect(page.getByRole('button', { name: 'פתיחת תפריט' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'פתיחת תפריט' }).click();
+    await expect(page.getByRole('dialog', { name: 'תפריט ניווט' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'בית' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'סגירת תפריט' }).click();
+    await page.goto('/jobs/new');
+
+    const firstName = page.getByPlaceholder('שם פרטי');
+    const lastName = page.getByPlaceholder('שם משפחה');
+    const firstNameBounds = await firstName.boundingBox();
+    const lastNameBounds = await lastName.boundingBox();
+    expect(firstNameBounds?.width).toBeGreaterThanOrEqual(300);
+    expect(lastNameBounds?.y).toBeGreaterThan((firstNameBounds?.y ?? 0) + 30);
   });
 });

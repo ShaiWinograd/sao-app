@@ -227,16 +227,20 @@ export default function WorkerShiftsPage() {
   if (loading) return <p className="text-sm text-gray-400">טוען…</p>;
 
   return (
-    <div className="max-w-3xl space-y-4">
-      <h1 className="text-xl font-bold text-gray-900">המשמרות</h1>
+    <div className="mx-auto max-w-3xl space-y-5">
+      <div className="rounded-3xl bg-gradient-to-l from-primary-700 to-primary-500 p-5 text-white shadow-[0_8px_24px_rgba(94,74,120,0.15)]">
+        <p className="text-sm font-medium text-white/75">מרכז העבודה שלי</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight">המשמרות</h1>
+        <p className="mt-1 text-sm text-white/85">כל מה שצריך לדעת ולעשות לקראת העבודה הבאה.</p>
+      </div>
 
-      <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 text-xs">
+      <div className="grid grid-cols-2 rounded-2xl border border-[#e7e3dc] bg-white p-1 text-sm shadow-[0_2px_8px_rgba(38,38,38,0.04)]">
         {([['all', 'כל המשמרות'], ['mine', 'היומן שלי']] as [typeof tab, string][]).map(([v, label]) => (
           <button
             key={v}
             type="button"
             onClick={() => setTab(v)}
-            className={`rounded-md px-3 py-1.5 font-medium ${tab === v ? 'bg-primary-600 text-white' : 'text-gray-600 hover:text-gray-900'}`}
+            className={`min-h-11 rounded-xl px-3 py-2 font-semibold transition-colors ${tab === v ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-primary-50 hover:text-gray-900'}`}
           >
             {label}
             {v === 'mine' && myShifts.length > 0 ? ` (${myShifts.length})` : ''}
