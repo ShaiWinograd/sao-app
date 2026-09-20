@@ -1,13 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
 import {
   CalendarDays, CalendarCheck, BarChart3, User, Bell, History, Bug,
 } from 'lucide-react';
 import RoleSwitcher from './RoleSwitcher';
+import { BrandLockup } from './BrandLockup';
 
 // Worker navigation (worker_web_spec §1). "משמרות" is the consolidated board
 // (general + my shifts as tabs).
@@ -24,18 +24,10 @@ export default function WorkerSidebar({ onNavigate }: { onNavigate?: () => void 
   const pathname = usePathname();
 
   return (
-    <aside className="no-print flex h-full w-full flex-col overflow-hidden border-l border-[#e7e3dc] bg-[#fbfaf7]">
+    <aside className="no-print flex h-full w-full flex-col overflow-hidden border-l border-[var(--color-border)] bg-[var(--color-surface-muted)]">
       {/* Logo */}
-      <div className="border-b border-[#ebe7df] px-5 py-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-[#e7e3dc] bg-white shadow-sm">
-            <Image src="/so-logo.jpg" alt="Space and Order" width={40} height={40} className="object-cover" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight text-gray-900">S&amp;O</h1>
-            <p className="text-sm text-gray-500">אזור העובדות</p>
-          </div>
-        </div>
+      <div className="border-b border-[var(--color-border)] px-5 py-5">
+        <BrandLockup area="worker" onNavigate={onNavigate} />
       </div>
 
       {/* Navigation */}
@@ -48,10 +40,10 @@ export default function WorkerSidebar({ onNavigate }: { onNavigate?: () => void 
               href={href}
               onClick={onNavigate}
               aria-current={isActive ? 'page' : undefined}
-              className={`flex min-h-11 items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm transition-all ${
+              className={`flex min-h-11 items-center gap-3 rounded-lg border-r-2 px-3.5 py-2.5 text-sm transition-colors ${
                 isActive
-                  ? 'bg-primary-100 font-semibold text-primary-800'
-                  : 'font-medium text-gray-600 hover:bg-white hover:text-primary-700'
+                  ? 'border-primary-500 bg-primary-50 font-semibold text-primary-800'
+                  : 'border-transparent font-medium text-gray-600 hover:bg-[var(--color-surface)] hover:text-primary-700'
               }`}
             >
               <Icon className={`h-5 w-5 flex-shrink-0 ${isActive ? 'text-primary-600' : 'text-gray-400'}`} />
@@ -62,7 +54,7 @@ export default function WorkerSidebar({ onNavigate }: { onNavigate?: () => void 
       </nav>
 
       {/* Report a bug / request */}
-      <div className="border-t border-[#ebe7df] px-3 py-3">
+      <div className="border-t border-[var(--color-border)] px-3 py-3">
         <a
           href={`mailto:shaiwinograd@gmail.com?subject=${encodeURIComponent('Space & Order - משוב מהאפליקציה')}&body=${encodeURIComponent(
             'מה לחצתי:\n\nמה ציפיתי שיקרה:\n\nמה קרה בפועל:\n\nצילום מסך (אם אפשר):\n',
@@ -75,8 +67,8 @@ export default function WorkerSidebar({ onNavigate }: { onNavigate?: () => void 
       </div>
 
       {/* User Profile */}
-      <div className="border-t border-[#ebe7df] p-4">
-        <div className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-[0_2px_8px_rgba(38,38,38,0.05)]">
+      <div className="border-t border-[var(--color-border)] p-4">
+        <div className="flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
           <UserButton
             afterSignOutUrl="/sign-in"
             appearance={{ elements: { rootBox: 'flex-shrink-0', userButtonAvatarBox: 'w-8 h-8 rounded-lg' } }}

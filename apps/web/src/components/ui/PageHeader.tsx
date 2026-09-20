@@ -14,17 +14,17 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <header className="flex flex-col gap-5 border-b border-[#ded9d0] pb-6 sm:flex-row sm:items-end sm:justify-between">
-      <div className="flex min-w-0 items-start gap-4">
+    <header className="flex flex-col gap-4 border-b border-[var(--color-border-strong)] pb-5 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex min-w-0 items-start gap-3 sm:gap-4">
         {icon && (
-          <div className="mt-1 hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary-100 text-primary-700 sm:flex">
+          <div className="mt-1 hidden h-10 w-10 shrink-0 items-center justify-center border-r-2 border-primary-400 pr-3 text-primary-700 sm:flex">
             {icon}
           </div>
         )}
         <div className="min-w-0">
-          {eyebrow && <p className="mb-1 text-sm font-semibold text-primary-700">{eyebrow}</p>}
-          <h1 className="text-[2rem] font-bold leading-tight tracking-[-0.02em] text-gray-950">{title}</h1>
-          {description && <p className="mt-2 max-w-2xl text-base leading-7 text-gray-600">{description}</p>}
+          {eyebrow && <p className="mb-1 text-xs font-semibold tracking-[0.04em] text-primary-700">{eyebrow}</p>}
+          <h1 className="text-[1.85rem] font-semibold leading-tight tracking-[-0.025em] text-[#292724] sm:text-[2.2rem]">{title}</h1>
+          {description && <p className="mt-1.5 max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)] sm:text-base">{description}</p>}
         </div>
       </div>
       {action && <div className="shrink-0">{action}</div>}

@@ -123,6 +123,11 @@ test.describe('Dashboard urgent and workflow sections', () => {
     const mainBounds = await page.locator('main').boundingBox();
     expect(sidebarBounds?.width).toBe(240);
     expect(mainBounds?.width).toBeGreaterThanOrEqual(1190);
+    const brand = page.getByRole('link', { name: 'מעבר ללוח הבקרה' });
+    await expect(brand.getByText('SPACE & ORDER')).toBeVisible();
+    await expect(brand).not.toContainText('ניהול עסק');
+    const logoBounds = await brand.locator('img').boundingBox();
+    expect(logoBounds?.width).toBeGreaterThanOrEqual(76);
     await expect(page.getByRole('heading', { name: 'לוח בקרה' })).toBeVisible();
   });
 });

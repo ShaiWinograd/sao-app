@@ -1,25 +1,22 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import Image from 'next/image';
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import Sidebar from './Sidebar';
 import WorkerSidebar from './WorkerSidebar';
+import { BrandLockup } from './BrandLockup';
 
 type AppArea = 'owner' | 'worker';
 
 const areaConfig = {
   owner: {
-    label: 'ניהול עסק',
     themeClass: '',
   },
   worker: {
-    label: 'אזור העובדות',
     themeClass: 'worker-theme',
   },
-} satisfies Record<AppArea, { label: string; themeClass: string }>;
+} satisfies Record<AppArea, { themeClass: string }>;
 
 const workerRoutes = [
   '/worker',
@@ -128,7 +125,7 @@ export default function AppShell({ area, children }: { area: AppArea; children: 
   }, [open]);
 
   return (
-    <div className={`${config.themeClass} flex h-screen overflow-x-hidden bg-[#f7f6f2]`} dir="rtl">
+    <div className={`${config.themeClass} flex h-screen overflow-x-hidden bg-[var(--color-background)]`} dir="rtl">
       <div className="hidden h-screen w-[240px] shrink-0 md:block">{renderSidebar()}</div>
 
       <div
@@ -164,7 +161,7 @@ export default function AppShell({ area, children }: { area: AppArea; children: 
       </div>
 
       <div ref={mainRef} className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 border-b border-[#e7e3dc] bg-[#fbfaf7]/95 pt-[env(safe-area-inset-top)] shadow-[0_1px_8px_rgba(38,38,38,0.04)] backdrop-blur md:hidden">
+        <header className="sticky top-0 z-30 border-b border-[var(--color-border)] bg-[color:var(--color-surface)]/95 pt-[env(safe-area-inset-top)] backdrop-blur md:hidden">
           <div className="flex h-16 items-center gap-3 px-4">
             <button
               type="button"
@@ -176,22 +173,7 @@ export default function AppShell({ area, children }: { area: AppArea; children: 
             >
               <Menu className="h-6 w-6" />
             </button>
-            <Link
-              href={area === 'worker' ? '/worker' : '/dashboard'}
-              aria-label={area === 'worker' ? 'מעבר למסך המשמרות' : 'מעבר ללוח הבקרה'}
-              className="flex items-center gap-2 rounded-xl py-1"
-            >
-              <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white">
-                <Image
-                  src="/so-logo.jpg"
-                  alt="Space and Order"
-                  width={32}
-                  height={32}
-                  className="object-cover"
-                />
-              </div>
-              <span className="text-base font-bold text-gray-900">S&amp;O · {config.label}</span>
-            </Link>
+            <BrandLockup area={area} compact />
           </div>
         </header>
 
