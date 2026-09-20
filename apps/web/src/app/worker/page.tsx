@@ -284,13 +284,17 @@ export default function WorkerShiftsPage() {
         icon={<CalendarDays className="h-6 w-6" />}
       />
 
-      <div className="grid grid-cols-2 rounded-2xl border border-[#e7e3dc] bg-white p-1 text-sm shadow-[0_2px_8px_rgba(38,38,38,0.04)]">
+      <div className="grid grid-cols-2 border-b border-[var(--color-border-strong)] text-sm">
         {([['all', 'כל המשמרות'], ['mine', 'היומן שלי']] as [typeof tab, string][]).map(([v, label]) => (
           <button
             key={v}
             type="button"
             onClick={() => setTab(v)}
-            className={`min-h-11 rounded-xl px-3 py-2 font-semibold transition-colors ${tab === v ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-primary-50 hover:text-gray-900'}`}
+            className={`min-h-11 border-b-2 px-3 py-2 font-semibold transition-colors ${
+              tab === v
+                ? 'border-primary-700 text-primary-800'
+                : 'border-transparent text-[var(--color-text-secondary)] hover:border-primary-200 hover:text-[#292724]'
+            }`}
           >
             {label}
             {v === 'mine' && myShifts.length > 0 ? ` (${myShifts.length})` : ''}
@@ -299,20 +303,20 @@ export default function WorkerShiftsPage() {
       </div>
 
       <section
-        className="rounded-[24px] border border-[#e7e3dc] bg-white p-4 shadow-[0_2px_12px_rgba(38,38,38,0.04)] md:hidden"
+        className="border-b border-[var(--color-border)] pb-4 md:hidden"
         data-swipe-navigation="ignore"
       >
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between">
           <button
             type="button"
             onClick={() => moveWeek(-1)}
             aria-label="השבוע הקודם"
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-50"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--color-text-secondary)] hover:bg-primary-50"
           >
             <ChevronRight className="h-5 w-5" />
           </button>
           <div className="text-center">
-            <p className="text-sm font-semibold text-gray-900">{weekLabel}</p>
+            <p className="text-sm font-semibold text-[#292724]">{weekLabel}</p>
             <button
               type="button"
               onClick={() => {
@@ -328,7 +332,7 @@ export default function WorkerShiftsPage() {
             type="button"
             onClick={() => moveWeek(1)}
             aria-label="השבוע הבא"
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-50"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--color-text-secondary)] hover:bg-primary-50"
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
@@ -343,8 +347,8 @@ export default function WorkerShiftsPage() {
                 key={key}
                 type="button"
                 onClick={() => setSelectedDate(key)}
-                className={`flex min-h-16 flex-col items-center justify-center rounded-xl px-1 transition-colors ${
-                  active ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-primary-50'
+                className={`flex min-h-14 flex-col items-center justify-center rounded-lg px-1 transition-colors ${
+                  active ? 'bg-primary-700 text-white' : 'text-[var(--color-text-secondary)] hover:bg-primary-50'
                 }`}
               >
                 <span className={`text-[11px] ${active ? 'text-white/75' : 'text-gray-400'}`}>
@@ -403,7 +407,7 @@ export default function WorkerShiftsPage() {
         <>
           <div className="space-y-3 md:hidden">
             {selectedShifts.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-[#d8d3ca] bg-white/60 px-5 py-8 text-center">
+              <div className="border-y border-dashed border-[var(--color-border-strong)] px-5 py-7 text-center">
                 <p className="text-sm font-semibold text-gray-800">אין משמרות ביום שנבחר</p>
                 <p className="mt-1 text-xs text-gray-500">אפשר לבחור יום אחר מהלוח השבועי.</p>
               </div>

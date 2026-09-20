@@ -99,16 +99,18 @@ export default function WorkerHistoryPage() {
       />
 
       {/* Period filter */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm font-semibold text-gray-700">סיכום לפי תקופה</p>
-        <div className="inline-grid grid-cols-2 gap-1 rounded-xl border border-[#ded9d0] bg-white p-1 sm:flex">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <p className="text-xs font-semibold tracking-[0.03em] text-[var(--color-text-secondary)]">סיכום לפי תקופה</p>
+        <div className="flex max-w-full overflow-x-auto border-b border-[var(--color-border-strong)]" data-swipe-navigation="ignore">
           {(Object.keys(PERIOD_LABEL) as Period[]).map((p) => (
             <button
               key={p}
               type="button"
               onClick={() => setPeriod(p)}
-              className={`min-h-10 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                period === p ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-primary-50'
+              className={`min-h-11 shrink-0 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+                period === p
+                  ? 'border-primary-700 text-primary-800'
+                  : 'border-transparent text-[var(--color-text-secondary)] hover:border-primary-200 hover:text-[#292724]'
               }`}
             >
               {PERIOD_LABEL[p]}
@@ -122,7 +124,7 @@ export default function WorkerHistoryPage() {
       ) : (
         <>
           {/* Summary */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-3 divide-x divide-x-reverse divide-[var(--color-border)] border-y border-[var(--color-border)] bg-[var(--color-surface-muted)]">
             <SummaryStat label="משמרות" value={String(summary.count)} />
             <SummaryStat label="ימי עבודה" value={String(summary.days)} />
             <SummaryStat label="שעות מאושרות" value={String(summary.hours)} />
@@ -149,7 +151,7 @@ export default function WorkerHistoryPage() {
                   <Link
                     key={s.id}
                     href={`/worker/shifts/${s.id}`}
-                    className="block rounded-2xl border border-[#e7e3dc] bg-white p-5 shadow-[0_2px_10px_rgba(38,38,38,0.04)] transition-all hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-[0_8px_24px_rgba(38,38,38,0.07)]"
+                    className="block rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 transition-colors hover:border-primary-300"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="flex items-center gap-1.5">
@@ -216,9 +218,9 @@ export default function WorkerHistoryPage() {
 
 function SummaryStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-[#e7e3dc] bg-white px-5 py-4 shadow-[0_2px_10px_rgba(38,38,38,0.04)]">
-      <p className="text-2xl font-bold tracking-tight text-gray-950">{value}</p>
-      <p className="mt-1 text-sm text-gray-500">{label}</p>
+    <div className="px-2 py-4 text-center sm:px-5 sm:text-right">
+      <p className="text-xl font-semibold tracking-tight text-[#292724] sm:text-2xl">{value}</p>
+      <p className="mt-0.5 text-xs text-[var(--color-text-secondary)] sm:text-sm">{label}</p>
     </div>
   );
 }
