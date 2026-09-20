@@ -28,9 +28,9 @@ export function StatusBadge({
   const { className: toneClass, Icon } = TONE_STYLES[tone];
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${toneClass} ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border border-current/15 px-2.5 py-1 text-xs font-semibold ${toneClass} ${className}`}
     >
-      <Icon className="w-3.5 h-3.5" aria-hidden />
+      <Icon className="h-3.5 w-3.5" aria-hidden />
       {label}
     </span>
   );

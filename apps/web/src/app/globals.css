@@ -66,6 +66,48 @@ body {
 
 html {
   font-size: 14px;
+  background: var(--color-background);
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background: var(--color-primary-100);
+  color: var(--color-text-primary);
+}
+
+.app-main {
+  background:
+    radial-gradient(circle at 100% 0%, rgb(var(--tw-primary-100) / 0.52), transparent 28rem),
+    var(--color-background);
+}
+
+.app-main input:not([type='checkbox']):not([type='radio']),
+.app-main select,
+.app-main textarea {
+  border-color: var(--color-border-strong);
+  background-color: var(--color-surface);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.app-main input:not([type='checkbox']):not([type='radio']):focus,
+.app-main select:focus,
+.app-main textarea:focus {
+  border-color: var(--color-primary-500);
+  box-shadow: 0 0 0 3px rgb(var(--tw-primary-100) / 0.9);
+  outline: none;
+}
+
+.app-main button,
+.app-main a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-main :focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
 }
 
 /* Utility: remove number input arrows */
@@ -168,5 +210,4 @@ input[type='radio']:disabled {
 .print-only {
   display: none;
 }
-
 

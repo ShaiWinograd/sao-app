@@ -50,7 +50,7 @@ export function SidePanel({
     // Using onMouseDown + target check so a drag that starts inside the panel and
     // ends on the backdrop does not count as a backdrop click.
     <div
-      className="fixed inset-0 z-50 bg-black/30 flex justify-end"
+      className="fixed inset-0 z-50 flex justify-end bg-gray-950/35 backdrop-blur-[2px]"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) requestClose();
       }}
@@ -59,18 +59,18 @@ export function SidePanel({
         role="dialog"
         aria-modal="true"
         dir="rtl"
-        className={`h-full w-full ${widthClassName} bg-white shadow-xl overflow-y-auto flex flex-col`}
+        className={`flex h-full w-full ${widthClassName} flex-col overflow-y-auto bg-[#fbfaf7] shadow-[0_20px_60px_rgba(38,38,38,0.2)] sm:rounded-l-3xl`}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+        <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-[#e7e3dc] bg-[#fbfaf7]/95 px-5 py-4 backdrop-blur">
           <button
             type="button"
             onClick={requestClose}
-            className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+            className="min-h-11 rounded-xl border border-[#d8d3ca] bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             סגירה
           </button>
-          {title ? <h3 className="font-semibold text-gray-900">{title}</h3> : <span />}
+          {title ? <h3 className="text-lg font-semibold text-gray-900">{title}</h3> : <span />}
         </div>
         <div className="flex-1">{children}</div>
       </div>
