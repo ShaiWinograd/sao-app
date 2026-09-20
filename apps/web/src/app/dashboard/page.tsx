@@ -4,10 +4,35 @@ import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUser, useAuth } from '@clerk/nextjs';
-import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone, workerRowBadge, fillsRequiredSlot, workerRowAssignments, getStaffingIssueBreakdown, formatBusinessDate } from '@workforce/shared';
-import { AlertTriangle, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Info, Plus, XCircle } from 'lucide-react';
+import {
+  dashboardIssueActionLabel,
+  orderDashboardWorkflowSections,
+  caseStatusLabel,
+  caseStatusTone,
+  type CaseStatusValue,
+  type StatusTone,
+  workerRowBadge,
+  fillsRequiredSlot,
+  workerRowAssignments,
+  getStaffingIssueBreakdown,
+  formatBusinessDate,
+} from '@workforce/shared';
+import {
+  AlertTriangle,
+  CalendarCheck,
+  CalendarDays,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Info,
+  Plus,
+  XCircle,
+} from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
-import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
+import AzureMapsAddressInput, {
+  type AddressSelection,
+} from '../../components/forms/AzureMapsAddressInput';
 import { QuickCreateForm } from '../../components/jobs/QuickCreateForm';
 import { JoinRequestsPanel } from '../../components/owner/JoinRequestsPanel';
 import { SidePanel } from '../../components/ui/SidePanel';
@@ -17,9 +42,9 @@ type JobType = 'אריזה' | 'פריקה' | 'סידור';
 type StaffingMode = 'auto' | 'approval';
 
 const JOB_TYPE_TO_ENUM: Record<JobType, string> = {
-  'אריזה': 'PACKING',
-  'פריקה': 'UNPACKING',
-  'סידור': 'HOME_ORGANIZATION',
+  אריזה: 'PACKING',
+  פריקה: 'UNPACKING',
+  סידור: 'HOME_ORGANIZATION',
 };
 type CaseStatus = 'DRAFT' | 'ACTIVE' | 'READY_FOR_REVIEW' | 'COMPLETED';
 type DashboardWorkerRole = 'מנהלת' | 'ראש צוות' | 'עובדת';
@@ -99,7 +124,7 @@ function toSundayWeekKey(dateKey: string) {
 function addHoursToTime(start: string, hours: number) {
   const [h, m] = start.split(':').map(Number);
   const totalMinutes = h * 60 + m + Math.round(hours * 60);
-  const safeMinutes = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+  const safeMinutes = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
   const outH = Math.floor(safeMinutes / 60);
   const outM = safeMinutes % 60;
   return `${String(outH).padStart(2, '0')}:${String(outM).padStart(2, '0')}`;
@@ -181,7 +206,8 @@ function getShiftTypeCardClasses(jobType: JobType) {
   return 'border-blue-200 bg-blue-50 hover:border-blue-300 hover:bg-blue-100';
 }
 
-function InfoHint({ text }: { text: string }) {  return (
+function InfoHint({ text }: { text: string }) {
+  return (
     <span className="group relative inline-flex items-center">
       <Info className="w-3.5 h-3.5 text-gray-400" />
       <span
@@ -203,7 +229,10 @@ const CASE_BADGE_CLASS_BY_TONE: Record<StatusTone, string> = {
 };
 
 function caseBadge(status: CaseStatusValue): { label: string; className: string } {
-  return { label: caseStatusLabel(status), className: CASE_BADGE_CLASS_BY_TONE[caseStatusTone(status)] };
+  return {
+    label: caseStatusLabel(status),
+    className: CASE_BADGE_CLASS_BY_TONE[caseStatusTone(status)],
+  };
 }
 
 export default function DashboardPage() {
@@ -233,11 +262,11 @@ export default function DashboardPage() {
   const anchorDateKey = useMemo(
     () =>
       `${anchorDate.getFullYear()}-${String(anchorDate.getMonth() + 1).padStart(2, '0')}-${String(anchorDate.getDate()).padStart(2, '0')}`,
-    [anchorDate],
+    [anchorDate]
   );
   const monthAnchor = useMemo(
     () => new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1),
-    [anchorDate],
+    [anchorDate]
   );
   const monthOptions = useMemo(() => {
     return Array.from({ length: 18 }).map((_, index) => {
@@ -303,13 +332,25 @@ export default function DashboardPage() {
     setAnchorDate(today);
   };
 
-  const selectedRangeLabel = rangeOptions.find((option) => option.key === selectedRange)?.label ?? '';
+  const selectedRangeLabel =
+    rangeOptions.find((option) => option.key === selectedRange)?.label ?? '';
   const selectedRangeContextLabel =
-    selectedRange === 'today' ? 'יום' : selectedRange === 'week' ? 'שבוע' : selectedRange === 'month' ? 'חודש' : 'הטווח המותאם';
+    selectedRange === 'today'
+      ? 'יום'
+      : selectedRange === 'week'
+        ? 'שבוע'
+        : selectedRange === 'month'
+          ? 'חודש'
+          : 'הטווח המותאם';
   const ownerName = user?.firstName?.trim() || user?.fullName?.trim() || 'אורית';
   const greetingText = `${getGreetingByHour(now.getHours())} ${ownerName}!`;
   type WorkStatus = 'done' | 'active' | 'planned';
-  type AssignedWorker = { name: string; isTeamLead: boolean; joinRequestStatus: string | null; assignmentRole: string | null };
+  type AssignedWorker = {
+    name: string;
+    isTeamLead: boolean;
+    joinRequestStatus: string | null;
+    assignmentRole: string | null;
+  };
   type ActiveWork = {
     id: number;
     jobId?: string;
@@ -351,20 +392,33 @@ export default function DashboardPage() {
       weekEnd.setDate(weekStart.getDate() + 6);
       const weekStartKey = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
       const weekEndKey = `${weekEnd.getFullYear()}-${String(weekEnd.getMonth() + 1).padStart(2, '0')}-${String(weekEnd.getDate()).padStart(2, '0')}`;
-      return sortWorksByDate(dashboardWorks.filter((work) => work.dateKey >= weekStartKey && work.dateKey <= weekEndKey));
+      return sortWorksByDate(
+        dashboardWorks.filter((work) => work.dateKey >= weekStartKey && work.dateKey <= weekEndKey)
+      );
     }
     if (selectedRange === 'month') {
       const currentMonthPrefix = `${monthAnchor.getFullYear()}-${String(monthAnchor.getMonth() + 1).padStart(2, '0')}`;
-      return sortWorksByDate(dashboardWorks.filter((work) => work.dateKey.startsWith(currentMonthPrefix)));
+      return sortWorksByDate(
+        dashboardWorks.filter((work) => work.dateKey.startsWith(currentMonthPrefix))
+      );
     }
     if (!customFromDate || !customToDate) {
       return sortWorksByDate(dashboardWorks);
     }
     const rangeStart = customFromDate <= customToDate ? customFromDate : customToDate;
     const rangeEnd = customFromDate <= customToDate ? customToDate : customFromDate;
-    return sortWorksByDate(dashboardWorks.filter((work) => work.dateKey >= rangeStart && work.dateKey <= rangeEnd));
-  }, [dashboardWorks, selectedRange, anchorDateKey, anchorDate, monthAnchor, customFromDate, customToDate]);
-
+    return sortWorksByDate(
+      dashboardWorks.filter((work) => work.dateKey >= rangeStart && work.dateKey <= rangeEnd)
+    );
+  }, [
+    dashboardWorks,
+    selectedRange,
+    anchorDateKey,
+    anchorDate,
+    monthAnchor,
+    customFromDate,
+    customToDate,
+  ]);
 
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
   const [cases, setCases] = useState<CustomerCase[]>(initialCases);
@@ -400,7 +454,9 @@ export default function DashboardPage() {
   const [selectedAssignedWorkerNames, setSelectedAssignedWorkerNames] = useState<string[]>([]);
   const [selectedActualTeamLeadName, setSelectedActualTeamLeadName] = useState('');
   const [selectedFormTemplateId, setSelectedFormTemplateId] = useState<string | null>(null);
-  const [formTemplates, setFormTemplates] = useState<Array<{ id: string; name: string; jobType?: string; isDefault?: boolean }>>([]);
+  const [formTemplates, setFormTemplates] = useState<
+    Array<{ id: string; name: string; jobType?: string; isDefault?: boolean }>
+  >([]);
   const [staffingMode, setStaffingMode] = useState<StaffingMode>('approval');
   const [workerVisibleNotes, setWorkerVisibleNotes] = useState('');
   const [customerMode, setCustomerMode] = useState<'existing' | 'new'>('new');
@@ -413,7 +469,9 @@ export default function DashboardPage() {
       (async () => {
         try {
           const auth = await authHeaders(getToken);
-          const res = await api.get<Array<{ id: string; name: string; jobType?: string; isDefault?: boolean }>>('/forms/templates', auth);
+          const res = await api.get<
+            Array<{ id: string; name: string; jobType?: string; isDefault?: boolean }>
+          >('/forms/templates', auth);
           setFormTemplates(res.data);
         } catch (error) {
           console.error('Failed to load form templates:', error);
@@ -448,16 +506,18 @@ export default function DashboardPage() {
           api.get('/jobs', auth),
           api.get('/workers', auth),
         ]);
-        
+
         const apiCustomers = customersRes.data.map((c: any) => ({
           id: c.id,
           fullName: `${c.firstName} ${c.lastName}`,
           phone: c.phone || '',
           email: c.email || '',
           // API returns addresses as objects; the UI expects address strings.
-          addresses: (c.addresses || []).map((a: any) => (typeof a === 'string' ? a : a?.fullAddress ?? '')).filter(Boolean),
+          addresses: (c.addresses || [])
+            .map((a: any) => (typeof a === 'string' ? a : (a?.fullAddress ?? '')))
+            .filter(Boolean),
         }));
-        
+
         const apiCases = casesRes.data.map((c: any) => ({
           id: c.id,
           customerId: c.customerId,
@@ -468,64 +528,76 @@ export default function DashboardPage() {
 
         // Cancelled projects (and cancelled jobs) must not appear as active work.
         const cancelledCaseIds = new Set(
-          casesRes.data.filter((c: any) => c.status === 'CANCELLED').map((c: any) => c.id),
+          casesRes.data.filter((c: any) => c.status === 'CANCELLED').map((c: any) => c.id)
         );
 
         const apiWorks: ActiveWork[] = jobsRes.data
           .filter((job: any) => job.status !== 'CANCELLED' && !cancelledCaseIds.has(job.caseId))
           .map((job: any, index: number) => {
-          const customerName = `${job.customer?.firstName ?? ''} ${job.customer?.lastName ?? ''}`.trim();
-          const date = new Date(job.date);
-          const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-          const day = String(date.getDate()).padStart(2, '0');
-          const month = String(date.getMonth() + 1).padStart(2, '0');
-          // Exclude rejected/cancelled requests. Pending requests are shown on the
-          // worker row (with a distinct badge) but do NOT fill a required slot.
-          const assignedWorkers: AssignedWorker[] = (job.shifts ?? [])
-            .filter((shift: any) => shift.joinRequestStatus !== 'REJECTED' && shift.joinRequestStatus !== 'CANCELLED')
-            .map((shift: any) => ({
-              name: shift.worker ? `${shift.worker.firstName ?? ''} ${shift.worker.lastName ?? ''}`.trim() : 'עובדת',
-              isTeamLead: shift.assignmentRole === 'TEAM_LEADER',
-              joinRequestStatus: shift.joinRequestStatus ?? null,
-              assignmentRole: shift.assignmentRole ?? null,
-            }));
-          const approvedWorkers = assignedWorkers.filter(fillsRequiredSlot).length;
-          const actualTeamLeadName = assignedWorkers.find((worker: AssignedWorker) => worker.name === 'אורית')?.name ?? null;
-          const status: WorkStatus =
-            job.status === 'COMPLETED' || job.status === 'ARCHIVED'
-              ? 'done'
-              : job.status === 'APPROVED'
-                ? 'active'
-                : 'planned';
-          const jobType: JobType =
-            job.jobType === 'PACKING' ? 'אריזה' : job.jobType === 'UNPACKING' ? 'פריקה' : 'סידור';
-          const estimatedRevenueValue = Math.round((job.requiredWorkerCount ?? 0) * 5 * 175);
-          const payrollCostValue = Math.round((job.requiredWorkerCount ?? 0) * 5 * 82);
-          return {
-            id: Number(job.id) || index + 1,
-            jobId: String(job.id),
-            customerName,
-            caseId: job.caseId ?? '',
-            caseName: job.case?.name ?? `${customerName} - פרוייקט`,
-            address: job.address?.fullAddress ?? 'כתובת לא עודכנה',
-            jobType,
-            dateKey,
-            date: `${day}.${month}`,
-            hours: 5,
-            requiredWorkers: job.requiredWorkerCount ?? 0,
-            requiredTeamLeads: (job.slots ?? []).some((slot: any) => slot.requiredSkill === 'SHIFT_LEADER') ? 1 : 0,
-            assignedWorkers,
-            approvedWorkers,
-            actualTeamLeadName,
-            responsibleName: actualTeamLeadName ?? MOM_OWNER_NAME,
-            responsibleRole: actualTeamLeadName ? 'admin' : 'owner',
-            payrollCost: `₪${payrollCostValue.toLocaleString('he-IL')}`,
-            estimatedRevenue: formatK(estimatedRevenueValue),
-            status,
-            jobStatus: job.status ?? 'RESERVATION',
-          };
-        });
-        
+            const customerName =
+              `${job.customer?.firstName ?? ''} ${job.customer?.lastName ?? ''}`.trim();
+            const date = new Date(job.date);
+            const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            // Exclude rejected/cancelled requests. Pending requests are shown on the
+            // worker row (with a distinct badge) but do NOT fill a required slot.
+            const assignedWorkers: AssignedWorker[] = (job.shifts ?? [])
+              .filter(
+                (shift: any) =>
+                  shift.joinRequestStatus !== 'REJECTED' && shift.joinRequestStatus !== 'CANCELLED'
+              )
+              .map((shift: any) => ({
+                name: shift.worker
+                  ? `${shift.worker.firstName ?? ''} ${shift.worker.lastName ?? ''}`.trim()
+                  : 'עובדת',
+                isTeamLead: shift.assignmentRole === 'TEAM_LEADER',
+                joinRequestStatus: shift.joinRequestStatus ?? null,
+                assignmentRole: shift.assignmentRole ?? null,
+              }));
+            const approvedWorkers = assignedWorkers.filter(fillsRequiredSlot).length;
+            const actualTeamLeadName =
+              assignedWorkers.find((worker: AssignedWorker) => worker.name === 'אורית')?.name ??
+              null;
+            const status: WorkStatus =
+              job.status === 'COMPLETED' || job.status === 'ARCHIVED'
+                ? 'done'
+                : job.status === 'APPROVED'
+                  ? 'active'
+                  : 'planned';
+            const jobType: JobType =
+              job.jobType === 'PACKING' ? 'אריזה' : job.jobType === 'UNPACKING' ? 'פריקה' : 'סידור';
+            const estimatedRevenueValue = Math.round((job.requiredWorkerCount ?? 0) * 5 * 175);
+            const payrollCostValue = Math.round((job.requiredWorkerCount ?? 0) * 5 * 82);
+            return {
+              id: Number(job.id) || index + 1,
+              jobId: String(job.id),
+              customerName,
+              caseId: job.caseId ?? '',
+              caseName: job.case?.name ?? `${customerName} - פרוייקט`,
+              address: job.address?.fullAddress ?? 'כתובת לא עודכנה',
+              jobType,
+              dateKey,
+              date: `${day}.${month}`,
+              hours: 5,
+              requiredWorkers: job.requiredWorkerCount ?? 0,
+              requiredTeamLeads: (job.slots ?? []).some(
+                (slot: any) => slot.requiredSkill === 'SHIFT_LEADER'
+              )
+                ? 1
+                : 0,
+              assignedWorkers,
+              approvedWorkers,
+              actualTeamLeadName,
+              responsibleName: actualTeamLeadName ?? MOM_OWNER_NAME,
+              responsibleRole: actualTeamLeadName ? 'admin' : 'owner',
+              payrollCost: `₪${payrollCostValue.toLocaleString('he-IL')}`,
+              estimatedRevenue: formatK(estimatedRevenueValue),
+              status,
+              jobStatus: job.status ?? 'RESERVATION',
+            };
+          });
+
         setCustomers(apiCustomers);
         setCases(apiCases);
         setDashboardWorks(apiWorks);
@@ -533,11 +605,13 @@ export default function DashboardPage() {
           (workersRes.data as any[]).map((w) => ({
             id: w.id,
             name: `${w.firstName ?? ''} ${w.lastName ?? ''}`.trim(),
-            role: (w.skills ?? []).includes('SHIFT_LEADER') ? ('ראש צוות' as const) : ('עובדת' as const),
+            role: (w.skills ?? []).includes('SHIFT_LEADER')
+              ? ('ראש צוות' as const)
+              : ('עובדת' as const),
             hourlyWage: 0,
-          })),
+          }))
         );
-        
+
         // Set first customer as selected if available
         if (apiCustomers.length > 0) {
           setSelectedCustomerId(apiCustomers[0].id);
@@ -571,12 +645,42 @@ export default function DashboardPage() {
     if (!attention) return [] as Array<{ key: string; label: string; count: number; href: string }>;
     return [
       { key: 'joinRequests', label: 'בקשות הצטרפות', count: attention.joinRequests, href: '/jobs' },
-      { key: 'pendingAcceptance', label: 'ממתין לאישור העובד/ת', count: attention.pendingAcceptance, href: '/jobs' },
-      { key: 'replacementRequests', label: 'בקשות החלפה', count: attention.replacementRequests, href: '/shifts/swaps' },
-      { key: 'swapApprovals', label: 'אישורי החלפת משמרות', count: attention.swapApprovals, href: '/shifts/swaps' },
-      { key: 'attendanceReview', label: 'נוכחות לבדיקה', count: attention.attendanceReview, href: '/attendance' },
-      { key: 'reportCorrections', label: 'בקשות תיקון דוח', count: attention.reportCorrections, href: '/payroll' },
-      { key: 'customerReportReady', label: 'הפרויקט מוכן לדוח לקוחה', count: attention.customerReportReady, href: '/reports/customer' },
+      {
+        key: 'pendingAcceptance',
+        label: 'ממתין לאישור העובד/ת',
+        count: attention.pendingAcceptance,
+        href: '/jobs',
+      },
+      {
+        key: 'replacementRequests',
+        label: 'בקשות החלפה',
+        count: attention.replacementRequests,
+        href: '/shifts/swaps',
+      },
+      {
+        key: 'swapApprovals',
+        label: 'אישורי החלפת משמרות',
+        count: attention.swapApprovals,
+        href: '/shifts/swaps',
+      },
+      {
+        key: 'attendanceReview',
+        label: 'נוכחות לבדיקה',
+        count: attention.attendanceReview,
+        href: '/attendance',
+      },
+      {
+        key: 'reportCorrections',
+        label: 'בקשות תיקון דוח',
+        count: attention.reportCorrections,
+        href: '/payroll',
+      },
+      {
+        key: 'customerReportReady',
+        label: 'הפרויקט מוכן לדוח לקוחה',
+        count: attention.customerReportReady,
+        href: '/reports/customer',
+      },
     ].filter((i) => i.count > 0);
   }, [attention]);
 
@@ -588,14 +692,22 @@ export default function DashboardPage() {
   const priorityAttention = useMemo(() => {
     if (!attention) return [] as Array<{ key: string; label: string; jobs: AttentionJobView[] }>;
     return [
-      { key: 'pastNotCompleted', label: 'עבודה מהעבר לא הושלמה', jobs: attention.pastNotCompletedJobs ?? [] },
-      { key: 'todayInReservation', label: 'עבודה של היום עדיין בהזמנה', jobs: attention.todayInReservationJobs ?? [] },
+      {
+        key: 'pastNotCompleted',
+        label: 'עבודה מהעבר לא הושלמה',
+        jobs: attention.pastNotCompletedJobs ?? [],
+      },
+      {
+        key: 'todayInReservation',
+        label: 'עבודה של היום עדיין בהזמנה',
+        jobs: attention.todayInReservationJobs ?? [],
+      },
     ].filter((g) => g.jobs.length > 0);
   }, [attention]);
 
   const selectedCustomer = useMemo(
     () => customers.find((customer) => customer.id === selectedCustomerId) ?? null,
-    [customers, selectedCustomerId],
+    [customers, selectedCustomerId]
   );
   const customerSuggestions = useMemo(() => {
     const fullNameTerm = `${newCustomerFirstName} ${newCustomerLastName}`.trim().toLowerCase();
@@ -603,7 +715,9 @@ export default function DashboardPage() {
     if (!fullNameTerm && !phoneTerm) return [];
     return customers
       .filter((customer) => {
-        const matchesName = fullNameTerm ? customer.fullName.toLowerCase().includes(fullNameTerm) : false;
+        const matchesName = fullNameTerm
+          ? customer.fullName.toLowerCase().includes(fullNameTerm)
+          : false;
         const matchesPhone = phoneTerm ? normalizePhone(customer.phone).includes(phoneTerm) : false;
         return matchesName || matchesPhone;
       })
@@ -611,9 +725,15 @@ export default function DashboardPage() {
   }, [customers, newCustomerFirstName, newCustomerLastName, newCustomerPhone]);
   const existingAddressSuggestions = useMemo(() => {
     if (!selectedCustomer) return [];
-    const term = String(existingAddressQuery ?? '').trim().toLowerCase();
+    const term = String(existingAddressQuery ?? '')
+      .trim()
+      .toLowerCase();
     if (!term) return selectedCustomer.addresses;
-    return selectedCustomer.addresses.filter((address) => String(address ?? '').toLowerCase().includes(term));
+    return selectedCustomer.addresses.filter((address) =>
+      String(address ?? '')
+        .toLowerCase()
+        .includes(term)
+    );
   }, [selectedCustomer, existingAddressQuery]);
   const caseById = useMemo(() => new Map(cases.map((item) => [item.id, item])), [cases]);
 
@@ -628,7 +748,10 @@ export default function DashboardPage() {
       };
     }
     const recentCompleted = customerCases.find(
-      (c) => c.status === 'COMPLETED' && daysBetween(jobDate, c.latestJobDate) >= 0 && daysBetween(jobDate, c.latestJobDate) <= 60,
+      (c) =>
+        c.status === 'COMPLETED' &&
+        daysBetween(jobDate, c.latestJobDate) >= 0 &&
+        daysBetween(jobDate, c.latestJobDate) <= 60
     );
     if (recentCompleted) {
       return {
@@ -662,12 +785,16 @@ export default function DashboardPage() {
     // `assignedWorkers.length` basis (assigned/required, open, completion %), so
     // all three stay internally consistent. The staffing-shortage surfaces (grid
     // badge, attention cards, daily counter) use `workStaffing` instead.
-    const totalAssigned = displayedWorks.reduce((sum, work) => sum + work.assignedWorkers.length, 0);
+    const totalAssigned = displayedWorks.reduce(
+      (sum, work) => sum + work.assignedWorkers.length,
+      0
+    );
     const openSlots = displayedWorks.reduce(
       (sum, work) => sum + Math.max(work.requiredWorkers - work.assignedWorkers.length, 0),
-      0,
+      0
     );
-    const completionRate = totalRequired > 0 ? Math.round((totalAssigned / totalRequired) * 100) : 0;
+    const completionRate =
+      totalRequired > 0 ? Math.round((totalAssigned / totalRequired) * 100) : 0;
 
     return {
       totalWorks,
@@ -679,7 +806,7 @@ export default function DashboardPage() {
   }, [displayedWorks]);
   const futureWorks = useMemo(
     () => dashboardWorks.filter((work) => work.dateKey >= todayDateKey),
-    [dashboardWorks, todayDateKey],
+    [dashboardWorks, todayDateKey]
   );
   const workflowSections = useMemo(() => {
     const worksByCaseId = new Map<string, ActiveWork[]>();
@@ -689,7 +816,9 @@ export default function DashboardPage() {
 
     const draftCases = cases.filter((item) => item.status === 'DRAFT');
     const activeCases = cases.filter((item) => item.status === 'ACTIVE');
-    const activeCasesWithoutDates = activeCases.filter((item) => (worksByCaseId.get(item.id) ?? []).length === 0);
+    const activeCasesWithoutDates = activeCases.filter(
+      (item) => (worksByCaseId.get(item.id) ?? []).length === 0
+    );
     const partialSchedulingCases = activeCases.filter((item) => {
       const caseWorks = worksByCaseId.get(item.id) ?? [];
       if (caseWorks.length === 0) return false;
@@ -699,10 +828,13 @@ export default function DashboardPage() {
       });
     });
 
-    const jobsWithWorkerShortage = futureWorks.filter((work) => workStaffing(work).workerShortageSlots > 0);
+    const jobsWithWorkerShortage = futureWorks.filter(
+      (work) => workStaffing(work).workerShortageSlots > 0
+    );
     const jobsMissingManager = futureWorks.filter((work) => workStaffing(work).managerShortage);
     const attendanceExceptions = futureWorks.filter(
-      (work) => (work.status === 'active' || work.status === 'done') && work.assignedWorkers.length > 0,
+      (work) =>
+        (work.status === 'active' || work.status === 'done') && work.assignedWorkers.length > 0
     );
     const awaitingBillingCases = cases.filter((item) => item.status === 'READY_FOR_REVIEW');
     const awaitingPaymentCases = cases.filter((item) => {
@@ -824,19 +956,20 @@ export default function DashboardPage() {
     const allItems = workflowSections.flatMap((section) => section.items);
     const exceptionsCount = allItems.filter((item) => item.severity === 'high').length;
     const awaitingApprovalCount =
-      workflowSections.find((section) => section.key === 'quote-awaiting-approval')?.items.length ?? 0;
+      workflowSections.find((section) => section.key === 'quote-awaiting-approval')?.items.length ??
+      0;
     const todayJobsCount = dashboardWorks.filter((work) => work.dateKey === todayDateKey).length;
     const workersTodayCount = new Set(
       dashboardWorks
         .filter((work) => work.dateKey === todayDateKey)
-        .flatMap((work) => work.assignedWorkers.map((worker) => worker.name)),
+        .flatMap((work) => work.assignedWorkers.map((worker) => worker.name))
     ).size;
     return { exceptionsCount, awaitingApprovalCount, todayJobsCount, workersTodayCount };
   }, [workflowSections, dashboardWorks, todayDateKey]);
 
   const activeWorkflowSection = useMemo(
     () => workflowSections.find((section) => section.key === activeSectionKey) ?? null,
-    [workflowSections, activeSectionKey],
+    [workflowSections, activeSectionKey]
   );
 
   const visibleShiftDates = useMemo(() => {
@@ -894,11 +1027,22 @@ export default function DashboardPage() {
       const isNonWorkingDay = isWorkCreationBlockedDay(dateKey);
       const dayWorks = displayedWorks.filter((work) => work.dateKey === dateKey);
       const required = dayWorks.reduce((sum, work) => sum + work.requiredWorkers, 0);
-      const assigned = dayWorks.reduce((sum, work) => sum + Math.min(work.approvedWorkers, work.requiredWorkers), 0);
-      const unfilledShifts = dayWorks.filter((work) => workStaffing(work).workerShortageSlots > 0).length;
+      const assigned = dayWorks.reduce(
+        (sum, work) => sum + Math.min(work.approvedWorkers, work.requiredWorkers),
+        0
+      );
+      const unfilledShifts = dayWorks.filter(
+        (work) => workStaffing(work).workerShortageSlots > 0
+      ).length;
       const openSlots = Math.max(required - assigned, 0);
       const coverage = required > 0 ? assigned / required : 1;
-      const coverageClass = isNonWorkingDay ? 'bg-gray-300' : coverage >= 1 ? 'bg-emerald-500' : coverage >= 0.75 ? 'bg-amber-500' : 'bg-rose-500';
+      const coverageClass = isNonWorkingDay
+        ? 'bg-gray-300'
+        : coverage >= 1
+          ? 'bg-emerald-500'
+          : coverage >= 0.75
+            ? 'bg-amber-500'
+            : 'bg-rose-500';
       return {
         dateKey,
         dayLabel: date.toLocaleDateString('he-IL', { weekday: 'short' }),
@@ -937,13 +1081,14 @@ export default function DashboardPage() {
   }, [displayedWorks]);
 
   const editingWork = useMemo(
-    () => (editingWorkId ? dashboardWorks.find((work) => work.id === editingWorkId) ?? null : null),
-    [dashboardWorks, editingWorkId],
+    () =>
+      editingWorkId ? (dashboardWorks.find((work) => work.id === editingWorkId) ?? null) : null,
+    [dashboardWorks, editingWorkId]
   );
 
   const selectedLinkedCase = useMemo(
-    () => (editingWork ? cases.find((item) => item.id === editingWork.caseId) ?? null : null),
-    [cases, editingWork],
+    () => (editingWork ? (cases.find((item) => item.id === editingWork.caseId) ?? null) : null),
+    [cases, editingWork]
   );
 
   const selectedTeamLeadOptions = useMemo(
@@ -952,36 +1097,46 @@ export default function DashboardPage() {
         const worker = dashboardWorkers.find((item) => item.name === workerName);
         return worker?.role === 'ראש צוות' || worker?.role === 'מנהלת';
       }),
-    [selectedAssignedWorkerNames],
+    [selectedAssignedWorkerNames]
   );
   const workerColumnWidth = 180;
   const dayColumnMinWidth = 104;
   const shiftGridTemplate = `${workerColumnWidth}px repeat(${Math.max(1, visibleShiftDates.length)}, minmax(${dayColumnMinWidth}px, 1fr))`;
-  const shiftGridMinWidth = workerColumnWidth + Math.max(1, visibleShiftDates.length) * dayColumnMinWidth;
-  const shiftGridStyle = { gridTemplateColumns: shiftGridTemplate, minWidth: `${shiftGridMinWidth}px` };
+  const shiftGridMinWidth =
+    workerColumnWidth + Math.max(1, visibleShiftDates.length) * dayColumnMinWidth;
+  const shiftGridStyle = {
+    gridTemplateColumns: shiftGridTemplate,
+    minWidth: `${shiftGridMinWidth}px`,
+  };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Header with Actions */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 overflow-hidden rounded-3xl bg-gradient-to-l from-primary-700 to-primary-500 p-5 text-white shadow-[0_8px_24px_rgba(78,105,92,0.16)] sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">לוח בקרה</h1>
-          <p className="text-sm text-gray-600 mt-0.5" suppressHydrationWarning>{mounted ? greetingText : '\u00A0'}</p>
+          <p className="mb-1 text-sm font-medium text-white/75">היום ב-S&amp;O</p>
+          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">לוח בקרה</h1>
+          <p className="mt-1 text-base text-white/85" suppressHydrationWarning>
+            {mounted ? greetingText : '\u00A0'}
+          </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center">
           <button
             type="button"
             onClick={() => setQuickCreateDate(todayDateKey)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-primary-700 shadow-sm transition-transform hover:-translate-y-0.5 sm:w-auto"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="h-4 w-4" />
             יצירת עבודה
           </button>
         </div>
       </div>
 
       {(priorityAttention.length > 0 || attentionItems.length > 0) && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2" data-testid="requires-attention">
+        <div
+          className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2"
+          data-testid="requires-attention"
+        >
           <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800">
             <AlertTriangle className="h-3.5 w-3.5" />
             דורש טיפול
@@ -992,12 +1147,16 @@ export default function DashboardPage() {
             <div key={group.key} className="relative" data-testid={`attention-${group.key}`}>
               <button
                 type="button"
-                onClick={() => setOpenAttentionKey((prev) => (prev === group.key ? null : group.key))}
+                onClick={() =>
+                  setOpenAttentionKey((prev) => (prev === group.key ? null : group.key))
+                }
                 aria-expanded={openAttentionKey === group.key}
                 className="inline-flex items-center gap-1.5 rounded-full border border-rose-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-50"
               >
                 {group.label}
-                <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold text-white">{group.jobs.length}</span>
+                <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold text-white">
+                  {group.jobs.length}
+                </span>
               </button>
               {openAttentionKey === group.key && (
                 <div className="absolute right-0 z-30 mt-1 max-h-64 w-64 overflow-auto rounded-lg border border-rose-200 bg-white p-1 shadow-lg">
@@ -1015,7 +1174,9 @@ export default function DashboardPage() {
                       {' · '}
                       {job.customerName || 'שריון כללי'}
                       {' · '}
-                      <span className="text-gray-500">{job.status === 'APPROVED' ? 'אושר' : 'שריון'}</span>
+                      <span className="text-gray-500">
+                        {job.status === 'APPROVED' ? 'אושר' : 'שריון'}
+                      </span>
                     </Link>
                   ))}
                 </div>
@@ -1031,7 +1192,9 @@ export default function DashboardPage() {
                 className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
               >
                 {item.label}
-                <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">{item.count}</span>
+                <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
+                  {item.count}
+                </span>
               </button>
             ) : (
               <Link
@@ -1040,57 +1203,67 @@ export default function DashboardPage() {
                 className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
               >
                 {item.label}
-                <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">{item.count}</span>
+                <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
+                  {item.count}
+                </span>
               </Link>
-            ),
+            )
           )}
         </div>
       )}
 
       {/* At-a-glance stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="rounded-xl border border-danger/30 bg-danger-bg p-3 flex items-center gap-3">
-          <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/70">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="flex items-center gap-3 rounded-2xl border border-danger/20 bg-danger-bg p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)]">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80">
             <AlertTriangle className="w-5 h-5 text-danger" />
           </span>
           <div>
-            <p className="text-xl font-bold text-danger leading-none">{dashboardStats.exceptionsCount}</p>
+            <p className="text-xl font-bold text-danger leading-none">
+              {dashboardStats.exceptionsCount}
+            </p>
             <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
               חריגות
               <InfoHint text="עבודות או משמרות הדורשות התייחסות דחופה — חוסר עובדים, חוסר ראש צוות או חריגות נוכחות." />
             </p>
           </div>
         </div>
-        <div className="rounded-xl border border-warning/30 bg-warning-bg p-3 flex items-center gap-3">
-          <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/70">
+        <div className="flex items-center gap-3 rounded-2xl border border-warning/20 bg-warning-bg p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)]">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80">
             <Clock className="w-5 h-5 text-warning" />
           </span>
           <div>
-            <p className="text-xl font-bold text-warning leading-none">{dashboardStats.awaitingApprovalCount}</p>
+            <p className="text-xl font-bold text-warning leading-none">
+              {dashboardStats.awaitingApprovalCount}
+            </p>
             <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
               מחכות לאישור
               <InfoHint text="בקשות הצטרפות של עובדים לעבודות הממתינות לאישור שלך." />
             </p>
           </div>
         </div>
-        <div className="rounded-xl border border-success/30 bg-success-bg p-3 flex items-center gap-3">
-          <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/70">
+        <div className="flex items-center gap-3 rounded-2xl border border-success/20 bg-success-bg p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)]">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80">
             <CalendarCheck className="w-5 h-5 text-success" />
           </span>
           <div>
-            <p className="text-xl font-bold text-success leading-none">{dashboardStats.todayJobsCount}</p>
+            <p className="text-xl font-bold text-success leading-none">
+              {dashboardStats.todayJobsCount}
+            </p>
             <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
               עבודות היום
               <InfoHint text="מספר העבודות המתוזמנות להיום." />
             </p>
           </div>
         </div>
-        <div className="rounded-xl border border-info/30 bg-info-bg p-3 flex items-center gap-3">
-          <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/70">
+        <div className="flex items-center gap-3 rounded-2xl border border-info/20 bg-info-bg p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)]">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80">
             <CalendarDays className="w-5 h-5 text-info" />
           </span>
           <div>
-            <p className="text-xl font-bold text-info leading-none">{dashboardStats.workersTodayCount}</p>
+            <p className="text-xl font-bold text-info leading-none">
+              {dashboardStats.workersTodayCount}
+            </p>
             <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
               עובדים היום
               <InfoHint text="מספר העובדים המשובצים לעבודות של היום." />
@@ -1100,7 +1273,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Owner KPI Bar */}
-      <div className="bg-white rounded-lg border border-gray-200 p-2 space-y-2">
+      <div className="space-y-2 rounded-2xl border border-[#e7e3dc] bg-white p-3 shadow-[0_2px_8px_rgba(38,38,38,0.04)]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <span className="inline-flex mt-1.5 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-semibold">
@@ -1203,192 +1376,230 @@ export default function DashboardPage() {
             </label>
           </div>
         )}
-
       </div>
 
       <div className="flex flex-col gap-2.5 lg:h-[calc(100vh-180px)] lg:min-h-[620px] min-h-0">
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden flex-1 min-h-[430px] flex flex-col">
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="font-semibold text-gray-900">
-                תצוגת משמרות {selectedRangeContextLabel} ({displayedWorks.length})
-              </h2>
-              <Link
-                href="/jobs"
-                className="text-emerald-600 text-xs font-medium hover:text-emerald-700"
-              >
-                הצג הכל →
-              </Link>
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="font-semibold text-gray-900">
+              תצוגת משמרות {selectedRangeContextLabel} ({displayedWorks.length})
+            </h2>
+            <Link
+              href="/jobs"
+              className="text-emerald-600 text-xs font-medium hover:text-emerald-700"
+            >
+              הצג הכל →
+            </Link>
+          </div>
+
+          <div className="overflow-auto flex-1 min-h-0">
+            <div className="grid border-b border-gray-200 bg-gray-50" style={shiftGridStyle}>
+              <div className="p-2.5 text-xs font-semibold text-gray-700 border-l border-gray-200">
+                עובדת
+              </div>
+              {visibleShiftDates.map((date) => {
+                const dateKey = toDateKeyFromDate(date);
+                const nonWorkingLabel = getNonWorkingDayLabel(dateKey);
+                const isNonWorkingDay = isWorkCreationBlockedDay(dateKey);
+                const isToday = dateKey === todayDateKey;
+                return isNonWorkingDay ? (
+                  <div
+                    key={`head-${dateKey}`}
+                    className={`min-w-0 border-l border-gray-200 p-2.5 text-center text-gray-500 ${isToday ? 'bg-emerald-100' : 'bg-gray-200'}`}
+                  >
+                    <div className="text-xs">
+                      {date.toLocaleDateString('he-IL', { weekday: 'short' })}
+                    </div>
+                    <div className="text-xs font-semibold">
+                      {date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}
+                    </div>
+                    {isToday && (
+                      <div className="text-[10px] font-semibold text-emerald-700 leading-3">
+                        היום
+                      </div>
+                    )}
+                    <div className="mt-0.5 text-[10px]">{nonWorkingLabel}</div>
+                  </div>
+                ) : (
+                  <div
+                    key={`head-${dateKey}`}
+                    className={`min-w-0 p-2.5 text-center border-l border-gray-200 text-gray-700 ${isToday ? 'bg-emerald-50 text-emerald-700' : ''}`}
+                  >
+                    <div className="text-xs">
+                      {date.toLocaleDateString('he-IL', { weekday: 'short' })}
+                    </div>
+                    <div className="text-xs font-semibold">
+                      {date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}
+                    </div>
+                    {isToday && (
+                      <div className="text-[10px] font-semibold text-emerald-700 leading-3">
+                        היום
+                      </div>
+                    )}
+                    {nonWorkingLabel && (
+                      <div className="text-[10px] text-amber-700">{nonWorkingLabel}</div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
-            <div className="overflow-auto flex-1 min-h-0">
-              <div className="grid border-b border-gray-200 bg-gray-50" style={shiftGridStyle}>
-                <div className="p-2.5 text-xs font-semibold text-gray-700 border-l border-gray-200">עובדת</div>
+            <div className="grid border-b border-gray-200 bg-amber-50/40" style={shiftGridStyle}>
+              <div className="p-2.5 border-l border-gray-200 flex items-center gap-1.5 text-xs font-semibold text-gray-700">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                פערי איוש
+              </div>
+              {visibleShiftDates.map((date) => {
+                const dateKey = toDateKeyFromDate(date);
+                const isNonWorkingDay = isWorkCreationBlockedDay(dateKey);
+                const isToday = dateKey === todayDateKey;
+                const openWorks = unassignedWorksByDate.get(dateKey) ?? [];
+                return (
+                  <div
+                    key={`unassigned-${dateKey}`}
+                    className={`min-h-[56px] border-l border-gray-100 p-1.5 ${isNonWorkingDay ? 'bg-gray-100' : isToday ? 'bg-emerald-50/40' : ''}`}
+                  >
+                    {isNonWorkingDay || openWorks.length === 0 ? null : (
+                      <div className="space-y-1">
+                        {openWorks.slice(0, 2).map(({ work, open }) => (
+                          <button
+                            key={`unassigned-${work.id}`}
+                            type="button"
+                            onClick={() => work.jobId && router.push(`/jobs/${work.jobId}`)}
+                            className={`w-full rounded-md border px-2 py-1 text-right ${getShiftTypeCardClasses(work.jobType)}`}
+                          >
+                            <div className="flex items-center justify-between gap-1.5">
+                              <p className="text-[11px] font-semibold text-gray-900 truncate">
+                                {work.customerName}
+                              </p>
+                              <span
+                                title={`חסרים ${open} עובדים`}
+                                className="shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-blue-100 text-blue-700 text-[11px] font-semibold px-1"
+                              >
+                                {open}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                        {openWorks.length > 2 && (
+                          <p className="text-center text-[11px] text-gray-500">
+                            +{openWorks.length - 2} נוספות
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {dashboardWorkers.map((worker) => (
+              <div key={worker.id} className="grid border-b border-gray-100" style={shiftGridStyle}>
+                <div className="p-2.5 border-l border-gray-100">
+                  <p className="text-xs font-semibold text-gray-900">
+                    {worker.name} ({shiftCountByWorkerName.get(worker.name) ?? 0})
+                  </p>
+                  <p className="text-xs text-gray-500">{worker.role}</p>
+                </div>
                 {visibleShiftDates.map((date) => {
                   const dateKey = toDateKeyFromDate(date);
                   const nonWorkingLabel = getNonWorkingDayLabel(dateKey);
                   const isNonWorkingDay = isWorkCreationBlockedDay(dateKey);
                   const isToday = dateKey === todayDateKey;
-                  return isNonWorkingDay ? (
-                    <div key={`head-${dateKey}`} className={`min-w-0 border-l border-gray-200 p-2.5 text-center text-gray-500 ${isToday ? 'bg-emerald-100' : 'bg-gray-200'}`}>
-                      <div className="text-xs">{date.toLocaleDateString('he-IL', { weekday: 'short' })}</div>
-                      <div className="text-xs font-semibold">{date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}</div>
-                      {isToday && <div className="text-[10px] font-semibold text-emerald-700 leading-3">היום</div>}
-                      <div className="mt-0.5 text-[10px]">{nonWorkingLabel}</div>
-                    </div>
-                  ) : (
-                    <div
-                      key={`head-${dateKey}`}
-                      className={`min-w-0 p-2.5 text-center border-l border-gray-200 text-gray-700 ${isToday ? 'bg-emerald-50 text-emerald-700' : ''}`}
-                    >
-                      <div className="text-xs">{date.toLocaleDateString('he-IL', { weekday: 'short' })}</div>
-                      <div className="text-xs font-semibold">{date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}</div>
-                      {isToday && <div className="text-[10px] font-semibold text-emerald-700 leading-3">היום</div>}
-                      {nonWorkingLabel && <div className="text-[10px] text-amber-700">{nonWorkingLabel}</div>}
-                    </div>
+                  const isPast = dateKey < todayDateKey;
+                  const canQuickCreate = !isNonWorkingDay && !isPast;
+                  const unavailable = dashboardAvailability.find(
+                    (item) => item.workerName === worker.name && item.dateKey === dateKey
                   );
-                })}
-              </div>
-
-              <div className="grid border-b border-gray-200 bg-amber-50/40" style={shiftGridStyle}>
-                <div className="p-2.5 border-l border-gray-200 flex items-center gap-1.5 text-xs font-semibold text-gray-700">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                  פערי איוש
-                </div>
-                {visibleShiftDates.map((date) => {
-                  const dateKey = toDateKeyFromDate(date);
-                  const isNonWorkingDay = isWorkCreationBlockedDay(dateKey);
-                  const isToday = dateKey === todayDateKey;
-                  const openWorks = unassignedWorksByDate.get(dateKey) ?? [];
+                  const shifts = shiftsByWorkerDate.get(`${worker.name}|${dateKey}`) ?? [];
                   return (
                     <div
-                      key={`unassigned-${dateKey}`}
-                      className={`min-h-[56px] border-l border-gray-100 p-1.5 ${isNonWorkingDay ? 'bg-gray-100' : isToday ? 'bg-emerald-50/40' : ''}`}
+                      key={`${worker.id}-${dateKey}`}
+                      className={`min-h-[70px] border-l border-gray-100 p-1.5 ${isNonWorkingDay ? (isToday ? 'bg-emerald-100' : 'bg-gray-100') : isToday ? 'bg-emerald-50/50' : 'bg-white'}`}
                     >
-                      {isNonWorkingDay || openWorks.length === 0 ? null : (
+                      {isNonWorkingDay ? (
+                        <p className="mt-5 text-center text-[11px] text-gray-500">
+                          {nonWorkingLabel}
+                        </p>
+                      ) : unavailable ? (
+                        <div className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1.5 text-center">
+                          <p className="text-[11px] font-semibold text-rose-700">לא זמינה</p>
+                          <p className="text-[11px] text-rose-600">{unavailable.reason}</p>
+                        </div>
+                      ) : shifts.length > 0 ? (
                         <div className="space-y-1">
-                          {openWorks.slice(0, 2).map(({ work, open }) => (
-                            <button
-                              key={`unassigned-${work.id}`}
-                              type="button"
-                              onClick={() => work.jobId && router.push(`/jobs/${work.jobId}`)}
-                              className={`w-full rounded-md border px-2 py-1 text-right ${getShiftTypeCardClasses(work.jobType)}`}
-                            >
-                              <div className="flex items-center justify-between gap-1.5">
-                                <p className="text-[11px] font-semibold text-gray-900 truncate">{work.customerName}</p>
-                                <span
-                                  title={`חסרים ${open} עובדים`}
-                                  className="shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-blue-100 text-blue-700 text-[11px] font-semibold px-1"
-                                >
-                                  {open}
-                                </span>
-                              </div>
-                            </button>
-                          ))}
-                          {openWorks.length > 2 && (
-                            <p className="text-center text-[11px] text-gray-500">+{openWorks.length - 2} נוספות</p>
+                          {shifts.slice(0, 2).map((shift) => {
+                            const linkedCase = caseById.get(shift.caseId);
+                            const linkedCaseStatus = linkedCase?.status ?? 'ACTIVE';
+                            const upcomingDiffDays = daysBetween(shift.dateKey, todayDateKey);
+                            const isUrgentCase =
+                              linkedCaseStatus === 'DRAFT' &&
+                              upcomingDiffDays >= 0 &&
+                              upcomingDiffDays <= 7;
+                            // Badge describes THIS worker's assignment status, not the job status.
+                            // A regular approved assignment shows no badge — the card already says "assigned".
+                            const myAssignment = shift.assignedWorkers.find(
+                              (w) => w.name === worker.name
+                            );
+                            const badge = workerRowBadge(myAssignment ?? {});
+                            return (
+                              <button
+                                key={`${worker.id}-${shift.id}`}
+                                type="button"
+                                onClick={() => shift.jobId && router.push(`/jobs/${shift.jobId}`)}
+                                className={`w-full rounded-md border px-2 py-1 text-right ${getShiftTypeCardClasses(shift.jobType)}`}
+                              >
+                                <p className="text-[11px] font-semibold text-gray-900">
+                                  09:00-{addHoursToTime('09:00', shift.hours)}
+                                </p>
+                                <p className="text-[11px] text-gray-600">{shift.customerName}</p>
+                                {badge && (
+                                  <p
+                                    className={`mt-0.5 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}
+                                  >
+                                    {badge.label}
+                                  </p>
+                                )}
+                                {isUrgentCase && (
+                                  <p className="text-[10px] text-rose-700 mt-0.5">
+                                    דחוף: העבודה ממתינה לאישור לקוח
+                                  </p>
+                                )}
+                              </button>
+                            );
+                          })}
+                          {shifts.length > 2 && (
+                            <p className="text-[11px] text-gray-500 text-center">
+                              +{shifts.length - 2} נוספות
+                            </p>
                           )}
                         </div>
+                      ) : canQuickCreate ? (
+                        <button
+                          type="button"
+                          onClick={() => setQuickCreateDate(dateKey)}
+                          aria-label={`יצירת עבודה בתאריך ${dateKey}`}
+                          className="group flex h-full min-h-[54px] w-full flex-col items-center justify-center rounded-md text-[11px] text-gray-300 transition-colors hover:bg-primary-50 hover:text-primary-600"
+                        >
+                          <span className="inline-flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                            <Plus className="h-3 w-3" /> עבודה
+                          </span>
+                        </button>
+                      ) : (
+                        <p className="text-[11px] text-gray-300 mt-5 text-center">—</p>
                       )}
                     </div>
                   );
                 })}
               </div>
-
-              {dashboardWorkers.map((worker) => (
-                <div
-                  key={worker.id}
-                  className="grid border-b border-gray-100"
-                  style={shiftGridStyle}
-                >
-                 <div className="p-2.5 border-l border-gray-100">
-                   <p className="text-xs font-semibold text-gray-900">
-                      {worker.name} ({shiftCountByWorkerName.get(worker.name) ?? 0})
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {worker.role}
-                    </p>
-                  </div>
-                  {visibleShiftDates.map((date) => {
-                    const dateKey = toDateKeyFromDate(date);
-                    const nonWorkingLabel = getNonWorkingDayLabel(dateKey);
-                    const isNonWorkingDay = isWorkCreationBlockedDay(dateKey);
-                    const isToday = dateKey === todayDateKey;
-                    const isPast = dateKey < todayDateKey;
-                    const canQuickCreate = !isNonWorkingDay && !isPast;
-                    const unavailable = dashboardAvailability.find((item) => item.workerName === worker.name && item.dateKey === dateKey);
-                    const shifts = shiftsByWorkerDate.get(`${worker.name}|${dateKey}`) ?? [];
-                    return (
-                      <div
-                        key={`${worker.id}-${dateKey}`}
-                        className={`min-h-[70px] border-l border-gray-100 p-1.5 ${isNonWorkingDay ? (isToday ? 'bg-emerald-100' : 'bg-gray-100') : isToday ? 'bg-emerald-50/50' : 'bg-white'}`}
-                      >
-                        {isNonWorkingDay ? (
-                          <p className="mt-5 text-center text-[11px] text-gray-500">{nonWorkingLabel}</p>
-                        ) : unavailable ? (
-                          <div className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1.5 text-center">
-                            <p className="text-[11px] font-semibold text-rose-700">לא זמינה</p>
-                            <p className="text-[11px] text-rose-600">{unavailable.reason}</p>
-                          </div>
-                        ) : shifts.length > 0 ? (
-                          <div className="space-y-1">
-                            {shifts.slice(0, 2).map((shift) => {
-                              const linkedCase = caseById.get(shift.caseId);
-                              const linkedCaseStatus = linkedCase?.status ?? 'ACTIVE';
-                              const upcomingDiffDays = daysBetween(shift.dateKey, todayDateKey);
-                              const isUrgentCase =
-                                linkedCaseStatus === 'DRAFT' &&
-                                upcomingDiffDays >= 0 &&
-                                upcomingDiffDays <= 7;
-                              // Badge describes THIS worker's assignment status, not the job status.
-                              // A regular approved assignment shows no badge — the card already says "assigned".
-                              const myAssignment = shift.assignedWorkers.find((w) => w.name === worker.name);
-                              const badge = workerRowBadge(myAssignment ?? {});
-                              return (
-                                <button
-                                  key={`${worker.id}-${shift.id}`}
-                                  type="button"
-                                  onClick={() => shift.jobId && router.push(`/jobs/${shift.jobId}`)}
-                                  className={`w-full rounded-md border px-2 py-1 text-right ${getShiftTypeCardClasses(shift.jobType)}`}
-                                >
-                                  <p className="text-[11px] font-semibold text-gray-900">09:00-{addHoursToTime('09:00', shift.hours)}</p>
-                                  <p className="text-[11px] text-gray-600">{shift.customerName}</p>
-                                  {badge && (
-                                    <p className={`mt-0.5 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}>
-                                      {badge.label}
-                                    </p>
-                                  )}
-                                  {isUrgentCase && (
-                                    <p className="text-[10px] text-rose-700 mt-0.5">דחוף: העבודה ממתינה לאישור לקוח</p>
-                                  )}
-                                </button>
-                              );
-                            })}
-                            {shifts.length > 2 && <p className="text-[11px] text-gray-500 text-center">+{shifts.length - 2} נוספות</p>}
-                          </div>
-                        ) : canQuickCreate ? (
-                          <button
-                            type="button"
-                            onClick={() => setQuickCreateDate(dateKey)}
-                            aria-label={`יצירת עבודה בתאריך ${dateKey}`}
-                            className="group flex h-full min-h-[54px] w-full flex-col items-center justify-center rounded-md text-[11px] text-gray-300 transition-colors hover:bg-primary-50 hover:text-primary-600"
-                          >
-                            <span className="inline-flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                              <Plus className="h-3 w-3" /> עבודה
-                            </span>
-                          </button>
-                        ) : (
-                          <p className="text-[11px] text-gray-300 mt-5 text-center">—</p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
+            ))}
           </div>
+        </div>
         <div className="bg-white rounded-lg border border-gray-200 shrink-0">
           <div className="px-3 py-2.5 border-y border-gray-100">
-            <h3 className="font-semibold text-gray-900 text-sm">סיכום שיבוץ לעבודות {selectedRangeContextLabel}</h3>
+            <h3 className="font-semibold text-gray-900 text-sm">
+              סיכום שיבוץ לעבודות {selectedRangeContextLabel}
+            </h3>
             <p className="text-xs text-gray-500 mt-1 mb-2">מבוסס על העבודות שמוצגות מעל</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               <div>
@@ -1397,15 +1608,25 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-xs text-gray-600">תקנים משובצים</p>
-                <p className="font-semibold text-sm text-gray-900">{worksSummary.totalAssigned}/{worksSummary.totalRequired}</p>
+                <p className="font-semibold text-sm text-gray-900">
+                  {worksSummary.totalAssigned}/{worksSummary.totalRequired}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-gray-600">פערי שיבוץ פתוחים</p>
-                <p className={`font-semibold text-sm ${worksSummary.openSlots > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{worksSummary.openSlots}</p>
+                <p
+                  className={`font-semibold text-sm ${worksSummary.openSlots > 0 ? 'text-red-600' : 'text-emerald-600'}`}
+                >
+                  {worksSummary.openSlots}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-gray-600">אחוז שיבוץ</p>
-                <p className={`font-semibold text-sm ${worksSummary.completionRate >= 95 ? 'text-emerald-600' : 'text-amber-600'}`}>{worksSummary.completionRate}%</p>
+                <p
+                  className={`font-semibold text-sm ${worksSummary.completionRate >= 95 ? 'text-emerald-600' : 'text-amber-600'}`}
+                >
+                  {worksSummary.completionRate}%
+                </p>
               </div>
             </div>
           </div>
@@ -1440,7 +1661,6 @@ export default function DashboardPage() {
         onClose={() => setJoinPanelOpen(false)}
         onChanged={() => setReloadKey((k) => k + 1)}
       />
-
     </div>
   );
 }

@@ -28,11 +28,11 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
   const visibleNavItems = navItems.filter((item) => item.href !== '/reports' || showReports);
 
   return (
-    <aside className="w-56 bg-white border-l border-gray-200 flex flex-col h-screen overflow-hidden shadow-sm">
+    <aside className="flex h-screen w-full flex-col overflow-hidden border-l border-[#e7e3dc] bg-[#fbfaf7]">
       {/* Logo */}
-      <div className="px-4 py-4 border-b border-gray-100">
+      <div className="border-b border-[#ebe7df] px-5 py-5">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg overflow-hidden border border-gray-200 bg-white flex items-center justify-center">
+          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-[#e7e3dc] bg-white shadow-sm">
             <Image
               src="/so-logo.jpg"
               alt="Space and Order"
@@ -42,14 +42,14 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
             />
           </div>
           <div>
-            <h1 className="text-base font-bold text-gray-900">S&amp;O</h1>
-            <p className="text-xs text-gray-500">ניהול עסק</p>
+            <h1 className="text-lg font-bold tracking-tight text-gray-900">S&amp;O</h1>
+            <p className="text-sm text-gray-500">ניהול עסק</p>
           </div>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-1">
+      <nav className="flex-1 space-y-1.5 overflow-y-auto px-3 py-4">
         {visibleNavItems.map(({ href, label, icon: Icon, matchPrefix }) => {
           const isActive =
             pathname === href || (matchPrefix !== '/dashboard' && pathname.startsWith(matchPrefix));
@@ -59,14 +59,14 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
               href={href}
               onClick={onNavigate}
               aria-current={isActive ? 'page' : undefined}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs transition-colors ${
+              className={`flex min-h-11 items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm transition-all ${
                 isActive
-                  ? 'bg-primary-100 text-primary-700 font-semibold'
-                  : 'font-medium text-gray-600 hover:bg-primary-50 hover:text-primary-700'
+                  ? 'bg-primary-100 font-semibold text-primary-800 shadow-[inset_-3px_0_0_rgb(var(--tw-primary-600))]'
+                  : 'font-medium text-gray-600 hover:bg-white hover:text-primary-700'
               }`}
             >
               <Icon
-                className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-primary-600' : 'text-gray-400'}`}
+                className={`h-5 w-5 flex-shrink-0 ${isActive ? 'text-primary-600' : 'text-gray-400'}`}
               />
               <span className="truncate">{label}</span>
             </Link>
@@ -75,12 +75,12 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
       </nav>
 
       {/* Report a bug / request */}
-      <div className="px-2 py-2 border-t border-gray-100">
+      <div className="border-t border-[#ebe7df] px-3 py-3">
         <a
           href={`mailto:shaiwinograd@gmail.com?subject=${encodeURIComponent('Space & Order - משוב מהאפליקציה')}&body=${encodeURIComponent(
             'מה לחצתי:\n\nמה ציפיתי שיקרה:\n\nמה קרה בפועל:\n\nצילום מסך (אם אפשר):\n'
           )}`}
-          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-gray-600 hover:bg-primary-50 hover:text-primary-700 transition-colors"
+          className="flex min-h-11 items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-white hover:text-primary-700"
         >
           <Bug className="w-4 h-4 flex-shrink-0 text-gray-400" />
           <span className="truncate">דיווח באג או בקשה</span>
@@ -88,8 +88,8 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
       </div>
 
       {/* User Profile */}
-      <div className="p-3 border-t border-gray-100">
-        <div className="flex items-center gap-3">
+      <div className="border-t border-[#ebe7df] p-4">
+        <div className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-[0_2px_8px_rgba(38,38,38,0.05)]">
           <UserButton
             afterSignOutUrl="/sign-in"
             appearance={{
@@ -100,7 +100,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
             }}
           />
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-gray-900 truncate">החשבון שלי</p>
+            <p className="truncate text-sm font-semibold text-gray-900">החשבון שלי</p>
             <RoleSwitcher />
           </div>
         </div>

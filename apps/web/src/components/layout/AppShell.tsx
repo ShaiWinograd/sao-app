@@ -75,8 +75,8 @@ export default function AppShell({ area, children }: { area: AppArea; children: 
   }, [open]);
 
   return (
-    <div className={`${config.themeClass} flex h-screen overflow-x-hidden bg-white`} dir="rtl">
-      <div className="hidden h-screen w-56 shrink-0 md:block">{renderSidebar()}</div>
+    <div className={`${config.themeClass} flex h-screen overflow-x-hidden bg-[#f7f6f2]`} dir="rtl">
+      <div className="hidden h-screen w-60 shrink-0 md:block">{renderSidebar()}</div>
 
       <div
         className={`fixed inset-0 z-40 bg-black/40 transition-opacity duration-200 md:hidden ${
@@ -88,7 +88,7 @@ export default function AppShell({ area, children }: { area: AppArea; children: 
 
       <div
         ref={drawerRef}
-        className={`fixed inset-y-0 right-0 z-50 w-64 max-w-[82%] transform pt-[env(safe-area-inset-top)] transition-transform duration-200 ease-out md:hidden ${
+        className={`fixed inset-y-0 right-0 z-50 w-72 max-w-[86%] transform pt-[env(safe-area-inset-top)] transition-transform duration-200 ease-out md:hidden ${
           open ? 'translate-x-0' : 'translate-x-full'
         }`}
         role="dialog"
@@ -108,15 +108,15 @@ export default function AppShell({ area, children }: { area: AppArea; children: 
       </div>
 
       <div ref={mainRef} className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur md:hidden">
-          <div className="flex h-14 items-center gap-3 px-3">
+        <header className="sticky top-0 z-30 border-b border-[#e7e3dc] bg-[#fbfaf7]/95 pt-[env(safe-area-inset-top)] shadow-[0_1px_8px_rgba(38,38,38,0.04)] backdrop-blur md:hidden">
+          <div className="flex h-16 items-center gap-3 px-4">
             <button
               type="button"
               ref={hamburgerRef}
               onClick={() => setOpen(true)}
               aria-label="פתיחת תפריט"
               aria-expanded={open}
-              className="-mr-1 rounded-lg p-2 text-gray-600 hover:bg-gray-100"
+              className="-mr-1 flex h-11 w-11 items-center justify-center rounded-xl text-gray-700 transition-colors hover:bg-white"
             >
               <Menu className="h-6 w-6" />
             </button>
@@ -130,13 +130,13 @@ export default function AppShell({ area, children }: { area: AppArea; children: 
                   className="object-cover"
                 />
               </div>
-              <span className="text-sm font-bold text-gray-900">S&amp;O · {config.label}</span>
+              <span className="text-base font-bold text-gray-900">S&amp;O · {config.label}</span>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden border-r border-gray-200">
-          <div className="w-full max-w-none p-4 pb-[env(safe-area-inset-bottom)] sm:p-5">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="mx-auto w-full max-w-[1440px] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-6 lg:p-8">
             {children}
           </div>
         </main>

@@ -102,5 +102,15 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await page.getByRole('button', { name: 'פתיחת תפריט' }).click();
     await expect(page.getByRole('dialog', { name: 'תפריט ניווט' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'בית' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'סגירת תפריט' }).click();
+    await page.goto('/jobs/new');
+
+    const firstName = page.getByPlaceholder('שם פרטי');
+    const lastName = page.getByPlaceholder('שם משפחה');
+    const firstNameBounds = await firstName.boundingBox();
+    const lastNameBounds = await lastName.boundingBox();
+    expect(firstNameBounds?.width).toBeGreaterThanOrEqual(300);
+    expect(lastNameBounds?.y).toBeGreaterThan((firstNameBounds?.y ?? 0) + 30);
   });
 });

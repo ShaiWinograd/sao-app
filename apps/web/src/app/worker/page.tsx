@@ -32,7 +32,13 @@ type BoardShift = {
   blockedSameDay?: boolean;
 };
 
-type SwapShiftView = { date: string; plannedStart: string; plannedEnd: string; jobType: string; customerName: string };
+type SwapShiftView = {
+  date: string;
+  plannedStart: string;
+  plannedEnd: string;
+  jobType: string;
+  customerName: string;
+};
 type SwapMine = {
   id: string;
   status: 'PENDING_WORKER' | 'PENDING_OWNER';
@@ -59,7 +65,11 @@ type OpenReplacement = {
 };
 
 function shortDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('he-IL', { weekday: 'short', day: '2-digit', month: '2-digit' });
+  return new Date(iso).toLocaleDateString('he-IL', {
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+  });
 }
 
 export default function WorkerShiftsPage() {
@@ -125,12 +135,14 @@ export default function WorkerShiftsPage() {
         await loadReplacements();
       } catch (err) {
         const status = (err as { response?: { status?: number } })?.response?.status;
-        setMessage(status === 409 ? 'לא ניתן להתנדב למשמרת זו בתאריך הזה.' : 'הפעולה נכשלה. נסי שוב.');
+        setMessage(
+          status === 409 ? 'לא ניתן להתנדב למשמרת זו בתאריך הזה.' : 'הפעולה נכשלה. נסי שוב.'
+        );
       } finally {
         setBusy(null);
       }
     },
-    [getToken, loadReplacements],
+    [getToken, loadReplacements]
   );
 
   const askToJoin = useCallback(async () => {
@@ -144,8 +156,11 @@ export default function WorkerShiftsPage() {
       setJoinTarget(null);
       await loadBoard();
     } catch (err) {
-      const data = (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
-      setMessage(data?.message ?? (data?.error ? `הבקשה נכשלה: ${data.error}` : 'שליחת הבקשה נכשלה.'));
+      const data = (err as { response?: { data?: { error?: string; message?: string } } })?.response
+        ?.data;
+      setMessage(
+        data?.message ?? (data?.error ? `הבקשה נכשלה: ${data.error}` : 'שליחת הבקשה נכשלה.')
+      );
     } finally {
       setBusy(null);
     }
@@ -167,7 +182,7 @@ export default function WorkerShiftsPage() {
         setBusy(null);
       }
     },
-    [getToken, loadBoard],
+    [getToken, loadBoard]
   );
 
   const respondAssignment = useCallback(
@@ -180,13 +195,16 @@ export default function WorkerShiftsPage() {
         setMessage(accepted ? 'אישרת את השיבוץ.' : 'דחית את השיבוץ.');
         await loadBoard();
       } catch (err) {
-        const data = (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
-        setMessage(data?.message ?? (data?.error ? `הפעולה נכשלה: ${data.error}` : 'הפעולה נכשלה.'));
+        const data = (err as { response?: { data?: { error?: string; message?: string } } })
+          ?.response?.data;
+        setMessage(
+          data?.message ?? (data?.error ? `הפעולה נכשלה: ${data.error}` : 'הפעולה נכשלה.')
+        );
       } finally {
         setBusy(null);
       }
     },
-    [getToken, loadBoard],
+    [getToken, loadBoard]
   );
 
   const respondSwap = useCallback(
@@ -202,7 +220,7 @@ export default function WorkerShiftsPage() {
         setBusy(null);
       }
     },
-    [getToken, loadSwaps],
+    [getToken, loadSwaps]
   );
 
   const cancelSwap = useCallback(
@@ -218,7 +236,7 @@ export default function WorkerShiftsPage() {
         setBusy(null);
       }
     },
-    [getToken, loadSwaps],
+    [getToken, loadSwaps]
   );
 
   const myShifts = useMemo(() => board.filter((s) => s.myStatus !== 'NONE'), [board]);
@@ -227,16 +245,29 @@ export default function WorkerShiftsPage() {
   if (loading) return <p className="text-sm text-gray-400">טוען…</p>;
 
   return (
-    <div className="max-w-3xl space-y-4">
-      <h1 className="text-xl font-bold text-gray-900">המשמרות</h1>
+    <div className="mx-auto max-w-3xl space-y-5">
+      <div className="rounded-3xl bg-gradient-to-l from-primary-700 to-primary-500 p-5 text-white shadow-[0_8px_24px_rgba(94,74,120,0.15)]">
+        <p className="text-sm font-medium text-white/75">מרכז העבודה שלי</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight">המשמרות</h1>
+        <p className="mt-1 text-sm text-white/85">כל מה שצריך לדעת ולעשות לקראת העבודה הבאה.</p>
+      </div>
 
-      <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 text-xs">
-        {([['all', 'כל המשמרות'], ['mine', 'היומן שלי']] as [typeof tab, string][]).map(([v, label]) => (
+      <div className="grid grid-cols-2 rounded-2xl border border-[#e7e3dc] bg-white p-1 text-sm shadow-[0_2px_8px_rgba(38,38,38,0.04)]">
+        {(
+          [
+            ['all', 'כל המשמרות'],
+            ['mine', 'היומן שלי'],
+          ] as [typeof tab, string][]
+        ).map(([v, label]) => (
           <button
             key={v}
             type="button"
             onClick={() => setTab(v)}
-            className={`rounded-md px-3 py-1.5 font-medium ${tab === v ? 'bg-primary-600 text-white' : 'text-gray-600 hover:text-gray-900'}`}
+            className={`min-h-11 rounded-xl px-3 py-2 font-semibold transition-colors ${
+              tab === v
+                ? 'bg-primary-600 text-white shadow-sm'
+                : 'text-gray-600 hover:bg-primary-50 hover:text-gray-900'
+            }`}
           >
             {label}
             {v === 'mine' && myShifts.length > 0 ? ` (${myShifts.length})` : ''}
@@ -245,7 +276,9 @@ export default function WorkerShiftsPage() {
       </div>
 
       {message && (
-        <div className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-xs text-primary-800">{message}</div>
+        <div className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-xs text-primary-800">
+          {message}
+        </div>
       )}
 
       {tab === 'mine' && swaps.length > 0 && (
@@ -255,24 +288,54 @@ export default function WorkerShiftsPage() {
             בקשות החלפת משמרות
           </h2>
           {swaps.map((s) => (
-            <div key={s.id} className="rounded-xl border border-gray-200 bg-white p-3 space-y-2 text-xs">
+            <div
+              key={s.id}
+              className="rounded-xl border border-gray-200 bg-white p-3 space-y-2 text-xs"
+            >
               <p className="font-semibold text-gray-900">
-                {s.direction === 'INCOMING' ? `${s.counterpartName} מציע/ה החלפה` : `הצעת החלפה ל${s.counterpartName}`}
+                {s.direction === 'INCOMING'
+                  ? `${s.counterpartName} מציע/ה החלפה`
+                  : `הצעת החלפה ל${s.counterpartName}`}
                 {' · '}
-                <span className={s.status === 'PENDING_WORKER' ? 'text-amber-700' : 'text-blue-700'}>
+                <span
+                  className={s.status === 'PENDING_WORKER' ? 'text-amber-700' : 'text-blue-700'}
+                >
                   {s.status === 'PENDING_WORKER' ? 'ממתין לאישור העובד/ת' : 'ממתין לבעל/ת העסק'}
                 </span>
               </p>
               <p className="text-gray-600">
-                המשמרת שלך: {shortDate(s.myShift.date)} {formatTime(s.myShift.plannedStart)}–{formatTime(s.myShift.plannedEnd)} · שלה/ו: {shortDate(s.theirShift.date)} {formatTime(s.theirShift.plannedStart)}–{formatTime(s.theirShift.plannedEnd)}
+                המשמרת שלך: {shortDate(s.myShift.date)} {formatTime(s.myShift.plannedStart)}–
+                {formatTime(s.myShift.plannedEnd)} · שלה/ו: {shortDate(s.theirShift.date)}{' '}
+                {formatTime(s.theirShift.plannedStart)}–{formatTime(s.theirShift.plannedEnd)}
               </p>
               {s.awaitingMe ? (
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => void respondSwap(s.id, true)} disabled={busy === s.id} className="rounded-lg bg-primary-600 px-3 py-1 font-semibold text-white hover:bg-primary-700 disabled:opacity-50">אישור</button>
-                  <button type="button" onClick={() => void respondSwap(s.id, false)} disabled={busy === s.id} className="rounded-lg border border-gray-300 px-3 py-1 font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">דחייה</button>
+                  <button
+                    type="button"
+                    onClick={() => void respondSwap(s.id, true)}
+                    disabled={busy === s.id}
+                    className="rounded-lg bg-primary-600 px-3 py-1 font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+                  >
+                    אישור
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void respondSwap(s.id, false)}
+                    disabled={busy === s.id}
+                    className="rounded-lg border border-gray-300 px-3 py-1 font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    דחייה
+                  </button>
                 </div>
               ) : s.direction === 'OUTGOING' ? (
-                <button type="button" onClick={() => void cancelSwap(s.id)} disabled={busy === s.id} className="rounded-lg border border-gray-300 px-3 py-1 font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">ביטול ההצעה</button>
+                <button
+                  type="button"
+                  onClick={() => void cancelSwap(s.id)}
+                  disabled={busy === s.id}
+                  className="rounded-lg border border-gray-300 px-3 py-1 font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  ביטול ההצעה
+                </button>
               ) : null}
             </div>
           ))}
@@ -305,8 +368,13 @@ export default function WorkerShiftsPage() {
             משמרות הדורשות החלפה
           </h2>
           {replacements.map((r) => (
-            <div key={r.requestId} className="relative overflow-hidden rounded-xl border border-gray-200 bg-white p-4 pr-5">
-              <span className={`absolute inset-y-0 right-0 w-1.5 ${jobTypeStripColor(r.jobType)}`} />
+            <div
+              key={r.requestId}
+              className="relative overflow-hidden rounded-xl border border-gray-200 bg-white p-4 pr-5"
+            >
+              <span
+                className={`absolute inset-y-0 right-0 w-1.5 ${jobTypeStripColor(r.jobType)}`}
+              />
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-bold text-gray-900">{jobTypeLabel(r.jobType)}</span>
                 <span className="text-xs font-medium text-gray-600">{shortDate(r.date)}</span>
@@ -353,8 +421,15 @@ export default function WorkerShiftsPage() {
   );
 }
 
-function AssignedNames({ workers, light }: { workers: BoardShift['assignedWorkers']; light?: boolean }) {
-  if (workers.length === 0) return <span className={light ? 'text-white/80' : 'text-gray-400'}>טרם שובצו עובדים</span>;
+function AssignedNames({
+  workers,
+  light,
+}: {
+  workers: BoardShift['assignedWorkers'];
+  light?: boolean;
+}) {
+  if (workers.length === 0)
+    return <span className={light ? 'text-white/80' : 'text-gray-400'}>טרם שובצו עובדים</span>;
   return (
     <span className="inline-flex flex-wrap gap-1.5">
       {workers.map((w, i) => (
@@ -375,8 +450,12 @@ function AssignedNames({ workers, light }: { workers: BoardShift['assignedWorker
 function CardHeader({ shift, light }: { shift: BoardShift; light?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <span className={`text-sm font-bold ${light ? 'text-white' : 'text-gray-900'}`}>{jobTypeLabel(shift.jobType)}</span>
-      <span className={`text-xs font-medium ${light ? 'text-white/90' : 'text-gray-600'}`}>{shortDate(shift.date)}</span>
+      <span className={`text-sm font-bold ${light ? 'text-white' : 'text-gray-900'}`}>
+        {jobTypeLabel(shift.jobType)}
+      </span>
+      <span className={`text-xs font-medium ${light ? 'text-white/90' : 'text-gray-600'}`}>
+        {shortDate(shift.date)}
+      </span>
     </div>
   );
 }
@@ -385,7 +464,9 @@ function CardMeta({ shift, light }: { shift: BoardShift; light?: boolean }) {
   const sub = light ? 'text-white/90' : 'text-gray-600';
   return (
     <>
-      <p className={`mt-1 text-sm font-semibold ${light ? 'text-white' : 'text-gray-900'}`}>{shift.customerName}</p>
+      <p className={`mt-1 text-sm font-semibold ${light ? 'text-white' : 'text-gray-900'}`}>
+        {shift.customerName}
+      </p>
       <p className={`mt-0.5 flex items-center gap-1 text-xs ${sub}`}>
         <Clock className="w-3.5 h-3.5" />
         {formatTime(shift.plannedStart)}–{formatTime(shift.plannedEnd)}
@@ -434,7 +515,9 @@ function ShiftCard({
     if (shift.blockedSameDay) {
       return (
         <div className="relative w-full overflow-hidden rounded-xl border border-gray-200 bg-gray-50 p-4 pr-5 text-right opacity-70">
-          <span className={`absolute inset-y-0 right-0 w-1.5 ${jobTypeStripColor(shift.jobType)}`} />
+          <span
+            className={`absolute inset-y-0 right-0 w-1.5 ${jobTypeStripColor(shift.jobType)}`}
+          />
           <CardHeader shift={shift} />
           <CardMeta shift={shift} />
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -443,7 +526,9 @@ function ShiftCard({
             </span>
             <AssignedNames workers={shift.assignedWorkers} />
           </div>
-          <p className="mt-2 text-[11px] font-semibold text-gray-500">כבר יש לך בקשה או שיבוץ בתאריך זה</p>
+          <p className="mt-2 text-[11px] font-semibold text-gray-500">
+            כבר יש לך בקשה או שיבוץ בתאריך זה
+          </p>
         </div>
       );
     }
@@ -473,7 +558,9 @@ function ShiftCard({
       <div className={`rounded-xl border-2 ${jobTypeBorderColor(shift.jobType)} bg-white p-4`}>
         <CardHeader shift={shift} />
         <CardMeta shift={shift} />
-        <p className="mt-2 text-xs font-medium text-amber-800">שובצת למשמרת זו – יש לאשר או לדחות.</p>
+        <p className="mt-2 text-xs font-medium text-amber-800">
+          שובצת למשמרת זו – יש לאשר או לדחות.
+        </p>
         <div className="mt-2 flex gap-2">
           <button
             type="button"
@@ -501,7 +588,9 @@ function ShiftCard({
   // 4) My confirmed shift: tinted card + full type border + swap/drop.
   if (shift.myStatus === 'APPROVED') {
     return (
-      <div className={`rounded-xl border-2 ${jobTypeBorderColor(shift.jobType)} ${jobTypeTintClasses(shift.jobType)} p-4`}>
+      <div
+        className={`rounded-xl border-2 ${jobTypeBorderColor(shift.jobType)} ${jobTypeTintClasses(shift.jobType)} p-4`}
+      >
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-bold text-gray-900">{jobTypeLabel(shift.jobType)}</span>
           <span className="inline-flex items-center rounded-full border border-primary-300 bg-primary-100 px-2 py-0.5 text-[11px] font-semibold text-primary-800">
@@ -536,7 +625,10 @@ function ShiftCard({
   return (
     <div className="relative block overflow-hidden rounded-xl border border-gray-200 bg-white p-4 pr-5">
       <span className={`absolute inset-y-0 right-0 w-1.5 ${jobTypeStripColor(shift.jobType)}`} />
-      <Link href={shift.myShiftId ? `/worker/shifts/${shift.myShiftId}` : '#'} className="block hover:opacity-90">
+      <Link
+        href={shift.myShiftId ? `/worker/shifts/${shift.myShiftId}` : '#'}
+        className="block hover:opacity-90"
+      >
         <CardHeader shift={shift} />
         <CardMeta shift={shift} />
       </Link>
@@ -570,16 +662,27 @@ function JoinModal({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-xl bg-white p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-xl bg-white p-5 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h2 className="text-base font-bold text-gray-900">בקשה להצטרף למשמרת</h2>
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-          <p className="font-semibold text-gray-900">{jobTypeLabel(shift.jobType)} · {shift.customerName}</p>
+          <p className="font-semibold text-gray-900">
+            {jobTypeLabel(shift.jobType)} · {shift.customerName}
+          </p>
           <p className="mt-0.5 text-xs text-gray-600">
-            {shortDate(shift.date)} · {formatTime(shift.plannedStart)}–{formatTime(shift.plannedEnd)}
+            {shortDate(shift.date)} · {formatTime(shift.plannedStart)}–
+            {formatTime(shift.plannedEnd)}
           </p>
         </div>
-        <p className="text-xs text-gray-500">הבקשה תישלח לאישור בעל/ת העסק. תקבלי הודעה כשהיא תאושר.</p>
+        <p className="text-xs text-gray-500">
+          הבקשה תישלח לאישור בעל/ת העסק. תקבלי הודעה כשהיא תאושר.
+        </p>
         <div className="flex gap-2">
           <button
             type="button"
