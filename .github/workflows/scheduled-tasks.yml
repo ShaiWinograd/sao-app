@@ -31,7 +31,8 @@ jobs:
           HTTP_CODE=$(curl -sS -o /tmp/scheduler-response.json -w '%{http_code}' \
             -X POST "${BASE}/api/v1/scheduler/run" \
             -H "x-scheduler-secret: ${SCHEDULER_SECRET}" \
-            -H 'Content-Type: application/json')
+            -H 'Content-Type: application/json' \
+            --data '{}')
           echo "HTTP ${HTTP_CODE}"
           cat /tmp/scheduler-response.json || true
           echo ""
