@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
-import { ArrowRight, CheckCircle2, RefreshCw, Send, UserCheck, XCircle, Repeat, AlertTriangle, ArrowUpCircle } from 'lucide-react';
+import { ArrowRight, CheckCircle2, UserCheck, XCircle, Repeat, AlertTriangle, ArrowUpCircle } from 'lucide-react';
 import { evaluateJobPublishReadiness, MANAGER_SKILL, deriveJobStatusBadge, formatAuditEvent, deriveJobStaffing, formatJobTime } from '@workforce/shared';
 import { api, authHeaders } from '../../lib/api';
 import { StatusBadge } from '../ui/StatusBadge';
@@ -850,7 +850,7 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
   }
   if (!job) {
     return (
-      <div className="p-6" dir="rtl">
+      <div className="px-5 py-4 sm:px-7 sm:py-6" dir="rtl">
         <p className="text-sm text-gray-500">{error ?? 'העבודה לא נמצאה'}</p>
         <Link href="/jobs" className="text-sm text-primary-600 mt-2 inline-block">חזרה ליומן העבודות</Link>
       </div>
@@ -886,28 +886,34 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
         </Link>
       )}
 
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+      <header className="mb-6 border-b border-[var(--color-border)] pb-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--color-calendar-sage)]">
+            {JOB_TYPE_LABELS[job.jobType]}
+          </p>
+          {jobBadge && <StatusBadge tone={jobBadge.tone} label={jobBadge.label} />}
+        </div>
+        <div className="mt-2 max-w-2xl">
+          <h1 className="text-2xl font-semibold leading-tight text-gray-900 sm:text-3xl">
             {JOB_TYPE_LABELS[job.jobType]} ·{' '}
             <Link href={`/customers?customerId=${job.customer.id}`} className="underline decoration-primary-300 underline-offset-4">
               {job.customer.firstName} {job.customer.lastName}
             </Link>
           </h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {formatDate(job.date)} · {formatTime(job.plannedStart)}–{formatTime(job.plannedEnd)} ·{' '}
+          <p className="mt-2 text-sm leading-6 text-gray-600">
+            {formatDate(job.date)} · {formatTime(job.plannedStart)}–{formatTime(job.plannedEnd)}
+          </p>
+          <p className="text-sm leading-6 text-gray-500">
             {job.address?.fullAddress ?? 'כתובת לא זמינה'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {jobBadge && <StatusBadge tone={jobBadge.tone} label={jobBadge.label} />}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           {job.customer.isSystem && job.status !== 'COMPLETED' && job.status !== 'ARCHIVED' && (
             <button
               onClick={() => setAssignCustomerOpen(true)}
               disabled={busy}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+              className="border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-4 py-2 text-sm font-medium text-gray-800 hover:bg-white disabled:opacity-50"
             >
-              <UserCheck className="w-4 h-4" />
               שייך ללקוח
             </button>
           )}
@@ -916,9 +922,8 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
               onClick={() => void approveJob()}
               disabled={busy || job.customer.isSystem}
               title={job.customer.isSystem ? 'יש לשייך ללקוח אמיתי לפני אישור' : ''}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+              className="bg-[var(--color-calendar-sage)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
             >
-              <CheckCircle2 className="w-4 h-4" />
               אישור העבודה
             </button>
           )}
@@ -926,7 +931,7 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
             <button
               onClick={() => void returnToReservation()}
               disabled={busy}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              className="border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-4 py-2 text-sm text-gray-700 hover:bg-white disabled:opacity-50"
             >
               החזרה לשריון
             </button>
@@ -936,21 +941,19 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
               onClick={() => void publish()}
               disabled={busy || !readiness?.ready}
               title={readiness?.ready ? '' : 'יש להשלים את תנאי המוכנות'}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+              className="bg-primary-700 px-4 py-2 text-sm font-medium text-white hover:bg-primary-800 disabled:opacity-50"
             >
-              <Send className="w-4 h-4" />
               שליחה שוב לעובדים
             </button>
           )}
           <button
             onClick={() => void load()}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+            className="px-2 py-2 text-xs font-medium text-gray-500 underline decoration-gray-300 underline-offset-4 hover:text-gray-800"
           >
-            <RefreshCw className="w-4 h-4" />
             רענון
           </button>
         </div>
-      </div>
+      </header>
 
       {error && (
         <div className="mb-4 rounded-lg bg-danger-bg border border-danger/30 text-danger text-sm px-4 py-3">{error}</div>
@@ -1003,7 +1006,7 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
       )}
 
       <div className="space-y-5">
-          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <section className="border-y border-[var(--color-border)] py-5">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-900">פרטי העבודה</h2>
               <button type="button" onClick={() => setScheduleEditing((value) => !value)} className="text-xs font-medium text-primary-700">
@@ -1085,16 +1088,17 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
             </dl>
           </section>
 
-          {/* Danger zone: archive (keeps records) or permanent delete (spec §15) */}
-          <section className="rounded-xl border border-rose-200 bg-rose-50/40 p-5">
-            <h2 className="text-sm font-semibold text-rose-900 mb-2">הסרת העבודה</h2>
-            <div className="flex flex-wrap items-end gap-2">
+          <details className="border-b border-[var(--color-border)] py-4 text-sm">
+            <summary className="cursor-pointer list-none font-medium text-gray-500 hover:text-rose-700">
+              ארכוב או מחיקת העבודה
+            </summary>
+            <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-rose-100 pt-4">
               <label className="text-sm">
                 <span className="block text-gray-600 mb-1">סיבה (אופציונלי)</span>
                 <select
                   value={deleteReason}
                   onChange={(e) => setDeleteReason(e.target.value)}
-                  className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm"
+                  className="border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2.5 py-1.5 text-sm"
                 >
                   <option value="">ללא סיבה</option>
                   <option value="הלקוח ביטל">הלקוח ביטל</option>
@@ -1109,7 +1113,7 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
                 <button
                   onClick={() => void archiveJob()}
                   disabled={busy}
-                  className="px-3 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className="border border-[var(--color-border-strong)] px-3 py-2 text-sm text-gray-700 hover:bg-white disabled:opacity-50"
                 >
                   העברה לארכיון
                 </button>
@@ -1119,13 +1123,13 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
                   if (typeof window !== 'undefined' && window.confirm('למחוק לצמיתות את העבודה? לא ניתן לשחזר.')) void deleteJob(deleteReason);
                 }}
                 disabled={busy}
-                className="px-3 py-2 text-sm rounded-lg bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50"
+                className="border border-rose-300 px-3 py-2 text-sm text-rose-700 hover:bg-rose-50 disabled:opacity-50"
               >
                 מחיקה לצמיתות
               </button>
             </div>
             <p className="mt-2 text-[11px] text-gray-500">מחיקה לצמיתות חסומה לעבודות עם נתוני נוכחות — ניתן להעביר לארכיון בלבד.</p>
-          </section>
+          </details>
       </div>
 
       {jobStaffing && (
