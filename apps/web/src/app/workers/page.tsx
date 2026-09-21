@@ -369,9 +369,9 @@ export default function WorkersPage() {
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{dataError}</div>
       )}
       <PageHeader
-        eyebrow="הצוות"
-        title="עובדים"
-        description="ניהול צוות העובדות, תפקידים ושכר שעתי."
+        eyebrow="THE PEOPLE WHO MAKE SPACE"
+        title="הצוות"
+        description="האנשים, התפקידים והפרטים שמחזיקים את העבודה יחד."
         icon={<Users className="h-6 w-6" />}
         action={
         <button
@@ -388,32 +388,32 @@ export default function WorkersPage() {
         }
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
+      <div className="grid grid-cols-3 divide-x divide-x-reverse divide-[var(--color-border)] border-y border-[var(--color-border)]">
+        <div className="px-4 py-5">
           <div className="flex items-center justify-between">
             <p className="text-xs text-gray-500">סה״כ עובדים</p>
             <Users className="w-4 h-4 text-gray-500" />
           </div>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{workers.length}</p>
+          <p className="font-display mt-1 text-3xl font-medium text-gray-900">{workers.length}</p>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="px-4 py-5">
           <div className="flex items-center justify-between">
             <p className="text-xs text-gray-500">ראשי צוות</p>
             <Briefcase className="w-4 h-4 text-gray-500" />
           </div>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{stats.teamLeads}</p>
+          <p className="font-display mt-1 text-3xl font-medium text-gray-900">{stats.teamLeads}</p>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="px-4 py-5">
           <div className="flex items-center justify-between">
             <p className="text-xs text-gray-500">שכר שעתי ממוצע</p>
             <Wallet className="w-4 h-4 text-gray-500" />
           </div>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{canEditWages ? `₪${stats.averageWage}` : 'מוסתר'}</p>
+          <p className="font-display mt-1 text-3xl font-medium text-gray-900">{canEditWages ? `₪${stats.averageWage}` : 'מוסתר'}</p>
           <p className="text-xs text-gray-500 mt-1">פעילות כרגע: {workers.length}</p>
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
+      <div className="border-b border-[var(--color-border)] pb-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="relative md:col-span-2">
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -437,28 +437,28 @@ export default function WorkersPage() {
       </div>
 
       <div className="flex items-center justify-between">
-        <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1">
+        <div className="flex gap-5 border-b border-[var(--color-border)]">
           <button
             type="button"
             onClick={() => setWorkersView('active')}
-            className={`px-3 py-1.5 text-xs rounded-md ${workersView === 'active' ? 'bg-primary-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}
+            className={`min-h-10 border-b-2 px-1 py-2 text-xs ${workersView === 'active' ? 'border-primary-700 text-primary-800' : 'border-transparent text-gray-700'}`}
           >
             עובדים פעילים ({workers.length})
           </button>
           <button
             type="button"
             onClick={() => setWorkersView('archive')}
-            className={`px-3 py-1.5 text-xs rounded-md ${workersView === 'archive' ? 'bg-primary-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}
+            className={`min-h-10 border-b-2 px-1 py-2 text-xs ${workersView === 'archive' ? 'border-primary-700 text-primary-800' : 'border-transparent text-gray-700'}`}
           >
             ארכיון עובדים ({archivedWorkers.length})
           </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface)]">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-right">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="border-b border-[var(--color-border)] bg-[var(--color-surface-muted)]">
               <tr>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-600">שם</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-600">תפקיד</th>

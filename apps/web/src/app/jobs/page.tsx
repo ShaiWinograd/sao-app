@@ -108,9 +108,9 @@ export default function JobsPage() {
   return (
     <div dir="rtl" className="space-y-6">
       <PageHeader
-        eyebrow="תכנון ותפעול"
-        title="יומן עבודות"
-        description="כל העבודות לפי תאריך וסוג, עם תמונת מצב ברורה של האיוש."
+        eyebrow="THE MONTH, BEAUTIFULLY ARRANGED"
+        title="העבודות שבדרך"
+        description="תכנון חודשי ברור של הלקוחות, הצוות וכל מה שדורש תשומת לב."
         icon={<CalendarDays className="h-6 w-6" />}
         action={
           <div className="flex items-center gap-2">
@@ -132,8 +132,8 @@ export default function JobsPage() {
         }
       />
 
-      <section className="overflow-hidden rounded-[24px] border border-[#e7e3dc] bg-white shadow-[0_2px_12px_rgba(38,38,38,0.04)]">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+      <section className="overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface)]">
+        <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-4">
           <button
             type="button"
             onClick={() => goMonth(1)}
@@ -142,7 +142,7 @@ export default function JobsPage() {
           >
             <ChevronRight className="w-4 h-4" />
           </button>
-          <h2 className="text-sm font-semibold text-gray-900">{monthLabel}</h2>
+          <h2 className="font-display text-2xl font-medium text-gray-900">{monthLabel}</h2>
           <button
             type="button"
             onClick={() => goMonth(-1)}
@@ -173,8 +173,8 @@ export default function JobsPage() {
                 ) : (
                   <div
                     key={cell.key}
-                    className={`min-h-[92px] rounded-lg border p-1.5 ${
-                      cell.key === todayKey ? 'border-primary-300 bg-primary-50/40' : 'border-gray-100'
+                    className={`min-h-[100px] border p-1.5 ${
+                      cell.key === todayKey ? 'border-primary-400 bg-primary-50/50' : 'border-[var(--color-border)]'
                     }`}
                   >
                     <div className="mb-1 text-[11px] font-medium text-gray-400">{cell.day}</div>
@@ -187,7 +187,7 @@ export default function JobsPage() {
                           <Link
                             key={job.id}
                             href={`/jobs/${job.id}`}
-                            className={`block rounded-md border px-1.5 py-1 text-[11px] leading-tight hover:brightness-95 ${type.cls}`}
+                            className={`block border-r-2 bg-transparent px-1.5 py-1 text-[11px] leading-tight hover:bg-white/70 ${type.cls}`}
                           >
                             <div className="flex items-center gap-1 font-medium">
                               <span className={`h-1.5 w-1.5 rounded-full ${type.dot}`} />
@@ -275,14 +275,14 @@ function OwnerShiftBoard({ jobs }: { jobs: ApiJob[] }) {
   }, [filtered]);
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+    <section className="border-y border-[var(--color-border)] py-5">
+      <div className="mb-5 flex max-w-full gap-5 overflow-x-auto border-b border-[var(--color-border)]">
         {BOARD_FILTERS.map((f) => (
           <button
             key={f.key}
             onClick={() => setFilter(f.key)}
-            className={`rounded-full px-3 py-1 text-xs font-medium ${
-              filter === f.key ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            className={`min-h-10 shrink-0 border-b-2 px-1 py-2 text-xs font-medium ${
+              filter === f.key ? 'border-primary-700 text-primary-800' : 'border-transparent text-gray-600'
             }`}
           >
             {f.label}
@@ -300,7 +300,7 @@ function OwnerShiftBoard({ jobs }: { jobs: ApiJob[] }) {
                 <h3 className="mb-2 text-xs font-semibold text-gray-500">
                   {BOARD_STATUS_LABELS[status]} · {groups[status].length}
                 </h3>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="divide-y divide-[var(--color-border)]">
                   {groups[status].map((job) => {
                     const open = Math.max(0, job.requiredWorkerCount - job.shifts.length);
                     const type = JOB_TYPE[job.jobType];
@@ -308,25 +308,27 @@ function OwnerShiftBoard({ jobs }: { jobs: ApiJob[] }) {
                       <Link
                         key={job.id}
                         href={`/jobs/${job.id}`}
-                        className={`rounded-lg border p-3 hover:brightness-95 ${type.cls}`}
+                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 px-2 py-4 hover:bg-primary-50/40"
                       >
-                        <div className="flex items-center justify-between gap-1.5 text-sm font-semibold">
-                          <span className="flex items-center gap-1.5">
+                        <div>
+                          <div className="flex items-center gap-1.5 text-sm font-semibold">
                             <span className={`h-2 w-2 rounded-full ${type.dot}`} />
                             {type.label}
-                          </span>
+                          </div>
+                          <div className="mt-1 text-sm text-gray-800">
+                            {job.customer.firstName} {job.customer.lastName}
+                          </div>
+                        </div>
+                        <div className="text-left">
+                          <div className="text-xs text-gray-500">
+                            {new Date(job.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'long' })} ·{' '}
+                            {formatTime(job.plannedStart)}
+                          </div>
                           {open > 0 && (
-                            <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                            <span className="mt-1 inline-block text-[10px] font-medium text-amber-700">
                               חסרים {open}
                             </span>
                           )}
-                        </div>
-                        <div className="mt-1 text-sm text-gray-800">
-                          {job.customer.firstName} {job.customer.lastName}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {new Date(job.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'long' })} ·{' '}
-                          {formatTime(job.plannedStart)}
                         </div>
                       </Link>
                     );
