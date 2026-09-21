@@ -976,18 +976,17 @@ export default function DashboardPage() {
           <button
             type="button"
             onClick={() => setQuickCreateDate(todayDateKey)}
-            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(78,105,92,0.2)] transition-colors hover:bg-primary-700 sm:w-auto"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 bg-[var(--color-calendar-sage)] px-5 py-2.5 text-sm font-medium text-[var(--color-background)] transition-colors hover:bg-primary-700 sm:w-auto"
           >
-            <Plus className="h-4 w-4" />
+            <span aria-hidden="true">＋</span>
             יצירת עבודה
           </button>
         }
       />
 
       {(priorityAttention.length > 0 || attentionItems.length > 0) && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2" data-testid="requires-attention">
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800">
-            <AlertTriangle className="h-3.5 w-3.5" />
+        <div className="flex flex-wrap items-center gap-3 border-y border-[var(--color-border)] py-3" data-testid="requires-attention">
+          <span className="text-xs font-semibold text-[var(--color-calendar-sand)]">
             דורש טיפול
           </span>
           {/* Priority-1 operational items (§7.4) — rendered first, expand to
@@ -998,19 +997,20 @@ export default function DashboardPage() {
                 type="button"
                 onClick={() => setOpenAttentionKey((prev) => (prev === group.key ? null : group.key))}
                 aria-expanded={openAttentionKey === group.key}
-                className="inline-flex items-center gap-1.5 rounded-full border border-rose-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-50"
+                className="inline-flex items-center gap-1.5 bg-[var(--color-calendar-sand-soft)] px-3 py-1.5 text-[11px] font-medium text-[var(--color-calendar-sand)] hover:bg-[var(--color-calendar-sand-border)]"
               >
                 {group.label}
-                <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold text-white">{group.jobs.length}</span>
+                <span aria-hidden="true">·</span>
+                <span>{group.jobs.length}</span>
               </button>
               {openAttentionKey === group.key && (
-                <div className="absolute right-0 z-30 mt-1 max-h-64 w-64 overflow-auto rounded-lg border border-rose-200 bg-white p-1 shadow-lg">
+                <div className="absolute right-0 z-30 mt-1 max-h-64 w-64 overflow-auto border border-[var(--color-border)] bg-[var(--color-surface)] p-1 shadow-lg">
                   {group.jobs.map((job) => (
                     <Link
                       key={job.jobId}
                       href={`/jobs/${job.jobId}`}
                       onClick={() => setOpenAttentionKey(null)}
-                      className="block rounded-md px-2.5 py-1.5 text-right text-[11px] text-gray-700 hover:bg-rose-50"
+                      className="block px-2.5 py-1.5 text-right text-[11px] text-gray-700 hover:bg-[var(--color-calendar-sand-soft)]"
                     >
                       <span className="font-medium text-gray-900">
                         {/* §22.1: render the job's service date in the business timezone. */}
@@ -1032,19 +1032,21 @@ export default function DashboardPage() {
                 key={item.key}
                 type="button"
                 onClick={() => setJoinPanelOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
+                className="inline-flex items-center gap-1.5 bg-[var(--color-calendar-sand-soft)] px-3 py-1.5 text-[11px] font-medium text-[var(--color-calendar-sand)] hover:bg-[var(--color-calendar-sand-border)]"
               >
                 {item.label}
-                <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">{item.count}</span>
+                <span aria-hidden="true">·</span>
+                <span>{item.count}</span>
               </button>
             ) : (
               <Link
                 key={item.key}
                 href={item.href}
-                className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
+                className="inline-flex items-center gap-1.5 bg-[var(--color-calendar-sand-soft)] px-3 py-1.5 text-[11px] font-medium text-[var(--color-calendar-sand)] hover:bg-[var(--color-calendar-sand-border)]"
               >
                 {item.label}
-                <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">{item.count}</span>
+                <span aria-hidden="true">·</span>
+                <span>{item.count}</span>
               </Link>
             ),
           )}
@@ -1428,14 +1430,11 @@ export default function DashboardPage() {
         open={quickCreateDate !== null}
         onClose={() => setQuickCreateDate(null)}
         title={
-          <span className="flex items-center gap-1.5">
-            <Plus className="h-4 w-4 text-primary-600" />
-            יצירת עבודה
-          </span>
+          <span>יצירת עבודה</span>
         }
-        widthClassName="sm:max-w-lg"
+        widthClassName="sm:max-w-xl"
       >
-        <div className="flex-1 p-5">
+        <div className="flex-1 px-6 py-4">
           <QuickCreateForm
             initialDate={quickCreateDate ?? undefined}
             onCreated={() => {

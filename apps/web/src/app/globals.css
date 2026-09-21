@@ -118,6 +118,12 @@ html {
   outline: none;
 }
 
+.quick-create-form input:not([type='checkbox']):not([type='radio']),
+.quick-create-form select,
+.quick-create-form textarea {
+  border-radius: 0;
+}
+
 .app-main button,
 .app-main a {
   -webkit-tap-highlight-color: transparent;
