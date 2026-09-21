@@ -116,7 +116,7 @@ export default function JobsPage() {
           <div className="flex items-center gap-2">
           <Link
             href="/shifts/swaps"
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#d8d3ca] bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-[var(--color-surface-muted)]"
           >
             <Repeat className="h-4 w-4" />
             החלפות משמרות
@@ -132,7 +132,7 @@ export default function JobsPage() {
         }
       />
 
-      <section className="overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface)]">
+      <section className="overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface-muted)]">
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-4">
           <button
             type="button"
@@ -187,7 +187,7 @@ export default function JobsPage() {
                           <Link
                             key={job.id}
                             href={`/jobs/${job.id}`}
-                            className={`block border-r-2 bg-transparent px-1.5 py-1 text-[11px] leading-tight hover:bg-white/70 ${type.cls}`}
+                            className={`block border-r-2 bg-transparent px-1.5 py-1 text-[11px] leading-tight hover:bg-[var(--color-surface)] ${type.cls}`}
                           >
                             <div className="flex items-center gap-1 font-medium">
                               <span className={`h-1.5 w-1.5 rounded-full ${type.dot}`} />

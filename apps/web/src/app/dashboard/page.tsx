@@ -1162,7 +1162,7 @@ export default function DashboardPage() {
                     const [year, month] = e.target.value.split('-').map(Number);
                     setAnchorDate(new Date(year, month - 1, 1));
                   }}
-                  className="h-8 rounded-lg border border-gray-300 bg-white px-2.5 text-[11px] font-semibold text-gray-700"
+                  className="h-8 rounded-lg border border-gray-300 bg-[var(--color-surface)] px-2.5 text-[11px] font-semibold text-gray-700"
                 >
                   {monthOptions.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -1187,7 +1187,7 @@ export default function DashboardPage() {
                 value={customFromDate}
                 onChange={(e) => setCustomFromDate(e.target.value)}
                 type="date"
-                className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-xs bg-white"
+                className="w-full rounded-md border border-gray-300 bg-[var(--color-surface)] px-2.5 py-1.5 text-xs"
               />
             </label>
             <label className="text-xs text-gray-700 space-y-1">
@@ -1196,7 +1196,7 @@ export default function DashboardPage() {
                 value={customToDate}
                 onChange={(e) => setCustomToDate(e.target.value)}
                 type="date"
-                className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-xs bg-white"
+                className="w-full rounded-md border border-gray-300 bg-[var(--color-surface)] px-2.5 py-1.5 text-xs"
               />
             </label>
           </div>
@@ -1205,7 +1205,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="flex flex-col gap-2.5 lg:h-[calc(100vh-180px)] lg:min-h-[620px] min-h-0">
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden flex-1 min-h-[430px] flex flex-col">
+        <div className="flex min-h-[430px] flex-1 flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]">
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
               <h2 className="font-semibold text-gray-900">
                 תצוגת משמרות {selectedRangeContextLabel} ({displayedWorks.length})
@@ -1318,7 +1318,7 @@ export default function DashboardPage() {
                     return (
                       <div
                         key={`${worker.id}-${dateKey}`}
-                        className={`min-h-[70px] border-l border-gray-100 p-1.5 ${isNonWorkingDay ? (isToday ? 'bg-emerald-100' : 'bg-gray-100') : isToday ? 'bg-emerald-50/50' : 'bg-white'}`}
+                        className={`min-h-[70px] border-l border-gray-100 p-1.5 ${isNonWorkingDay ? (isToday ? 'bg-emerald-100' : 'bg-gray-100') : isToday ? 'bg-emerald-50/50' : 'bg-[var(--color-surface-muted)]'}`}
                       >
                         {isNonWorkingDay ? (
                           <p className="mt-5 text-center text-[11px] text-gray-500">{nonWorkingLabel}</p>
@@ -1384,7 +1384,7 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
-        <div className="bg-white rounded-lg border border-gray-200 shrink-0">
+        <div className="shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]">
           <div className="px-3 py-2.5 border-y border-gray-100">
             <h3 className="font-semibold text-gray-900 text-sm">סיכום שיבוץ לעבודות {selectedRangeContextLabel}</h3>
             <p className="text-xs text-gray-500 mt-1 mb-2">מבוסס על העבודות שמוצגות מעל</p>

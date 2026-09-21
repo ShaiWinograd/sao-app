@@ -69,7 +69,7 @@ export default function CustomerReportsHubPage() {
                   <li key={c.caseId}>
                     <Link
                       href={`/cases/${c.caseId}/customer-report`}
-                      className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 hover:border-primary-300"
+                      className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-3 hover:border-primary-300"
                     >
                       <span className="font-medium text-gray-900">{c.customerName || 'לקוח'}</span>
                       <span className="text-xs text-gray-500">{c.jobCount} עבודות · עד {c.latestJobDate ?? '—'}</span>
@@ -92,7 +92,7 @@ export default function CustomerReportsHubPage() {
                   <li key={c.caseId}>
                     <Link
                       href={`/cases/${c.caseId}/customer-report`}
-                      className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 hover:border-primary-300"
+                      className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-3 hover:border-primary-300"
                     >
                       <span className="font-medium text-gray-900">{c.customerName || 'לקוח'}</span>
                       <span className="text-xs text-gray-500">גרסה {c.latestVersion} · {money(c.finalAmount)}</span>
