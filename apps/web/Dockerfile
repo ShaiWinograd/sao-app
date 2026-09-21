@@ -23,8 +23,6 @@ ARG NEXT_PUBLIC_API_URL=https://spaceorder-api-app-poc-h7hef6a2gtd5euhq.israelce
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_APP_URL=https://spaceorder-web-app-poc2.azurewebsites.net
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
-ARG NEXT_PUBLIC_AZURE_MAPS_KEY=
-ENV NEXT_PUBLIC_AZURE_MAPS_KEY=$NEXT_PUBLIC_AZURE_MAPS_KEY
 
 RUN npm run build --workspace @workforce/shared
 RUN npm run build --workspace @workforce/web

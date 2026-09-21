@@ -98,5 +98,14 @@ test.describe('Worker desktop layout', () => {
     await expect(page.getByText('משפחת לוי').first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'השבוע הבא' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'היומן שלי' })).toHaveClass(/border-primary-700/);
+
+    const mainBounds = await page.locator('main').boundingBox();
+    const calendarBounds = await page.getByTestId('worker-week-calendar').boundingBox();
+    const leftGap = (calendarBounds?.x ?? 0) - (mainBounds?.x ?? 0);
+    const rightGap =
+      (mainBounds?.x ?? 0) + (mainBounds?.width ?? 0) -
+      ((calendarBounds?.x ?? 0) + (calendarBounds?.width ?? 0));
+    expect(Math.abs(leftGap - rightGap)).toBeLessThan(4);
+    await expect(page.locator('aside nav svg')).toHaveCount(0);
   });
 });

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Contact, Mail, MessageCircle, Plus, Search } from 'lucide-react';
 import Link from 'next/link';
-import type { AddressSelection } from '../../components/forms/AzureMapsAddressInput';
+import AzureMapsAddressInput from '../../components/forms/AzureMapsAddressInput';
 import { SidePanel } from '../../components/ui/SidePanel';
 import { api } from '../../lib/api';
 import { StatusBadge } from '../../components/ui/StatusBadge';
@@ -16,7 +16,7 @@ type CustomerAddress = {
   fullAddress: string;
   floor?: string;
   apartment?: string;
-  location?: AddressSelection;
+  location?: { latitude: number; longitude: number };
 };
 
 type Customer = {
@@ -700,14 +700,14 @@ export default function CustomersPage() {
                         <option value="אחר">אחר</option>
                       </select>
                       <div className="sm:col-span-2">
-                        <input
+                        <AzureMapsAddressInput
                           value={cardAddressInput}
-                          onChange={(e) => setCardAddressInput(e.target.value)}
+                          onChange={setCardAddressInput}
                           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right"
                           placeholder={isCreatingNew ? 'עיר או כתובת מלאה' : 'הוספת כתובת חדשה (אופציונלי)'}
                         />
-                        <span className="mt-1 block text-[11px] text-amber-700">
-                          חיפוש/אימות כתובת אינו פעיל עדיין — ניטור מיקום לא זמין עד שהכתובת תעודכן (גיאוקוד).
+                        <span className="mt-1 block text-[11px] text-gray-500">
+                          הכתובת תאומת בעת השמירה; ניטור מיקום יופעל רק לכתובת בית מדויקת.
                         </span>
                       </div>
                       <input

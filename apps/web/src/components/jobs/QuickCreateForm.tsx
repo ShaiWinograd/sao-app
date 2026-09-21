@@ -5,6 +5,7 @@ import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { Loader2, Plus, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { api, authHeaders } from '../../lib/api';
+import AzureMapsAddressInput, { type AddressSelection } from '../forms/AzureMapsAddressInput';
 
 function makeIdemKey(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
@@ -58,6 +59,8 @@ export function QuickCreateForm({
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('14:00');
   const [cityOrAddress, setCityOrAddress] = useState('');
+  const [addressSelection, setAddressSelection] = useState<AddressSelection | null>(null);
+  const [manualAddressConfirmed, setManualAddressConfirmed] = useState(false);
   const [workerCount, setWorkerCount] = useState('2');
   const [requiresTeamLeader, setRequiresTeamLeader] = useState(true);
   const [initialStatus, setInitialStatus] = useState<'RESERVATION' | 'APPROVED'>('RESERVATION');
@@ -122,6 +125,10 @@ export function QuickCreateForm({
       setError('יש להזין עיר או כתובת.');
       return;
     }
+    if (!addressSelection && !manualAddressConfirmed) {
+      setError('יש לבחור כתובת מדויקת מהרשימה או לאשר שמירה ידנית ללא ניטור מיקום.');
+      return;
+    }
     setBusy(true);
     try {
       const auth = await authHeaders(getToken);
@@ -143,7 +150,9 @@ export function QuickCreateForm({
         date,
         startTime,
         endTime,
-        cityOrAddress: cityOrAddress.trim(),
+        address: addressSelection
+          ? { mode: 'selected' as const, token: addressSelection.token }
+          : { mode: 'manual' as const, text: cityOrAddress.trim(), confirmedUnresolved: true as const },
         requiredWorkerCount: Math.max(1, Number(workerCount) || 1),
         requiresTeamLeader,
         initialStatus,
@@ -167,7 +176,7 @@ export function QuickCreateForm({
     } finally {
       setBusy(false);
     }
-  }, [generalReservation, selectedCustomerId, custFirst, custLast, custPhone, custEmail, jobType, date, startTime, endTime, cityOrAddress, workerCount, requiresTeamLeader, initialStatus, notes, getToken, onCreated]);
+  }, [generalReservation, selectedCustomerId, custFirst, custLast, custPhone, custEmail, jobType, date, startTime, endTime, cityOrAddress, addressSelection, manualAddressConfirmed, workerCount, requiresTeamLeader, initialStatus, notes, getToken, onCreated]);
 
   return (
     <div className="space-y-5" dir="rtl">
@@ -268,9 +277,36 @@ export function QuickCreateForm({
           <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
         </label>
         <label className="text-sm sm:col-span-2">
-          <span className="block text-gray-600 mb-1">עיר או כתובת</span>
-          <input value={cityOrAddress} onChange={(e) => setCityOrAddress(e.target.value)} placeholder="לדוגמה: תל אביב, או הרצל 10 תל אביב" className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
-          <span className="mt-1 block text-[11px] text-amber-700">חיפוש/אימות כתובת אינו פעיל עדיין — ניטור מיקום לא זמין עד שהכתובת תעודכן (גיאוקוד).</span>
+          <span className="mb-1 block text-gray-600">כתובת מלאה</span>
+          <AzureMapsAddressInput
+            value={cityOrAddress}
+            onChange={(value) => {
+              setCityOrAddress(value);
+              setAddressSelection(null);
+              setManualAddressConfirmed(false);
+            }}
+            onSelectionChange={(selection) => {
+              setAddressSelection(selection);
+              if (selection) setManualAddressConfirmed(false);
+            }}
+            placeholder="רחוב, מספר ועיר"
+            className="w-full rounded-lg border border-gray-300 px-2.5 py-2"
+          />
+          {addressSelection ? (
+            <span className="mt-1 flex items-center gap-1 text-[11px] text-emerald-700">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              הכתובת אומתה ותאפשר ניטור מיקום במשמרת.
+            </span>
+          ) : cityOrAddress.trim() ? (
+            <label className="mt-2 flex items-start gap-2 text-[11px] text-amber-800">
+              <input
+                type="checkbox"
+                checked={manualAddressConfirmed}
+                onChange={(event) => setManualAddressConfirmed(event.target.checked)}
+              />
+              <span>לא מצאתי כתובת מדויקת. שמירה ידנית תשבית ניטור מיקום לעבודה זו עד לאימות הכתובת.</span>
+            </label>
+          ) : null}
         </label>
         <label className="text-sm">
           <span className="block text-gray-600 mb-1">מספר עובדים</span>

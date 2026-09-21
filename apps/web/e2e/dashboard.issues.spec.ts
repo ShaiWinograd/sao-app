@@ -121,13 +121,58 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await expect(page.getByRole('button', { name: 'פתיחת תפריט' })).toBeHidden();
     const sidebarBounds = await page.locator('aside').first().boundingBox();
     const mainBounds = await page.locator('main').boundingBox();
-    expect(sidebarBounds?.width).toBe(240);
+    expect(sidebarBounds?.width).toBe(220);
     expect(mainBounds?.width).toBeGreaterThanOrEqual(1190);
     const brand = page.getByRole('link', { name: 'מעבר ללוח הבקרה' });
-    await expect(brand.getByText('SPACE & ORDER')).toBeVisible();
     await expect(brand).not.toContainText('ניהול עסק');
     const logoBounds = await brand.locator('img').boundingBox();
-    expect(logoBounds?.width).toBeGreaterThanOrEqual(76);
-    await expect(page.getByRole('heading', { name: 'לוח בקרה' })).toBeVisible();
+    expect(logoBounds?.width).toBeGreaterThanOrEqual(92);
+    await expect(page.getByRole('heading', { name: 'היום בעסק' })).toBeVisible();
+  });
+
+  test('creates a job with the server-signed geocoded address selection', async ({ page }) => {
+    const submitted: { payload?: { address?: unknown; cityOrAddress?: unknown } } = {};
+    await page.route('**/api/v1/geocode/suggest', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          available: true,
+          candidates: [
+            {
+              token: 'signed-address-token',
+              displayAddress: 'הרצל 10, תל אביב',
+              city: 'תל אביב',
+              precision: 'HOUSE',
+              exact: true,
+            },
+          ],
+        }),
+      });
+    });
+    await page.route('**/api/v1/jobs/quick', async (route) => {
+      submitted.payload = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          job: { id: 'job-geocoded' },
+          capacityWarning: false,
+          availableWorkers: 3,
+        }),
+      });
+    });
+
+    await page.goto('/jobs/new');
+    await page.getByPlaceholder('שם פרטי').fill('יעל');
+    await page.getByPlaceholder('טלפון').fill('0501111111');
+    await page.getByPlaceholder('רחוב, מספר ועיר').fill('הרצל 10 תל אביב');
+    await page.getByRole('button', { name: /הרצל 10, תל אביב/ }).click();
+
+    await expect(page.getByText('הכתובת אומתה ותאפשר ניטור מיקום במשמרת.')).toBeVisible();
+    await page.getByRole('button', { name: 'יצירת העבודה' }).click();
+    await expect.poll(() => submitted.payload).toBeDefined();
+    expect(submitted.payload?.address).toEqual({ mode: 'selected', token: 'signed-address-token' });
+    expect(submitted.payload).not.toHaveProperty('cityOrAddress');
   });
 });

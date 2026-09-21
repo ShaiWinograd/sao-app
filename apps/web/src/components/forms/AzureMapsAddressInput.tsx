@@ -1,22 +1,30 @@
 'use client';
 
+import { useAuth } from '@clerk/nextjs';
+import { CheckCircle2, MapPin } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { api, authHeaders } from '../../lib/api';
 
 export type AddressSelection = {
+  token: string;
   displayAddress: string;
-  formattedAddress: string;
-  latitude: number;
-  longitude: number;
-  providerPlaceId: string;
-  validationStatus: 'Confirmed';
+  city: string | null;
+  precision: string;
+  exact: true;
 };
 
 type AzureMapsSuggestion = {
-  id: string;
+  token: string;
   displayAddress: string;
-  formattedAddress: string;
-  latitude: number;
-  longitude: number;
+  city: string | null;
+  precision: string;
+  exact: boolean;
+};
+
+type GeocodeSuggestResponse = {
+  available: boolean;
+  candidates: AzureMapsSuggestion[];
+  reason?: string;
 };
 
 type AzureMapsAddressInputProps = {
@@ -34,21 +42,20 @@ export default function AzureMapsAddressInput({
   placeholder,
   className,
 }: AzureMapsAddressInputProps) {
+  const { getToken } = useAuth();
   const [suggestions, setSuggestions] = useState<AzureMapsSuggestion[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [serviceState, setServiceState] = useState<'ready' | 'unavailable' | 'error'>('ready');
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [selectedDisplay, setSelectedDisplay] = useState<string | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
-
-  const apiKey = process.env.NEXT_PUBLIC_AZURE_MAPS_KEY;
-  const baseUrl = (process.env.NEXT_PUBLIC_AZURE_MAPS_BASE_URL ?? 'https://atlas.microsoft.com').replace(/\/+$/, '');
-  const canSearch = Boolean(apiKey && value.trim().length >= 3);
+  const canSearch = value.trim().length >= 3 && value !== selectedDisplay;
 
   useEffect(() => {
     const handler = (event: MouseEvent) => {
-      if (!wrapperRef.current?.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
+      if (!wrapperRef.current?.contains(event.target as Node)) setIsOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -59,79 +66,73 @@ export default function AzureMapsAddressInput({
       setSuggestions([]);
       setIsOpen(false);
       setIsLoading(false);
+      setHasSearched(false);
+      setServiceState('ready');
       return;
     }
 
     const controller = new AbortController();
     const timeout = window.setTimeout(async () => {
       setIsLoading(true);
+      setHasSearched(false);
       try {
-        const url = new URL(`${baseUrl}/search/address/json`);
-        url.searchParams.set('api-version', '1.0');
-        url.searchParams.set('subscription-key', apiKey ?? '');
-        url.searchParams.set('language', 'he-IL');
-        url.searchParams.set('countrySet', 'IL');
-        url.searchParams.set('limit', '6');
-        url.searchParams.set('typeahead', 'true');
-        url.searchParams.set('query', value.trim());
-
-        const response = await fetch(url.toString(), { signal: controller.signal });
-        if (!response.ok) {
-          throw new Error('Azure Maps search failed');
+        const auth = await authHeaders(getToken);
+        const response = await api.post<GeocodeSuggestResponse>(
+          '/geocode/suggest',
+          { q: value.trim() },
+          { ...auth, signal: controller.signal },
+        );
+        if (!response.data.available) {
+          setSuggestions([]);
+          setIsOpen(false);
+          setServiceState('unavailable');
+          return;
         }
-        const payload = await response.json();
-        const nextSuggestions: AzureMapsSuggestion[] = Array.isArray(payload?.results)
-          ? payload.results
-              .filter((item: any) => item?.address?.freeformAddress && item?.position)
-              .map((item: any) => ({
-                id: String(item.id ?? item.position?.lat ?? Math.random()),
-                displayAddress: String(item.address.freeformAddress),
-                formattedAddress: String(item.address.freeformAddress),
-                latitude: Number(item.position.lat),
-                longitude: Number(item.position.lon),
-              }))
-          : [];
 
-        setSuggestions(nextSuggestions);
+        setSuggestions(response.data.candidates);
         setActiveIndex(-1);
-        setIsOpen(nextSuggestions.length > 0);
+        setIsOpen(response.data.candidates.length > 0);
+        setServiceState('ready');
       } catch {
         if (!controller.signal.aborted) {
           setSuggestions([]);
           setIsOpen(false);
+          setServiceState('error');
         }
       } finally {
         if (!controller.signal.aborted) {
           setIsLoading(false);
+          setHasSearched(true);
         }
       }
-    }, 250);
+    }, 300);
 
     return () => {
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [apiKey, canSearch, value]);
+  }, [canSearch, getToken, value]);
 
   const statusText = useMemo(() => {
-    if (!apiKey) {
-      return 'כדי לאפשר חיפוש כתובות, הגדירי NEXT_PUBLIC_AZURE_MAPS_KEY.';
-    }
-    if (isLoading) return 'מחפש כתובות...';
+    if (isLoading) return 'מחפש כתובות מאומתות...';
     if (value.trim().length > 0 && value.trim().length < 3) return 'הקלידי לפחות 3 תווים לחיפוש.';
+    if (serviceState === 'unavailable') return 'חיפוש הכתובות אינו מוגדר כרגע. אפשר לאשר שמירה ידנית ללא ניטור מיקום.';
+    if (serviceState === 'error') return 'לא ניתן לחפש כתובות כרגע. נסי שוב או אשרי שמירה ידנית.';
+    if (hasSearched && suggestions.length === 0) return 'לא נמצאה כתובת מתאימה. נסי להוסיף רחוב, מספר ועיר.';
     return '';
-  }, [apiKey, isLoading, value]);
+  }, [hasSearched, isLoading, serviceState, suggestions.length, value]);
 
   const selectSuggestion = (suggestion: AzureMapsSuggestion) => {
+    if (!suggestion.exact) return;
     onChange(suggestion.displayAddress);
     onSelectionChange?.({
+      token: suggestion.token,
       displayAddress: suggestion.displayAddress,
-      formattedAddress: suggestion.formattedAddress,
-      latitude: suggestion.latitude,
-      longitude: suggestion.longitude,
-      providerPlaceId: suggestion.id,
-      validationStatus: 'Confirmed',
+      city: suggestion.city,
+      precision: suggestion.precision,
+      exact: true,
     });
+    setSelectedDisplay(suggestion.displayAddress);
     setSuggestions([]);
     setIsOpen(false);
     setActiveIndex(-1);
@@ -141,26 +142,27 @@ export default function AzureMapsAddressInput({
     <div ref={wrapperRef} className="relative">
       <input
         value={value}
-        onChange={(e) => {
-          onChange(e.target.value);
+        onChange={(event) => {
+          onChange(event.target.value);
           onSelectionChange?.(null);
+          setSelectedDisplay(null);
           setActiveIndex(-1);
         }}
         onFocus={() => {
           if (suggestions.length > 0) setIsOpen(true);
         }}
-        onKeyDown={(e) => {
+        onKeyDown={(event) => {
           if (!isOpen || suggestions.length === 0) return;
-          if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            setActiveIndex((prev) => (prev + 1) % suggestions.length);
-          } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            setActiveIndex((prev) => (prev <= 0 ? suggestions.length - 1 : prev - 1));
-          } else if (e.key === 'Enter' && activeIndex >= 0) {
-            e.preventDefault();
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            setActiveIndex((previous) => (previous + 1) % suggestions.length);
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            setActiveIndex((previous) => (previous <= 0 ? suggestions.length - 1 : previous - 1));
+          } else if (event.key === 'Enter' && activeIndex >= 0) {
+            event.preventDefault();
             selectSuggestion(suggestions[activeIndex]);
-          } else if (e.key === 'Escape') {
+          } else if (event.key === 'Escape') {
             setIsOpen(false);
           }
         }}
@@ -169,17 +171,22 @@ export default function AzureMapsAddressInput({
         autoComplete="off"
       />
       {isOpen && suggestions.length > 0 && (
-        <div className="absolute z-30 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden">
+        <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg">
           {suggestions.map((suggestion, index) => (
             <button
-              key={suggestion.id}
+              key={suggestion.token}
               type="button"
               onClick={() => selectSuggestion(suggestion)}
-              className={`w-full px-3 py-2 text-right text-sm border-b last:border-b-0 ${
-                index === activeIndex ? 'bg-primary-50 text-primary-900' : 'hover:bg-gray-50 text-gray-800'
-              }`}
+              disabled={!suggestion.exact}
+              className={`flex w-full items-center justify-between gap-3 border-b border-[var(--color-border)] px-3 py-2.5 text-right text-sm last:border-b-0 ${
+                index === activeIndex ? 'bg-primary-50 text-primary-900' : 'text-gray-800 hover:bg-primary-50/50'
+              } disabled:cursor-not-allowed disabled:text-gray-400`}
             >
-              {suggestion.displayAddress}
+              <span>
+                <span className="block">{suggestion.displayAddress}</span>
+                {!suggestion.exact && <span className="mt-0.5 block text-[11px]">נדרשים רחוב, מספר ועיר מדויקים</span>}
+              </span>
+              {suggestion.exact ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> : <MapPin className="h-4 w-4 shrink-0" />}
             </button>
           ))}
         </div>

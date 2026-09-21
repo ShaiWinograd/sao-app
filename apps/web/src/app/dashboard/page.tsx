@@ -7,7 +7,6 @@ import { useUser, useAuth } from '@clerk/nextjs';
 import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone, workerRowBadge, fillsRequiredSlot, workerRowAssignments, getStaffingIssueBreakdown, formatBusinessDate } from '@workforce/shared';
 import { AlertTriangle, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Info, Plus, XCircle } from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
-import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
 import { QuickCreateForm } from '../../components/jobs/QuickCreateForm';
 import { JoinRequestsPanel } from '../../components/owner/JoinRequestsPanel';
 import { SidePanel } from '../../components/ui/SidePanel';
@@ -389,7 +388,6 @@ export default function DashboardPage() {
   const [selectedAddress, setSelectedAddress] = useState('');
   const [existingAddressQuery, setExistingAddressQuery] = useState('');
   const [newAddress, setNewAddress] = useState('');
-  const [newAddressSelection, setNewAddressSelection] = useState<AddressSelection | null>(null);
   const [addressFloor, setAddressFloor] = useState('');
   const [addressApartment, setAddressApartment] = useState('');
   const [jobType, setJobType] = useState<JobType>('אריזה');
