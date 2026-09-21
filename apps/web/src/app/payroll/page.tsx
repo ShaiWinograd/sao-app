@@ -5,6 +5,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { ChevronRight, ChevronLeft, Loader2, Send, FileText, Download } from 'lucide-react';
 import { api, authHeaders } from '../../lib/api';
+import { PageHeader } from '../../components/ui/PageHeader';
 
 const MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
 
@@ -246,10 +247,14 @@ function OwnerWorkerReportsInner() {
   const selectedWorker = rows.find((r) => r.id === selected) ?? null;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-4">
-      <header className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-900">דוחות חודשיים לעובדות</h1>
-        <div className="flex items-center gap-2">
+    <div className="mx-auto max-w-6xl space-y-6">
+      <PageHeader
+        eyebrow="MONTHLY TEAM RECORD"
+        title="דוחות חודשיים לצוות"
+        description="שעות, תשלומים וגרסאות מאושרות — מסודרים לפי עובדת וחודש."
+        icon={<FileText className="h-6 w-6" />}
+        action={
+          <div className="flex items-center gap-2">
           <button onClick={() => shiftMonth(-1)} className="rounded-lg border border-gray-200 p-1.5 hover:bg-gray-50" aria-label="חודש קודם">
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -259,13 +264,14 @@ function OwnerWorkerReportsInner() {
           <button onClick={() => shiftMonth(1)} className="rounded-lg border border-gray-200 p-1.5 hover:bg-gray-50" aria-label="חודש הבא">
             <ChevronLeft className="h-4 w-4" />
           </button>
-        </div>
-      </header>
+          </div>
+        }
+      />
 
       {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
+        <section className="border-y border-[var(--color-border)] bg-[var(--color-surface)] p-3">
           {loading ? (
             <div className="flex items-center justify-center py-10 text-gray-400">
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -302,7 +308,7 @@ function OwnerWorkerReportsInner() {
           )}
         </section>
 
-        <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <section className="border-y border-[var(--color-border)] bg-[var(--color-surface)] p-4">
           {!selected ? (
             <p className="flex items-center gap-2 py-10 text-sm text-gray-400">
               <FileText className="h-4 w-4" /> בחרי עובדת כדי לצפות בדוח ולפרסם
