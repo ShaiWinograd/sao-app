@@ -260,9 +260,15 @@ export const FormSubmissionSchema = z.object({
 
 // ─── Worker ───────────────────────────────────────────────────────────────────
 
+const HebrewNamePartSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .regex(/^(?=.*[\u0590-\u05FF])[\u0590-\u05FF\s'"׳״-]+$/u, 'Worker names must be written in Hebrew');
+
 export const WorkerProfileSchema = z.object({
-  firstName: z.string().min(1),
-  lastName: z.string().optional().default(''),
+  firstName: HebrewNamePartSchema,
+  lastName: HebrewNamePartSchema,
   phone: z.string().min(9),
   email: z.string().email(),
   hourlyWage: z.number().min(0),

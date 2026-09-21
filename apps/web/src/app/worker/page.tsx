@@ -6,6 +6,7 @@ import { useAuth } from '@clerk/nextjs';
 import { api, authHeaders } from '../../lib/api';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { PageHeader } from '../../components/ui/PageHeader';
+import { InlineAddressMap } from '../../components/maps/InlineAddressMap';
 import {
   jobTypeLabel,
   jobTypeBorderColor,
@@ -317,18 +318,22 @@ export default function WorkerShiftsPage() {
       </div>
 
       {tab === 'mine' && nextMyShift && (
-        <section className="grid gap-5 border-t-2 border-primary-700 bg-primary-100/70 p-5 sm:grid-cols-[minmax(0,1fr)_8rem] sm:p-7">
+        <section className="grid gap-4 border-t-2 border-primary-700 bg-primary-100/70 p-4 sm:grid-cols-[minmax(0,1fr)_6rem] sm:p-5">
           <div>
             <p className="text-[11px] font-semibold tracking-[0.12em] text-primary-700">המשמרת הבאה</p>
-            <h2 className="font-display mt-2 text-2xl font-medium leading-tight text-[#292724] sm:text-3xl">
+            <h2 className="font-display mt-1 text-2xl font-medium leading-tight text-[#292724]">
               {jobTypeLabel(nextMyShift.jobType)}
             </h2>
-            <p className="mt-2 text-sm font-semibold text-[#292724]">{nextMyShift.customerName}</p>
+            <p className="mt-1 text-sm font-semibold text-[#292724]">{nextMyShift.customerName}</p>
             <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-              {nextMyShift.address ? `${nextMyShift.address} · ` : ''}
               <bdi>{formatScheduledTime(nextMyShift.plannedStart)}–{formatScheduledTime(nextMyShift.plannedEnd)}</bdi>
             </p>
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+            {nextMyShift.address && <InlineAddressMap address={nextMyShift.address} compact />}
+            <div className="mt-3 border-t border-primary-200 pt-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">הצוות במשמרת</p>
+              <div className="mt-1"><AssignedNames workers={nextMyShift.assignedWorkers} /></div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
               <span className="text-xs font-semibold text-[#53644b]">● השיבוץ שלך מאושר</span>
               {nextMyShift.myShiftId && (
                 <Link
@@ -340,8 +345,8 @@ export default function WorkerShiftsPage() {
               )}
             </div>
           </div>
-          <div className="hidden border-r border-[var(--color-border-strong)] pr-5 text-center sm:block">
-            <span className="font-display block text-6xl leading-none text-primary-700">
+          <div className="hidden border-r border-[var(--color-border-strong)] pr-4 text-center sm:block">
+            <span className="font-display block text-4xl leading-none text-primary-700">
               {new Date(nextMyShift.date).getDate()}
             </span>
             <span className="mt-2 block text-xs text-[var(--color-text-secondary)]">

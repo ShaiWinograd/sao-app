@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Briefcase, Check, Mail, MessageCircle, Plus, Search, Users, Wallet } from 'lucide-react';
 import { canViewSensitiveFinancials } from '../../lib/viewer-access';
 import { useViewerRole } from '../../lib/use-viewer-role';
 import { api } from '../../lib/api';
@@ -12,6 +11,8 @@ type WorkerRole = 'ראש צוות' | 'עובדת';
 
 type Worker = {
   id: string;
+  firstName: string;
+  lastName: string;
   name: string;
   role: WorkerRole;
   hourlyWage: number;
@@ -57,6 +58,8 @@ function mapRoleToSkills(role: WorkerRole, existingSkills: string[]): string[] {
 function mapApiWorker(worker: ApiWorker): Worker {
   return {
     id: worker.id,
+    firstName: worker.firstName,
+    lastName: worker.lastName,
     name: `${worker.firstName} ${worker.lastName}`.trim(),
     role: mapSkillsToRole(worker.skills),
     hourlyWage: Number(worker.hourlyWage ?? 0),
@@ -82,6 +85,10 @@ function isValidIsraeliPhone(value: string) {
 
 function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function isHebrewNamePart(value: string) {
+  return /^(?=.*[\u0590-\u05FF])[\u0590-\u05FF\s'"׳״-]+$/u.test(value.trim());
 }
 
 function firstDayOfNextMonthDateKey() {
@@ -122,6 +129,8 @@ export default function WorkersPage() {
   const [message, setMessage] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingWorkerId, setEditingWorkerId] = useState<string | null>(null);
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
   const [editRole, setEditRole] = useState<WorkerRole>('עובדת');
   const [editHourlyWage, setEditHourlyWage] = useState(60);
   const [editVatIncluded, setEditVatIncluded] = useState(false);
@@ -180,8 +189,9 @@ export default function WorkersPage() {
 
   const addWorkerAndSendInvite = async () => {
     const firstName = newName.trim();
-    if (!firstName) {
-      setMessage('יש להזין שם פרטי.');
+    const lastName = newLastName.trim();
+    if (!isHebrewNamePart(firstName) || !isHebrewNamePart(lastName)) {
+      setMessage('יש להזין שם פרטי ושם משפחה מלאים בעברית.');
       return;
     }
     if (!isValidIsraeliPhone(newPhone)) {
@@ -201,7 +211,7 @@ export default function WorkersPage() {
     try {
       await api.post('/workers', {
         firstName,
-        lastName: newLastName.trim(),
+        lastName,
         phone: newPhone.trim(),
         email,
         hourlyWage: wage,
@@ -225,6 +235,8 @@ export default function WorkersPage() {
 
   const openEditWorker = (worker: Worker) => {
     setEditingWorkerId(worker.id);
+    setEditFirstName(worker.firstName);
+    setEditLastName(worker.lastName);
     setEditRole(worker.role);
     setEditHourlyWage(worker.hourlyWage);
     setEditVatIncluded(worker.vatIncluded);
@@ -239,6 +251,10 @@ export default function WorkersPage() {
 
   const saveWorkerUpdate = async () => {
     if (!editingWorkerId) return;
+    if (!isHebrewNamePart(editFirstName) || !isHebrewNamePart(editLastName)) {
+      setMessage('יש להזין שם פרטי ושם משפחה מלאים בעברית.');
+      return;
+    }
     if (canEditWages && !HOURLY_WAGE_OPTIONS.includes(editHourlyWage as (typeof HOURLY_WAGE_OPTIONS)[number])) {
       setMessage('יש לבחור שכר שעתי מהרשימה בלבד לפני שמירה.');
       return;
@@ -256,6 +272,8 @@ export default function WorkersPage() {
     const editingWorker = workers.find((w) => w.id === editingWorkerId);
     const updatedSkills = mapRoleToSkills(editRole, editingWorker?.skills ?? []);
     const patchBody: Record<string, unknown> = {
+      firstName: editFirstName.trim(),
+      lastName: editLastName.trim(),
       phone: editPhone.trim(),
       email: editEmail.trim(),
       skills: updatedSkills,
@@ -269,9 +287,13 @@ export default function WorkersPage() {
       setWorkers((prev) =>
         prev.map((worker) => {
           if (worker.id !== editingWorkerId) return worker;
+          const updatedName = `${editFirstName.trim()} ${editLastName.trim()}`;
           if (editApplyImmediately) {
             return {
               ...worker,
+              firstName: editFirstName.trim(),
+              lastName: editLastName.trim(),
+              name: updatedName,
               role: editRole,
               hourlyWage: canEditWages ? editHourlyWage : worker.hourlyWage,
               vatIncluded: editVatIncluded,
@@ -284,6 +306,9 @@ export default function WorkersPage() {
           }
           return {
             ...worker,
+            firstName: editFirstName.trim(),
+            lastName: editLastName.trim(),
+            name: updatedName,
             pendingUpdate: {
               role: editRole,
               hourlyWage: canEditWages ? editHourlyWage : worker.hourlyWage,
@@ -372,7 +397,6 @@ export default function WorkersPage() {
         eyebrow="THE PEOPLE WHO MAKE SPACE"
         title="הצוות"
         description="האנשים, התפקידים והפרטים שמחזיקים את העבודה יחד."
-        icon={<Users className="h-6 w-6" />}
         action={
         <button
           type="button"
@@ -380,9 +404,8 @@ export default function WorkersPage() {
             setMessage('');
             setIsCreateModalOpen(true);
           }}
-          className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(78,105,92,0.18)] hover:bg-primary-700"
+          className="inline-flex min-h-11 items-center bg-primary-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-800"
         >
-          <Plus className="w-4 h-4" />
           עובדת חדשה
         </button>
         }
@@ -390,37 +413,27 @@ export default function WorkersPage() {
 
       <div className="grid grid-cols-3 divide-x divide-x-reverse divide-[var(--color-border)] border-y border-[var(--color-border)]">
         <div className="px-4 py-5">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-500">סה״כ עובדים</p>
-            <Users className="w-4 h-4 text-gray-500" />
-          </div>
-          <p className="font-display mt-1 text-3xl font-medium text-gray-900">{workers.length}</p>
+          <p className="font-display text-3xl font-medium text-[var(--color-calendar-sage)]">{workers.length}</p>
+          <p className="mt-1 text-xs text-gray-500">סה״כ עובדים</p>
         </div>
         <div className="px-4 py-5">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-500">ראשי צוות</p>
-            <Briefcase className="w-4 h-4 text-gray-500" />
-          </div>
-          <p className="font-display mt-1 text-3xl font-medium text-gray-900">{stats.teamLeads}</p>
+          <p className="font-display text-3xl font-medium text-[var(--color-calendar-sage)]">{stats.teamLeads}</p>
+          <p className="mt-1 text-xs text-gray-500">ראשי צוות</p>
         </div>
         <div className="px-4 py-5">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-500">שכר שעתי ממוצע</p>
-            <Wallet className="w-4 h-4 text-gray-500" />
-          </div>
-          <p className="font-display mt-1 text-3xl font-medium text-gray-900">{canEditWages ? `₪${stats.averageWage}` : 'מוסתר'}</p>
+          <p className="font-display text-3xl font-medium text-[var(--color-calendar-sage)]">{canEditWages ? `₪${stats.averageWage}` : 'מוסתר'}</p>
+          <p className="mt-1 text-xs text-gray-500">שכר שעתי ממוצע</p>
           <p className="text-xs text-gray-500 mt-1">פעילות כרגע: {workers.length}</p>
         </div>
       </div>
 
       <div className="border-b border-[var(--color-border)] pb-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="relative md:col-span-2">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <div className="md:col-span-2">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 pr-9 pl-3 py-2 text-sm text-right"
+              className="w-full border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-2 text-sm text-right"
               placeholder="חיפוש לפי שם או טלפון"
             />
           </div>
@@ -501,7 +514,7 @@ export default function WorkersPage() {
                   <td className="px-4 py-3 text-sm text-gray-700">{worker.role}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">{canEditWages ? `₪${worker.hourlyWage}` : 'מוסתר'}</td>
                   <td className="px-4 py-3 text-sm text-gray-700 text-center">
-                    {worker.vatIncluded ? <Check className="mx-auto h-4 w-4 text-emerald-600" /> : <span className="text-gray-300">—</span>}
+                    {worker.vatIncluded ? <span className="font-medium text-emerald-700">כן</span> : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700">{worker.phone}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">{worker.email}</td>
@@ -563,6 +576,24 @@ export default function WorkersPage() {
             </div>
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="text-sm">
+                  <span className="text-gray-600">שם פרטי במערכת</span>
+                  <input
+                    value={editFirstName}
+                    onChange={(e) => setEditFirstName(e.target.value)}
+                    className="mt-1 w-full border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-2 text-sm text-right"
+                    placeholder="שם פרטי בעברית"
+                  />
+                </label>
+                <label className="text-sm">
+                  <span className="text-gray-600">שם משפחה במערכת</span>
+                  <input
+                    value={editLastName}
+                    onChange={(e) => setEditLastName(e.target.value)}
+                    className="mt-1 w-full border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-2 text-sm text-right"
+                    placeholder="שם משפחה בעברית"
+                  />
+                </label>
                 <input
                   value={editPhone}
                   onChange={(e) => setEditPhone(e.target.value)}
@@ -677,23 +708,23 @@ export default function WorkersPage() {
             <div className="p-5 space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <label className="text-sm">
-                  <span className="text-gray-600">שם פרטי</span>
+                  <span className="text-gray-600">שם פרטי במערכת</span>
                   <input
                     type="text"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                    placeholder="שם פרטי"
+                    placeholder="שם פרטי בעברית"
                   />
                 </label>
                 <label className="text-sm">
-                  <span className="text-gray-600">שם משפחה</span>
+                  <span className="text-gray-600">שם משפחה במערכת</span>
                   <input
                     type="text"
                     value={newLastName}
                     onChange={(e) => setNewLastName(e.target.value)}
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                    placeholder="שם משפחה (רשות)"
+                    placeholder="שם משפחה בעברית"
                   />
                 </label>
               </div>
