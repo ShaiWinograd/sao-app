@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUser, useAuth } from '@clerk/nextjs';
 import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone, workerRowBadge, fillsRequiredSlot, workerRowAssignments, getStaffingIssueBreakdown, formatBusinessDate } from '@workforce/shared';
-import { AlertTriangle, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Info, Plus, XCircle } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Plus, XCircle } from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
 import { QuickCreateForm } from '../../components/jobs/QuickCreateForm';
 import { JoinRequestsPanel } from '../../components/owner/JoinRequestsPanel';
@@ -171,25 +171,12 @@ function addDaysToDateKey(dateKey: string, days: number) {
 
 function getShiftTypeCardClasses(jobType: JobType) {
   if (jobType === 'אריזה') {
-    return 'border-[var(--color-calendar-aubergine-border)] bg-[var(--color-calendar-aubergine-soft)] hover:border-[var(--color-calendar-aubergine)]';
+    return 'border-red-200 bg-red-50 text-red-900 hover:border-red-400';
   }
   if (jobType === 'פריקה') {
-    return 'border-[var(--color-calendar-sand-border)] bg-[var(--color-calendar-sand-soft)] hover:border-[var(--color-calendar-sand)]';
+    return 'border-amber-200 bg-amber-50 text-amber-900 hover:border-amber-400';
   }
-  return 'border-[var(--color-calendar-sage-border)] bg-[var(--color-calendar-sage-soft)] hover:border-[var(--color-calendar-sage)]';
-}
-
-function InfoHint({ text }: { text: string }) {  return (
-    <span className="group relative inline-flex items-center">
-      <Info className="w-3.5 h-3.5 text-gray-400" />
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 z-30 mb-1 hidden w-max max-w-[220px] whitespace-normal rounded-lg bg-gray-900 px-2.5 py-1.5 text-right text-[11px] font-normal leading-snug text-white shadow-lg group-hover:block"
-      >
-        {text}
-      </span>
-    </span>
-  );
+  return 'border-blue-200 bg-blue-50 text-blue-900 hover:border-blue-400';
 }
 
 const CASE_BADGE_CLASS_BY_TONE: Record<StatusTone, string> = {
@@ -237,16 +224,6 @@ export default function DashboardPage() {
     () => new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1),
     [anchorDate],
   );
-  const monthOptions = useMemo(() => {
-    return Array.from({ length: 18 }).map((_, index) => {
-      const offset = index - 6;
-      const date = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-      const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const label = date.toLocaleDateString('he-IL', { month: 'long', year: '2-digit' });
-      return { value, label };
-    });
-  }, []);
-
   const periodLabel = useMemo(() => {
     if (selectedRange === 'today') {
       return anchorDate.toLocaleDateString('he-IL', {
@@ -278,8 +255,11 @@ export default function DashboardPage() {
       } else if (selectedRange === 'week') {
         next.setDate(prev.getDate() + 7 * multiplier);
       } else if (selectedRange === 'month') {
-        next.setMonth(prev.getMonth() + multiplier);
+        const preferredDay = prev.getDate();
         next.setDate(1);
+        next.setMonth(prev.getMonth() + multiplier);
+        const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+        next.setDate(Math.min(preferredDay, lastDay));
       }
       return next;
     });
@@ -410,7 +390,7 @@ export default function DashboardPage() {
   const [workerVisibleNotes, setWorkerVisibleNotes] = useState('');
   const [customerMode, setCustomerMode] = useState<'existing' | 'new'>('new');
   const [dayJobsPickerDateKey, setDayJobsPickerDateKey] = useState<string | null>(null);
-  const [activeSectionKey, setActiveSectionKey] = useState<string | null>(null);
+  const [exceptionsPanelOpen, setExceptionsPanelOpen] = useState(false);
 
   // Load form templates when the create modal is opened
   useEffect(() => {
@@ -828,8 +808,7 @@ export default function DashboardPage() {
   const dashboardStats = useMemo(() => {
     const allItems = workflowSections.flatMap((section) => section.items);
     const exceptionsCount = allItems.filter((item) => item.severity === 'high').length;
-    const awaitingApprovalCount =
-      workflowSections.find((section) => section.key === 'quote-awaiting-approval')?.items.length ?? 0;
+    const awaitingApprovalCount = attention?.joinRequests ?? 0;
     const todayJobsCount = dashboardWorks.filter((work) => work.dateKey === todayDateKey).length;
     const workersTodayCount = new Set(
       dashboardWorks
@@ -837,12 +816,25 @@ export default function DashboardPage() {
         .flatMap((work) => work.assignedWorkers.map((worker) => worker.name)),
     ).size;
     return { exceptionsCount, awaitingApprovalCount, todayJobsCount, workersTodayCount };
-  }, [workflowSections, dashboardWorks, todayDateKey]);
+  }, [workflowSections, dashboardWorks, todayDateKey, attention]);
 
-  const activeWorkflowSection = useMemo(
-    () => workflowSections.find((section) => section.key === activeSectionKey) ?? null,
-    [workflowSections, activeSectionKey],
+  const exceptionSections = useMemo(
+    () =>
+      workflowSections
+        .map((section) => ({
+          ...section,
+          items: section.items.filter((item) => item.severity === 'high'),
+        }))
+        .filter((section) => section.items.length > 0),
+    [workflowSections],
   );
+
+  const focusTodaySchedule = () => {
+    activateTodayView();
+    window.requestAnimationFrame(() => {
+      document.getElementById('owner-shift-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
 
   const visibleShiftDates = useMemo(() => {
     if (selectedRange === 'today') {
@@ -1117,56 +1109,40 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* At-a-glance operational strip */}
-      <div className="grid grid-cols-2 divide-x divide-x-reverse divide-[var(--color-border)] border-y border-[var(--color-border)] lg:grid-cols-4">
-        <div className="flex items-center gap-3 px-4 py-5">
-          <span className="flex h-9 w-9 items-center justify-center text-danger">
-            <AlertTriangle className="w-5 h-5 text-danger" />
-          </span>
-          <div>
-            <p className="font-display text-3xl font-medium leading-none text-danger">{dashboardStats.exceptionsCount}</p>
-            <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
-              חריגות
-              <InfoHint text="עבודות או משמרות הדורשות התייחסות דחופה — חוסר עובדים, חוסר ראש צוות או חריגות נוכחות." />
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 px-4 py-5">
-          <span className="flex h-9 w-9 items-center justify-center text-warning">
-            <Clock className="w-5 h-5 text-warning" />
-          </span>
-          <div>
-            <p className="font-display text-3xl font-medium leading-none text-warning">{dashboardStats.awaitingApprovalCount}</p>
-            <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
-              מחכות לאישור
-              <InfoHint text="בקשות הצטרפות של עובדים לעבודות הממתינות לאישור שלך." />
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 px-4 py-5">
-          <span className="flex h-9 w-9 items-center justify-center text-success">
-            <CalendarCheck className="w-5 h-5 text-success" />
-          </span>
-          <div>
-            <p className="font-display text-3xl font-medium leading-none text-success">{dashboardStats.todayJobsCount}</p>
-            <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
-              עבודות היום
-              <InfoHint text="מספר העבודות המתוזמנות להיום." />
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 px-4 py-5">
-          <span className="flex h-9 w-9 items-center justify-center text-info">
-            <CalendarDays className="w-5 h-5 text-info" />
-          </span>
-          <div>
-            <p className="font-display text-3xl font-medium leading-none text-info">{dashboardStats.workersTodayCount}</p>
-            <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
-              עובדים היום
-              <InfoHint text="מספר העובדים המשובצים לעבודות של היום." />
-            </p>
-          </div>
-        </div>
+      {/* Clickable operational summary, matching the editorial owner concept. */}
+      <div className="grid grid-cols-2 border-b border-[var(--color-border)] lg:grid-cols-4">
+        <button
+          type="button"
+          onClick={() => setExceptionsPanelOpen(true)}
+          className="border-l border-[var(--color-border)] px-4 py-4 text-right hover:bg-[var(--color-calendar-sage-soft)]"
+        >
+          <strong className="font-display block text-3xl font-medium leading-none text-[var(--color-calendar-sage)]">{dashboardStats.exceptionsCount}</strong>
+          <span className="mt-1 block text-xs text-[var(--color-text-secondary)]">חריגות · לטיפול</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setJoinPanelOpen(true)}
+          className="border-l border-[var(--color-border)] px-4 py-4 text-right hover:bg-[var(--color-calendar-sage-soft)]"
+        >
+          <strong className="font-display block text-3xl font-medium leading-none text-[var(--color-calendar-sage)]">{dashboardStats.awaitingApprovalCount}</strong>
+          <span className="mt-1 block text-xs text-[var(--color-text-secondary)]">בקשות הצטרפות · לאישור</span>
+        </button>
+        <button
+          type="button"
+          onClick={focusTodaySchedule}
+          className="border-l border-[var(--color-border)] px-4 py-4 text-right hover:bg-[var(--color-calendar-sage-soft)]"
+        >
+          <strong className="font-display block text-3xl font-medium leading-none text-[var(--color-calendar-sage)]">{dashboardStats.todayJobsCount}</strong>
+          <span className="mt-1 block text-xs text-[var(--color-text-secondary)]">עבודות היום · ביומן</span>
+        </button>
+        <button
+          type="button"
+          onClick={focusTodaySchedule}
+          className="px-4 py-4 text-right hover:bg-[var(--color-calendar-sage-soft)]"
+        >
+          <strong className="font-display block text-3xl font-medium leading-none text-[var(--color-calendar-sage)]">{dashboardStats.workersTodayCount}</strong>
+          <span className="mt-1 block text-xs text-[var(--color-text-secondary)]">עובדות היום · בשיבוץ</span>
+        </button>
       </div>
 
       {/* Owner KPI Bar */}
@@ -1227,27 +1203,19 @@ export default function DashboardPage() {
               >
                 היום
               </button>
-              {selectedRange === 'month' ? (
-                <select
-                  value={`${anchorDate.getFullYear()}-${String(anchorDate.getMonth() + 1).padStart(2, '0')}`}
-                  onChange={(e) => {
-                    const [year, month] = e.target.value.split('-').map(Number);
-                    setAnchorDate(new Date(year, month - 1, 1));
+              <label className="relative inline-flex h-8 cursor-pointer items-center gap-1.5 border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2.5">
+                <CalendarDays className="h-3.5 w-3.5 text-[var(--color-text-muted)]" />
+                <span className="text-[11px] font-semibold text-gray-700">{periodLabel}</span>
+                <input
+                  type="date"
+                  value={anchorDateKey}
+                  onChange={(event) => {
+                    if (event.target.value) setAnchorDate(parseDateKey(event.target.value));
                   }}
-                  className="h-8 rounded-lg border border-gray-300 bg-[var(--color-surface)] px-2.5 text-[11px] font-semibold text-gray-700"
-                >
-                  {monthOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <div className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5">
-                  <CalendarDays className="h-3.5 w-3.5 text-gray-500" />
-                  <span className="text-[11px] font-semibold text-gray-700">{periodLabel}</span>
-                </div>
-              )}
+                  aria-label="בחירת תאריך לתצוגת היומן"
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                />
+              </label>
             </div>
           )}
         </div>
@@ -1276,7 +1244,7 @@ export default function DashboardPage() {
 
       </div>
 
-      <div className="flex flex-col gap-2.5 lg:h-[calc(100vh-180px)] lg:min-h-[620px] min-h-0">
+      <div id="owner-shift-grid" className="flex flex-col gap-2.5 lg:h-[calc(100vh-180px)] lg:min-h-[620px] min-h-0 scroll-mt-4">
         <div className="flex min-h-[430px] flex-1 flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]">
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
               <h2 className="font-semibold text-gray-900">
@@ -1286,7 +1254,7 @@ export default function DashboardPage() {
                 href="/jobs"
                 className="text-xs font-medium text-[var(--color-calendar-sage)] hover:underline"
               >
-                הצג הכל →
+                הצג הכל
               </Link>
             </div>
 
@@ -1318,7 +1286,6 @@ export default function DashboardPage() {
                       <div className="text-xs font-semibold">{date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}</div>
                       {isToday && <div className="text-[10px] font-semibold leading-3 text-[var(--color-calendar-sage)]">היום</div>}
                       {nonWorkingLabel && <div className="text-[10px] text-[var(--color-calendar-sand)]">{nonWorkingLabel}</div>}
-                      <div className="mt-1 text-[10px] font-medium text-[var(--color-calendar-sage)]">יצירת עבודה</div>
                     </button>
                   );
                 })}
@@ -1408,9 +1375,9 @@ export default function DashboardPage() {
                         {isNonWorkingDay ? (
                           <p className="mt-5 text-center text-[11px] text-gray-500">{nonWorkingLabel}</p>
                         ) : unavailable ? (
-                          <div className="rounded-md border border-[var(--color-calendar-unavailable-border)] bg-[var(--color-calendar-unavailable-soft)] px-2 py-1.5 text-center">
+                          <div className="border-y border-[var(--color-calendar-unavailable-border)] px-2 py-2 text-center">
                             <p className="text-[11px] font-semibold text-[var(--color-calendar-unavailable)]">לא זמינה</p>
-                            <p className="text-[11px] text-[var(--color-calendar-unavailable)]">{unavailable.reason}</p>
+                            <p className="mt-0.5 text-[10px] text-[var(--color-text-secondary)]">{unavailable.reason}</p>
                           </div>
                         ) : shifts.length > 0 ? (
                           <div className="space-y-1">
@@ -1502,6 +1469,44 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      <SidePanel
+        open={exceptionsPanelOpen}
+        onClose={() => setExceptionsPanelOpen(false)}
+        title="חריגות שדורשות טיפול"
+      >
+        <div className="space-y-5 p-6" dir="rtl">
+          {exceptionSections.length === 0 ? (
+            <p className="border-y border-[var(--color-border)] py-6 text-sm text-[var(--color-text-secondary)]">
+              אין כרגע חריגות פתוחות.
+            </p>
+          ) : (
+            exceptionSections.map((section) => (
+              <section key={section.key}>
+                <h3 className="border-b border-[var(--color-border)] pb-2 text-xs font-semibold text-[var(--color-text-secondary)]">
+                  {section.title}
+                </h3>
+                <div className="divide-y divide-[var(--color-border)]">
+                  {section.items.map((item) => (
+                    <Link
+                      key={item.id}
+                      href={item.href}
+                      onClick={() => setExceptionsPanelOpen(false)}
+                      className="grid gap-1 py-3 hover:text-[var(--color-calendar-sage)]"
+                    >
+                      <span className="text-sm font-semibold">{item.projectName}</span>
+                      <span className="text-xs text-[var(--color-text-secondary)]">
+                        {item.issue}{item.dateLabel ? ` · ${item.dateLabel}` : ''}
+                      </span>
+                      <span className="text-xs font-semibold text-[var(--color-calendar-sage)]">{item.actionLabel} ←</span>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            ))
+          )}
+        </div>
+      </SidePanel>
 
       <SidePanel
         open={quickCreateDate !== null}

@@ -117,27 +117,26 @@ test.describe('Dashboard urgent and workflow sections', () => {
     });
   });
 
-  test('shows workflow sections with direct actions and no separate urgent panel', async ({
+  test('shows direct operational actions and no separate urgent panel', async ({
     page,
   }) => {
     await page.goto('/dashboard');
 
-    // At-a-glance stat cards
-    await expect(page.getByText('חריגות', { exact: true })).toBeVisible();
-    await expect(page.getByText('מחכות לאישור', { exact: true })).toBeVisible();
-    await expect(page.getByText('עבודות היום', { exact: true })).toBeVisible();
+    // At-a-glance metrics are direct actions.
+    await expect(page.getByRole('button', { name: /חריגות · לטיפול/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /בקשות הצטרפות/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /עבודות היום/ })).toBeVisible();
+    await page.getByRole('button', { name: /חריגות · לטיפול/ }).click();
+    await expect(page.getByRole('heading', { name: 'חריגות שדורשות טיפול' })).toBeVisible();
+    await expect(page.getByText('אריזה דחופה').first()).toBeVisible();
+    await page.getByRole('button', { name: 'סגירה' }).click();
 
     // Header quick action
-    await expect(page.getByRole('button', { name: 'יצירת עבודה' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'יצירת עבודה', exact: true })).toBeVisible();
 
     // The separate 'must handle' urgent panel was removed.
     await expect(page.getByTestId('dashboard-urgent-panel')).toHaveCount(0);
 
-    const workflow = page.getByTestId('dashboard-workflow-sections');
-    await expect(workflow).toBeVisible();
-    await expect(workflow.getByText('מחכה לאישור הצעת מחיר')).toBeVisible();
-    await expect(workflow.getByText('עבודות לא מאוישות')).toBeVisible();
-    await expect(workflow.getByText('חסר ראש צוות')).toBeVisible();
   });
 
   test('uses the full viewport and a navigation drawer on mobile', async ({ page }) => {
@@ -197,12 +196,34 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await expect(page.getByText('לא זמינה', { exact: true })).toBeVisible();
     await expect(page.getByText('חופשה', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: `יצירת עבודה בתאריך ${tomorrow}` })).toBeVisible();
+    await expect(
+      page.locator('button[aria-label^="יצירת עבודה בתאריך"]').filter({ hasText: 'יצירת עבודה' }),
+    ).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'הצג הכל' })).toBeVisible();
 
     await page.getByRole('button', { name: `שיבוץ מיכל כהן בתאריך ${tomorrow}` }).click();
     await expect(page.getByRole('heading', { name: 'שיבוץ עובדת' })).toBeVisible();
     await page.getByRole('button', { name: /שיבוץ לעבודה/ }).click();
 
     await expect.poll(() => assignment).toEqual({ jobId: 'job-1', workerId: 'worker-michal', role: 'REGULAR' });
+  });
+
+  test('keeps the selected date across views and returns the current view to today', async ({ page }) => {
+    const today = new Date().toLocaleDateString('en-CA');
+    await page.goto('/dashboard');
+
+    const datePicker = page.getByLabel('בחירת תאריך לתצוגת היומן');
+    await datePicker.fill('2026-10-14');
+    await page.getByRole('button', { name: 'חודש', exact: true }).click();
+    await expect(datePicker).toHaveValue('2026-10-14');
+
+    await page.getByRole('button', { name: 'שבוע', exact: true }).click();
+    await expect(datePicker).toHaveValue('2026-10-14');
+    await expect(page.getByText('14.10', { exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: 'חודש', exact: true }).click();
+    await page.getByRole('button', { name: 'היום', exact: true }).click();
+    await expect(datePicker).toHaveValue(today);
   });
 
   test('creates a job with the server-signed geocoded address selection', async ({ page }) => {

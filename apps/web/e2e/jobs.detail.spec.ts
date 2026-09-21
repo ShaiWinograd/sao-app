@@ -109,6 +109,7 @@ test.describe('Job detail page', () => {
     // Details tab (default): address + contact.
     await expect(page.getByText('תל אביב 1').first()).toBeVisible();
     await expect(page.getByText('יעל כהן').first()).toBeVisible();
+    await expect(page.getByText('08:00–13:00').first()).toBeVisible();
     // Publication-readiness action is present (enabled state is readiness-driven).
     await expect(page.getByRole('button', { name: 'שליחה שוב לעובדים' })).toBeVisible();
     // The owner approval action is present for a real-customer reservation.
@@ -124,7 +125,7 @@ test.describe('Job detail — staffing consistency (PR-1)', () => {
 
     await page.goto('/jobs/job-slotless');
 
-    await page.getByRole('tab', { name: 'עובדים' }).click();
+    await page.getByRole('tab', { name: 'צוות ובקשות' }).click();
     await expect(page.getByText('אורית וינוגרד')).toBeVisible();
     await expect(page.getByText('מקום פנוי')).toHaveCount(0);
 
@@ -143,9 +144,9 @@ test.describe('Job detail — staffing consistency (PR-1)', () => {
     });
 
     await page.goto('/jobs/job-pending');
-    await page.getByRole('tab', { name: 'עובדים' }).click();
+    await page.getByRole('tab', { name: 'צוות ובקשות' }).click();
 
-    await expect(page.getByText('רון כהן')).toBeVisible();
+    await expect(page.getByText('רון כהן').first()).toBeVisible();
     await page.getByRole('button', { name: 'אישור', exact: true }).click();
 
     await expect.poll(() => approved).toBe(true);
@@ -157,7 +158,7 @@ test.describe('Job detail — staffing consistency (PR-1)', () => {
     });
 
     await page.goto('/jobs/job-awaiting-leader');
-    await page.getByRole('tab', { name: 'עובדים' }).click();
+    await page.getByRole('tab', { name: 'צוות ובקשות' }).click();
 
     // The awaiting leader is shown (in the Team Leader section)…
     await expect(page.getByText('דנה לוי')).toBeVisible();
@@ -173,7 +174,7 @@ test.describe('Job detail — staffing consistency (PR-1)', () => {
     });
 
     await page.goto('/jobs/job-full-missing-leader');
-    await page.getByRole('tab', { name: 'עובדים' }).click();
+    await page.getByRole('tab', { name: 'צוות ובקשות' }).click();
 
     // Both regular workers are shown, the leader is still missing…
     await expect(page.getByText('רות בר')).toBeVisible();
@@ -191,7 +192,7 @@ test.describe('Job detail — staffing consistency (PR-1)', () => {
     });
 
     await page.goto('/jobs/job-role-selector');
-    await page.getByRole('tab', { name: 'עובדים' }).click();
+    await page.getByRole('tab', { name: 'צוות ובקשות' }).click();
 
     // The eligible worker's role selector includes the TEAM_LEADER option…
     const eligibleSelect = page.locator('li', { hasText: 'נועה שמש' }).locator('select[title="תפקיד בעבודה"]');

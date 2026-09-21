@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 export function PageHeader({
   eyebrow,
   title,
-  description,
   action,
 }: {
   eyebrow?: string;
@@ -17,7 +16,6 @@ export function PageHeader({
       <div className="min-w-0">
         {eyebrow && <p className="mb-1 text-[11px] font-semibold tracking-[0.12em] text-primary-700">{eyebrow}</p>}
         <h1 className="font-display text-[2rem] font-semibold leading-[1.15] tracking-[-0.02em] text-[#292724] sm:text-[2.65rem]">{title}</h1>
-        {description && <p className="mt-1.5 max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)] sm:text-base">{description}</p>}
       </div>
       {action && <div className="shrink-0">{action}</div>}
     </header>

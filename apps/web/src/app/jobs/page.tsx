@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
+import { formatJobTime } from '@workforce/shared';
 import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Repeat } from 'lucide-react';
 import { api, authHeaders } from '../../lib/api';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -24,18 +25,18 @@ type ApiJob = {
 const JOB_TYPE: Record<ApiJob['jobType'], { label: string; cls: string; dot: string }> = {
   PACKING: {
     label: 'אריזה',
-    cls: 'border-[var(--color-calendar-aubergine-border)] bg-[var(--color-calendar-aubergine-soft)] text-[var(--color-calendar-aubergine)]',
-    dot: 'bg-[var(--color-calendar-aubergine)]',
+    cls: 'border-red-200 bg-red-50 text-red-800',
+    dot: 'bg-red-500',
   },
   UNPACKING: {
     label: 'פריקה',
-    cls: 'border-[var(--color-calendar-sand-border)] bg-[var(--color-calendar-sand-soft)] text-[var(--color-calendar-sand)]',
-    dot: 'bg-[var(--color-calendar-sand)]',
+    cls: 'border-amber-200 bg-amber-50 text-amber-800',
+    dot: 'bg-amber-500',
   },
   HOME_ORGANIZATION: {
     label: 'סידור',
-    cls: 'border-[var(--color-calendar-sage-border)] bg-[var(--color-calendar-sage-soft)] text-[var(--color-calendar-sage)]',
-    dot: 'bg-[var(--color-calendar-sage)]',
+    cls: 'border-blue-200 bg-blue-50 text-blue-800',
+    dot: 'bg-blue-500',
   },
 };
 
@@ -50,11 +51,7 @@ function dateKey(d: Date): string {
 }
 
 function formatTime(iso: string): string {
-  try {
-    return new Date(iso).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return '';
-  }
+  return formatJobTime(iso);
 }
 
 export default function JobsPage() {

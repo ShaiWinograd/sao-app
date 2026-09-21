@@ -4,16 +4,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
-import { ArrowRight, MapPin, Clock, CalendarDays, Users, Phone, Navigation, Star, LogIn, LogOut, CheckCircle2, Loader2 } from 'lucide-react';
+import { ArrowRight, Clock, CalendarDays, Users, Phone, Star, LogIn, LogOut, CheckCircle2, Loader2 } from 'lucide-react';
 import { requiresManagerNoteForEndShift } from '@workforce/shared';
 import { api, authHeaders } from '../../../../lib/api';
+import { InlineAddressMap } from '../../../../components/maps/InlineAddressMap';
 import {
   type WorkerJob,
   type WorkerFormQuestion,
   type WorkerAnswerValue,
   jobTypeLabel,
   jobTypeClasses,
-  formatTime,
+  formatScheduledTime,
   customerName,
   attendanceBadge,
   missingFormBadge,
@@ -339,7 +340,6 @@ export default function WorkerShiftDetailPage() {
   const address = shift.job.address?.fullAddress ?? '';
   const isCancelled = shift.job.status === 'ARCHIVED';
   const isAwaitingAcceptance = shift.joinRequestStatus === 'AWAITING_WORKER';
-  const mapsHref = address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : null;
   const phone = shift.job.customer?.phone;
 
   return (
@@ -399,15 +399,16 @@ export default function WorkerShiftDetailPage() {
           </p>
           <p className="flex items-center gap-2">
             <Clock className="w-4 h-4 text-gray-400" />
-            {formatTime(shift.scheduledStart)}–{formatTime(shift.scheduledEnd)}
+            {formatScheduledTime(shift.scheduledStart)}–{formatScheduledTime(shift.scheduledEnd)}
           </p>
-          <p className="flex items-start gap-2">
-            <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
-            <span>
-              {address || 'כתובת תתעדכן'}
-              {shift.job.address?.apartmentDetails ? ` · ${shift.job.address.apartmentDetails}` : ''}
-            </span>
-          </p>
+          {address ? (
+            <InlineAddressMap
+              address={`${address}${shift.job.address?.apartmentDetails ? ` · ${shift.job.address.apartmentDetails}` : ''}`}
+              compact
+            />
+          ) : (
+            <p className="text-xs text-gray-500">כתובת תתעדכן</p>
+          )}
           {isLead && phone && (
             <p className="flex items-center gap-2">
               <Phone className="w-4 h-4 text-gray-400" />
@@ -427,17 +428,6 @@ export default function WorkerShiftDetailPage() {
           )}
         </div>
 
-        {mapsHref && (
-          <a
-            href={mapsHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50"
-          >
-            <Navigation className="w-3.5 h-3.5" />
-            ניווט לכתובת
-          </a>
-        )}
       </div>
 
       {/* Access / instructions */}
@@ -728,7 +718,7 @@ function ShiftChangePanel({
                 <option value="">בחירת משמרת</option>
                 {candidates.map((candidate) => (
                   <option key={candidate.shiftId} value={candidate.shiftId}>
-                    {new Date(candidate.date).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })} · {jobTypeLabel(candidate.jobType)} · {formatTime(candidate.plannedStart)}–{formatTime(candidate.plannedEnd)}
+                    {new Date(candidate.date).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })} · {jobTypeLabel(candidate.jobType)} · {formatScheduledTime(candidate.plannedStart)}–{formatScheduledTime(candidate.plannedEnd)}
                   </option>
                 ))}
               </select>

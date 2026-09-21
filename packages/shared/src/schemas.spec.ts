@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { JoinRequestSchema, CustomerSchema } from './schemas';
+import { JoinRequestSchema, CustomerSchema, CreateWorkerSchema } from './schemas';
 
 describe('JoinRequestSchema (§ join-request 500 fix)', () => {
   it('accepts a body WITHOUT workerId (worker is derived from the session)', () => {
@@ -24,6 +24,31 @@ describe('CustomerSchema (email optional)', () => {
     expect(parsed.firstName).toBe('TEST');
     expect(parsed.email).toBeUndefined();
     expect(parsed.lastName).toBe(''); // optional, defaults to ''
+  });
+
+  describe('CreateWorkerSchema (Hebrew system name)', () => {
+    const validWorker = {
+      firstName: 'שי',
+      lastName: 'וינוגרד',
+      phone: '0500000000',
+      email: 'worker@example.com',
+      hourlyWage: 70,
+      dailyPaymentAmount: 560,
+      paymentMethod: 'BANK_TRANSFER' as const,
+      skills: ['GENERAL_WORKER'] as const,
+    };
+
+    it('accepts a full Hebrew worker name', () => {
+      expect(CreateWorkerSchema.parse(validWorker)).toMatchObject({
+        firstName: 'שי',
+        lastName: 'וינוגרד',
+      });
+    });
+
+    it('rejects an English name or a missing family name', () => {
+      expect(() => CreateWorkerSchema.parse({ ...validWorker, firstName: 'Shai' })).toThrow();
+      expect(() => CreateWorkerSchema.parse({ ...validWorker, lastName: '' })).toThrow();
+    });
   });
 
   it('treats an empty-string email as "not provided"', () => {

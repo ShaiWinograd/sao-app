@@ -10,6 +10,7 @@ import { requiresReapproval } from '@workforce/shared';
 import { validateCapacityReduction } from '@workforce/shared';
 import { isUnavailableOn } from '@workforce/shared';
 import { evaluateJobCompletion } from '@workforce/shared';
+import { formatJobTime } from '@workforce/shared';
 import type { AvailabilityBlock } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
 import { getConfiguredProvider } from '../lib/geocoding/service.js';
@@ -34,7 +35,7 @@ function heDate(d: Date): string {
 }
 
 function heTime(d: Date): string {
-  return d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' });
+  return formatJobTime(d);
 }
 
 // Notify every active worker that a new job is available (integration spec §4).

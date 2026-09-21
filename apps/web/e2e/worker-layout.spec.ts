@@ -17,7 +17,7 @@ test.describe('Worker desktop layout', () => {
     const rightGap =
       (mainBounds?.x ?? 0) + (mainBounds?.width ?? 0) - ((bounds?.x ?? 0) + (bounds?.width ?? 0));
     expect(Math.abs(leftGap - rightGap)).toBeLessThan(4);
-    await expect(page.getByRole('heading', { name: 'היסטוריית עבודות' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'העבודה שעשית' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'אין משמרות בתקופה הזו' })).toBeVisible();
   });
 
@@ -39,7 +39,7 @@ test.describe('Worker desktop layout', () => {
     await page.goto('/worker/history');
     await page.getByRole('link', { name: 'מעבר למסך המשמרות' }).click();
     await expect(page).toHaveURL(/\/worker$/);
-    await expect(page.getByRole('button', { name: 'השבוע הבא' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'שבוע הבא' })).toBeVisible();
 
     const main = page.locator('main');
     await main.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: 300, clientY: 400 });
@@ -96,7 +96,11 @@ test.describe('Worker desktop layout', () => {
     await expect(page.getByRole('heading', { name: 'המשמרות שלי' })).toBeVisible();
     await expect(page.getByText('המשמרת הבאה')).toBeVisible();
     await expect(page.getByText('משפחת לוי').first()).toBeVisible();
-    await expect(page.getByRole('button', { name: 'השבוע הבא' })).toBeVisible();
+    await expect(page.getByText('הצוות במשמרת')).toBeVisible();
+    await expect(page.getByText('שי').first()).toBeVisible();
+    await page.getByRole('button', { name: /תל אביב/ }).first().click();
+    await expect(page.getByTitle('מפה של תל אביב')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'שבוע הבא' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'היומן שלי' })).toHaveClass(/border-primary-700/);
 
     const mainBounds = await page.locator('main').boundingBox();
