@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { api, authHeaders } from '../../lib/api';
-import { EmptyState } from '../../components/ui/EmptyState';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { InlineAddressMap } from '../../components/maps/InlineAddressMap';
 import {
@@ -58,6 +57,15 @@ type OpenReplacement = {
   suggestedForYou: boolean;
 };
 
+type AvailabilityBlock = {
+  id: string;
+  type: 'DATE' | 'RANGE' | 'WEEKLY';
+  startDate: string | null;
+  endDate: string | null;
+  weekday: number | null;
+  reason: string | null;
+};
+
 function shortDate(iso: string): string {
   return new Date(iso).toLocaleDateString('he-IL', { weekday: 'short', day: '2-digit', month: '2-digit' });
 }
@@ -74,11 +82,26 @@ function shiftDateTime(date: string, time: string): number {
   return value.getTime();
 }
 
+function availabilityForDate(blocks: AvailabilityBlock[], dateKey: string): AvailabilityBlock | null {
+  const weekday = new Date(`${dateKey}T12:00:00`).getDay();
+  return (
+    blocks.find((block) => {
+      if (block.type === 'WEEKLY') return block.weekday === weekday;
+      const start = block.startDate?.slice(0, 10);
+      if (!start) return false;
+      if (block.type === 'DATE') return start === dateKey;
+      const end = block.endDate?.slice(0, 10);
+      return Boolean(end && start <= dateKey && dateKey <= end);
+    }) ?? null
+  );
+}
+
 export default function WorkerShiftsPage() {
   const { getToken } = useAuth();
   const [board, setBoard] = useState<BoardShift[]>([]);
   const [swaps, setSwaps] = useState<SwapMine[]>([]);
   const [replacements, setReplacements] = useState<OpenReplacement[]>([]);
+  const [availability, setAvailability] = useState<AvailabilityBlock[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -116,12 +139,22 @@ export default function WorkerShiftsPage() {
     }
   }, [getToken]);
 
+  const loadAvailability = useCallback(async () => {
+    try {
+      const auth = await authHeaders(getToken);
+      const res = await api.get<AvailabilityBlock[]>('/workers/me/availability', auth);
+      setAvailability(res.data ?? []);
+    } catch {
+      setAvailability([]);
+    }
+  }, [getToken]);
+
   useEffect(() => {
     void (async () => {
-      await Promise.all([loadBoard(), loadSwaps(), loadReplacements()]);
+      await Promise.all([loadBoard(), loadSwaps(), loadReplacements(), loadAvailability()]);
       setLoading(false);
     })();
-  }, [loadBoard, loadSwaps, loadReplacements]);
+  }, [loadAvailability, loadBoard, loadSwaps, loadReplacements]);
 
   useEffect(() => {
     if (selectedInitialDate.current || board.length === 0) return;
@@ -262,37 +295,67 @@ export default function WorkerShiftsPage() {
   const calendarDays = useMemo(() => {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
-    return Array.from({ length: 21 }, (_, index) => {
+    const minimumEnd = new Date(start);
+    minimumEnd.setDate(start.getDate() + 20);
+    const lastShift = visible.reduce<Date | null>((latest, shift) => {
+      const date = new Date(shift.date);
+      date.setHours(0, 0, 0, 0);
+      return !latest || date > latest ? date : latest;
+    }, null);
+    const end = lastShift && lastShift > minimumEnd ? lastShift : minimumEnd;
+    const dayCount = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+    return Array.from({ length: dayCount }, (_, index) => {
       const date = new Date(start);
       date.setDate(start.getDate() + index);
       return date;
     });
-  }, []);
-  const groupedShifts = useMemo(
+  }, [visible]);
+  const shiftsByDate = useMemo(
     () =>
-      Array.from(
-        visible.reduce((groups, shift) => {
-          const key = toDateKey(shift.date);
-          groups.set(key, [...(groups.get(key) ?? []), shift]);
-          return groups;
-        }, new Map<string, BoardShift[]>()),
-      ).sort(([a], [b]) => a.localeCompare(b)),
+      visible.reduce((groups, shift) => {
+        const key = toDateKey(shift.date);
+        groups.set(key, [...(groups.get(key) ?? []), shift]);
+        return groups;
+      }, new Map<string, BoardShift[]>()),
     [visible],
   );
 
-  const markUnavailable = useCallback(async () => {
-    setBusy(`availability-${selectedDate}`);
+  const selectDate = useCallback((dateKey: string) => {
+    setSelectedDate(dateKey);
+    window.setTimeout(() => {
+      document.getElementById(`worker-day-${dateKey}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  }, []);
+
+  const markUnavailable = useCallback(async (dateKey: string) => {
+    setBusy(`availability-${dateKey}`);
     setMessage(null);
     try {
       const auth = await authHeaders(getToken);
-      await api.post('/workers/me/availability', { type: 'DATE', startDate: selectedDate }, auth);
-      setMessage(`סומן שאינך זמינה ב-${new Date(`${selectedDate}T00:00:00`).toLocaleDateString('he-IL')}.`);
+      await api.post('/workers/me/availability', { type: 'DATE', startDate: dateKey }, auth);
+      await loadAvailability();
+      setMessage(`סומן שאינך זמינה ב-${new Date(`${dateKey}T00:00:00`).toLocaleDateString('he-IL')}.`);
     } catch {
       setMessage('לא ניתן לסמן את היום כלא זמין. ייתכן שכבר יש לך שיבוץ ביום הזה.');
     } finally {
       setBusy(null);
     }
-  }, [selectedDate, getToken]);
+  }, [getToken, loadAvailability]);
+
+  const removeUnavailable = useCallback(async (blockId: string, dateKey: string) => {
+    setBusy(`availability-${dateKey}`);
+    setMessage(null);
+    try {
+      const auth = await authHeaders(getToken);
+      await api.delete(`/workers/me/availability/${blockId}`, auth);
+      await loadAvailability();
+      setMessage(`הזמינות ל-${new Date(`${dateKey}T00:00:00`).toLocaleDateString('he-IL')} עודכנה.`);
+    } catch {
+      setMessage('לא ניתן לעדכן את הזמינות. נסי שוב.');
+    } finally {
+      setBusy(null);
+    }
+  }, [getToken, loadAvailability]);
 
   const downloadCalendar = useCallback(() => {
     const events = myShifts
@@ -387,15 +450,12 @@ export default function WorkerShiftsPage() {
             <p className="text-sm font-semibold text-[#292724]">השבוע שלך</p>
             <button
               type="button"
-              onClick={() => setSelectedDate(toDateKey(new Date()))}
+              onClick={() => selectDate(toDateKey(new Date()))}
               className="mt-1 text-[11px] font-semibold text-primary-700 underline decoration-primary-300 underline-offset-4"
             >
               חזרה להיום
             </button>
           </div>
-          <button type="button" onClick={() => void markUnavailable()} disabled={busy === `availability-${selectedDate}`} className="border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 disabled:opacity-50">
-            לא זמינה ביום שנבחר
-          </button>
         </div>
         <div
           className="mx-auto flex max-w-[900px] gap-1 overflow-x-auto border-y border-[var(--color-border)] py-3"
@@ -409,7 +469,7 @@ export default function WorkerShiftsPage() {
               <button
                 key={key}
                 type="button"
-                onClick={() => setSelectedDate(key)}
+                onClick={() => selectDate(key)}
                 className={`flex min-h-[76px] min-w-16 flex-col items-center justify-center px-1 transition-colors ${
                   active ? 'bg-primary-700 text-white' : 'text-[var(--color-text-secondary)] hover:bg-primary-50'
                 }`}
@@ -457,20 +517,55 @@ export default function WorkerShiftsPage() {
         </section>
       )}
 
-      {visible.length === 0 ? (
-        <EmptyState
-          title="אין משמרות מתוזמנות כרגע"
-          description="עבודות חדשות ושינויים בשיבוץ יופיעו כאן ברגע שיפורסמו."
-        />
-      ) : (
-        <>
-          <div className="space-y-8">
-            {groupedShifts.map(([dateKey, shifts]) => (
-              <section key={dateKey} id={`worker-day-${dateKey}`} className={selectedDate === dateKey ? 'scroll-mt-24' : ''}>
+      <div className="space-y-2">
+        {calendarDays.map((date) => {
+          const dateKey = toDateKey(date);
+          const shifts = shiftsByDate.get(dateKey) ?? [];
+          const availabilityBlock = availabilityForDate(availability, dateKey);
+          return (
+              <section
+                key={dateKey}
+                id={`worker-day-${dateKey}`}
+                className={`scroll-mt-24 border-b border-[var(--color-border)] pb-4 ${
+                  selectedDate === dateKey ? 'bg-primary-50/35' : ''
+                }`}
+              >
                 <div className="sticky top-0 z-10 border-b border-[var(--color-border-strong)] bg-[var(--color-background)] py-2">
                   <h2 className="font-display text-xl text-[#292724]">{new Date(`${dateKey}T00:00:00`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>
                 </div>
-                {shifts.map((s) => (
+                {shifts.length === 0 ? (
+                  <div className="flex min-h-24 flex-wrap items-center justify-between gap-3 px-1 py-4">
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">אין משמרת ביום הזה</p>
+                      <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                        {availabilityBlock ? 'היום מסומן כלא זמין.' : 'אפשר לסמן כאן אי-זמינות.'}
+                      </p>
+                    </div>
+                    {availabilityBlock?.type === 'DATE' ? (
+                      <button
+                        type="button"
+                        onClick={() => void removeUnavailable(availabilityBlock.id, dateKey)}
+                        disabled={busy === `availability-${dateKey}`}
+                        className="border border-[var(--color-calendar-sage)] px-3 py-2 text-xs font-semibold text-[var(--color-calendar-sage)] disabled:opacity-50"
+                      >
+                        סימון כזמינה
+                      </button>
+                    ) : availabilityBlock ? (
+                      <Link href="/worker/availability" className="border border-[var(--color-border-strong)] px-3 py-2 text-xs font-semibold text-gray-700">
+                        שינוי זמינות
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void markUnavailable(dateKey)}
+                        disabled={busy === `availability-${dateKey}`}
+                        className="border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 disabled:opacity-50"
+                      >
+                        לא זמינה ביום הזה
+                      </button>
+                    )}
+                  </div>
+                ) : shifts.map((s) => (
                 <div key={s.jobId} className="grid grid-cols-[3.75rem_minmax(0,1fr)] items-start gap-4 border-b border-[var(--color-border)] py-4 sm:grid-cols-[5rem_minmax(0,1fr)]">
                   <div className="border-l border-[var(--color-border)] pl-3 text-center" dir="ltr">
                     <p className="font-display text-2xl leading-none text-[#292724]">{formatScheduledTime(s.plannedStart)}</p>
@@ -486,10 +581,9 @@ export default function WorkerShiftsPage() {
                 </div>
                 ))}
               </section>
-            ))}
-          </div>
-        </>
-      )}
+          );
+        })}
+      </div>
 
       {replacements.length > 0 && (
         <section className="space-y-2">
@@ -637,6 +731,9 @@ function ShiftCard({
       <div className={`border-r-2 pr-4 ${jobTypeBorderColor(shift.jobType)}`}>
         <CardHeader shift={shift} />
         <CardMeta shift={shift} />
+        <div className="mt-2">
+          <AssignedNames workers={shift.assignedWorkers} />
+        </div>
         <p className="mt-2 text-xs font-medium text-amber-800">שובצת למשמרת זו – יש לאשר או לדחות.</p>
         <div className="mt-2 flex gap-2">
           <button
@@ -679,13 +776,7 @@ function ShiftCard({
             href={`/worker/shifts/${shift.myShiftId}`}
             className="inline-flex items-center rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
           >
-            החלפה
-          </Link>
-          <Link
-            href={`/worker/shifts/${shift.myShiftId}`}
-            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50"
-          >
-            ירידה מהמשמרת
+            החלפה או בקשת מחליפה
           </Link>
         </div>
       </div>
@@ -698,6 +789,9 @@ function ShiftCard({
       <Link href={shift.myShiftId ? `/worker/shifts/${shift.myShiftId}` : '#'} className="block hover:opacity-90">
         <CardHeader shift={shift} />
         <CardMeta shift={shift} />
+        <div className="mt-2">
+          <AssignedNames workers={shift.assignedWorkers} />
+        </div>
       </Link>
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
