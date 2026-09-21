@@ -1,6 +1,6 @@
 # Azure Deployment Plan
 
-> **Status:** Approved
+> **Status:** Deployed
 
 Generated: 2026-09-21T15:05:00+03:00
 
@@ -92,30 +92,61 @@ The deployment updates existing resources and provisions **zero** new Azure reso
 - [x] User approved this plan
 
 ### Phase 2: Execution
-- [ ] Commit the validated application changes
-- [ ] Integrate the latest `origin/main` without conflicts
-- [ ] Push the deployment branch
-- [ ] Verify GitHub production workflow configuration
-- [ ] Update status to `Ready for Validation`
+- [x] Commit the validated application changes
+- [x] Integrate the latest `origin/main` without conflicts
+- [x] Push the deployment branch
+- [x] Verify GitHub production workflow configuration
+- [x] Update status to `Ready for Validation`
 
 ### Phase 3: Validation
-- [ ] Invoke azure-validate workflow
-- [ ] Validate repository, images, schema change, GitHub workflow inputs, and production endpoints
-- [ ] Update status to `Validated`
-- [ ] Record validation proof below
+- [x] Invoke azure-validate workflow
+- [x] Validate repository, images, schema change, GitHub workflow inputs, and production endpoints
+- [x] All validation checks pass
+  - [x] Azure CLI is authenticated to the confirmed production subscription
+  - [x] Existing production resource group and both App Services are running
+  - [x] GitHub production workflow exists and accepts branch refs
+  - [x] Workflow-equivalent install, Prisma generation, typecheck, test, and build pass
+  - [x] Prisma schema change is additive and production workflow refuses destructive changes
+  - [x] Web and API Dockerfiles are present and production workflow builds both images
+  - [x] Production API health endpoint responds successfully before deployment
+  - [x] Existing-resource update requires no new Azure quota
+- [x] Update status to `Validated`
+- [x] Record validation proof below
 
 ### Phase 4: Deployment
-- [ ] Invoke azure-deploy
-- [ ] Dispatch `deploy-prod-containers.yml` for `all`
-- [ ] Run database reconciliation with `run_migration=auto`
-- [ ] Verify API health and web endpoint
-- [ ] Update status to `Deployed`
+- [x] Invoke azure-deploy
+- [x] Dispatch `deploy-prod-containers.yml` for `all`
+- [x] Run database reconciliation; forced additive migration after detecting the workflow's branch-SHA auto-detection issue
+- [x] Verify API health and web endpoint
+- [x] Update status to `Deployed`
 
 ---
 
 ## 8. Validation Proof
 
-Pending azure-validate.
+| Check | Command Run | Result | Timestamp |
+|-------|-------------|--------|-----------|
+| Production workflow-equivalent validation | `npm ci --ignore-scripts && npm run db:generate && npm run typecheck && npm run test && npm run build` | ✅ Pass | 2026-09-21T15:12:00+03:00 |
+| Azure context and resources | `az account set ... && az group show ... && az webapp show ...` | ✅ Correct subscription; resource group and both apps running | 2026-09-21T15:08:00+03:00 |
+| Schema safety | `git diff origin/main...HEAD -- packages/database/prisma/schema.prisma` | ✅ Three nullable additive columns only | 2026-09-21T15:32:00+03:00 |
+| Release ref | `git ls-remote --heads origin shaiwinograd/refine-worker-home-owner-strip` | ✅ Commit `1d910f0` available remotely | 2026-09-21T15:32:00+03:00 |
+| Deployment workflow | `gh workflow view deploy-prod-containers.yml --yaml` and recent run query | ✅ Workflow valid; five latest production runs successful | 2026-09-21T15:32:00+03:00 |
+| Azure Policy | `az policy assignment list --scope .../resourceGroups/workforce-rg` | ✅ No blocking resource-group policy assignments | 2026-09-21T15:32:00+03:00 |
+| Production baseline health | `curl` API health and web endpoint | ✅ API `status: ok`; web HTTP 200 | 2026-09-21T15:32:00+03:00 |
+
+**Validated by:** azure-validate skill
+**Validation timestamp:** 2026-09-21T15:33:00+03:00
+
+### Deployment Proof
+
+| Check | Result |
+|-------|--------|
+| Full web + API deployment | ✅ https://github.com/ShaiWinograd/sao-app/actions/runs/35600212503 |
+| Forced additive schema reconciliation + API redeploy | ✅ https://github.com/ShaiWinograd/sao-app/actions/runs/35600703424 |
+| Prisma schema reconciliation | ✅ `prisma db push` completed and zero drift remained |
+| API health after migration | ✅ `{"status":"ok"}` |
+| Production web after deployment | ✅ HTTP 200 |
+| Follow-up workflow correction | ✅ Deployment SHA now comes from the checked-out ref rather than the workflow definition ref |
 
 ---
 
