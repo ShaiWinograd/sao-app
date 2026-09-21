@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Contact, Mail, MessageCircle, Plus, Search } from 'lucide-react';
 import Link from 'next/link';
-import AzureMapsAddressInput from '../../components/forms/AzureMapsAddressInput';
+import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
 import { SidePanel } from '../../components/ui/SidePanel';
 import { api } from '../../lib/api';
 import { StatusBadge } from '../../components/ui/StatusBadge';
@@ -33,6 +33,7 @@ type Customer = {
 };
 
 type CustomerCaseFilter = 'all' | Customer['caseStatus'] | 'not_executed';
+type CustomerSort = 'updated_desc' | 'updated_asc' | 'name_asc' | 'name_desc' | 'status';
 
 type DeletedCaseHistoryEntry = {
   customerName: string;
@@ -70,6 +71,7 @@ type ApiCustomer = {
   lastName: string;
   phone: string;
   email: string | null;
+  internalNotes?: string | null;
   updatedAt?: string;
   cases?: ApiCase[];
   addresses?: ApiAddress[];
@@ -146,6 +148,7 @@ function mapApiCustomer(apiCustomer: ApiCustomer): Customer {
     })),
     caseName: representativeCase?.name ?? `${apiCustomer.firstName} ${apiCustomer.lastName} - פרוייקט`,
     caseStatus: representativeCase ? mapApiCaseStatus(representativeCase.status) : 'none',
+    notes: apiCustomer.internalNotes ?? undefined,
     updatedAt: apiCustomer.updatedAt,
   };
 }
@@ -233,9 +236,11 @@ export default function CustomersPage() {
   const [isLoadingWorks, setIsLoadingWorks] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<CustomerCaseFilter>('all');
+  const [sortBy, setSortBy] = useState<CustomerSort>('updated_desc');
   const [notExecutedCustomers, setNotExecutedCustomers] = useState<Set<string>>(new Set());
   const [openedCustomerId, setOpenedCustomerId] = useState<string | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [customerEditing, setCustomerEditing] = useState(false);
   const [cardMessage, setCardMessage] = useState('');
   const [cardNotes, setCardNotes] = useState('');
   const [customerReports, setCustomerReports] = useState<{
@@ -252,6 +257,7 @@ export default function CustomersPage() {
   const [cardCaseName, setCardCaseName] = useState('');
   const [cardAddressLabel, setCardAddressLabel] = useState<CustomerAddress['label']>('דירה חדשה');
   const [cardAddressInput, setCardAddressInput] = useState('');
+  const [cardAddressSelection, setCardAddressSelection] = useState<AddressSelection | null>(null);
   const [cardAddressFloor, setCardAddressFloor] = useState('');
   const [cardAddressApartment, setCardAddressApartment] = useState('');
 
@@ -353,7 +359,7 @@ export default function CustomersPage() {
         cardFirstName.trim() || cardLastName.trim() || cardPhone.trim() || cardEmail.trim() || cardAddressInput.trim(),
       );
     }
-    if (openedCustomer) {
+    if (openedCustomer && customerEditing) {
       return (
         cardFirstName !== openedCustomer.firstName ||
         cardLastName !== openedCustomer.lastName ||
@@ -363,11 +369,11 @@ export default function CustomersPage() {
       );
     }
     return false;
-  }, [isCreatingNew, openedCustomer, cardFirstName, cardLastName, cardPhone, cardEmail, cardAddressInput]);
+  }, [isCreatingNew, customerEditing, openedCustomer, cardFirstName, cardLastName, cardPhone, cardEmail, cardAddressInput]);
 
   const filteredCustomers = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    return customers.filter((customer) => {
+    const filtered = customers.filter((customer) => {
       const isNotExecuted = notExecutedCustomers.has(getCustomerFullName(customer));
       if (statusFilter === 'not_executed' && !isNotExecuted) return false;
       if (statusFilter !== 'all' && statusFilter !== 'not_executed' && customer.caseStatus !== statusFilter) return false;
@@ -381,17 +387,31 @@ export default function CustomersPage() {
         customer.addresses.some((address) => address.fullAddress.toLowerCase().includes(term))
       );
     });
-  }, [customers, notExecutedCustomers, searchTerm, statusFilter]);
+    return filtered.sort((a, b) => {
+      if (sortBy === 'name_asc' || sortBy === 'name_desc') {
+        const result = getCustomerFullName(a).localeCompare(getCustomerFullName(b), 'he');
+        return sortBy === 'name_asc' ? result : -result;
+      }
+      if (sortBy === 'status') {
+        return caseStatusMeta[a.caseStatus].label.localeCompare(caseStatusMeta[b.caseStatus].label, 'he');
+      }
+      const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+      const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+      return sortBy === 'updated_asc' ? aTime - bTime : bTime - aTime;
+    });
+  }, [customers, notExecutedCustomers, searchTerm, sortBy, statusFilter]);
 
   const openCustomerCard = (customer: Customer) => {
     setOpenedCustomerId(customer.id);
     setIsCreatingNew(false);
+    setCustomerEditing(false);
     setCardMessage('');
     setCardFirstName(customer.firstName);
     setCardLastName(customer.lastName);
     setCardPhone(customer.phone);
     setCardEmail(customer.email);
     setCardAddressInput('');
+    setCardAddressSelection(null);
     setCardAddressFloor('');
     setCardAddressApartment('');
     setCardAddressLabel('דירה חדשה');
@@ -416,6 +436,7 @@ export default function CustomersPage() {
   const openCreateCustomerCard = () => {
     setOpenedCustomerId(null);
     setIsCreatingNew(true);
+    setCustomerEditing(true);
     setCardMessage('');
     setCardFirstName('');
     setCardLastName('');
@@ -425,6 +446,7 @@ export default function CustomersPage() {
     setCardNotes('');
     setCardAddressLabel('דירה חדשה');
     setCardAddressInput('');
+    setCardAddressSelection(null);
     setCardAddressFloor('');
     setCardAddressApartment('');
     setChannel('email');
@@ -493,6 +515,7 @@ export default function CustomersPage() {
           customerId,
           fullAddress: buildAddressWithUnit(cardAddressInput.trim(), cardAddressFloor, cardAddressApartment),
           label: labelToEnum(cardAddressLabel),
+          ...(cardAddressSelection ? { selectionToken: cardAddressSelection.token } : {}),
         });
       }
 
@@ -500,8 +523,10 @@ export default function CustomersPage() {
       if (customerId) setOpenedCustomerId(customerId);
       setIsCreatingNew(false);
       setCardAddressInput('');
+      setCardAddressSelection(null);
       setCardAddressFloor('');
       setCardAddressApartment('');
+      setCustomerEditing(false);
       setCardMessage(creating ? 'הלקוח נוצר ונשמר בהצלחה.' : 'פרטי הלקוח נשמרו בהצלחה.');
     } catch (err) {
       const data = (err as { response?: { data?: { message?: string; error?: string; correlationId?: string } } })?.response?.data;
@@ -572,7 +597,7 @@ export default function CustomersPage() {
         <div className="border-b border-[var(--color-border)] px-5 py-5">
           <h3 className="font-display text-2xl font-medium text-gray-900">ספר הלקוחות</h3>
           <p className="text-xs text-gray-500 mt-1">סינון לפי סטטוסים: משוריין / מאושר לביצוע / עבודה הסתיימה / עבודה שולמה / עבודה לא בוצעה</p>
-          <div className="mt-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <div className="mt-3 grid grid-cols-1 lg:grid-cols-4 gap-3">
             <div className="relative lg:col-span-2">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -595,43 +620,74 @@ export default function CustomersPage() {
               <option value="completed_paid">עבודה שולמה</option>
               <option value="not_executed">עבודה לא בוצעה</option>
             </select>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as CustomerSort)}
+              className="rounded-lg border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
+              aria-label="מיון לקוחות"
+            >
+              <option value="updated_desc">עודכן לאחרונה</option>
+              <option value="updated_asc">עודכן לפני זמן רב</option>
+              <option value="name_asc">שם א–ת</option>
+              <option value="name_desc">שם ת–א</option>
+              <option value="status">סטטוס</option>
+            </select>
           </div>
         </div>
 
-        <div className="max-h-[620px] divide-y divide-[var(--color-border)] overflow-y-auto">
-          {filteredCustomers.map((customer) => {
-            const statusMeta = caseStatusMeta[customer.caseStatus];
-            const isNotExecuted = notExecutedCustomers.has(getCustomerFullName(customer));
-            return (
-              <button
-                key={customer.id}
-                type="button"
-                onClick={() => openCustomerCard(customer)}
-                className="w-full px-5 py-5 text-right transition-colors hover:bg-primary-50/50"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-display text-xl font-medium text-gray-900">{customer.firstName} {customer.lastName}</p>
-                    <p className="text-sm text-gray-600 mt-1">{customer.phone}{customer.email ? ` • ${customer.email}` : ''}</p>
-                    <p className="text-xs text-gray-500 mt-1">{customer.addresses.length} כתובות שמורות</p>
-                    <p className="text-xs text-gray-600 mt-1">פרוייקט: {customer.caseName}</p>
-                    {customer.updatedAt && (
-                      <p className="mt-1 text-xs text-gray-500">
-                        עודכן לאחרונה: {new Date(customer.updatedAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })}
-                      </p>
-                    )}
-                    <p className="text-xs text-gray-500 mt-1">{statusMeta.helper}</p>
-                  </div>
-                  <StatusBadge
-                    tone={isNotExecuted ? 'error' : statusMeta.tone}
-                    label={isNotExecuted ? 'עבודה לא בוצעה' : statusMeta.label}
-                  />
-                </div>
-              </button>
-            );
-          })}
+        <div className="max-h-[620px] overflow-auto">
+          <table className="w-full min-w-[900px] border-collapse text-right text-sm">
+            <thead className="sticky top-0 z-10 bg-[var(--color-surface-muted)] text-xs text-gray-500">
+              <tr className="border-b border-[var(--color-border-strong)]">
+                <th className="px-5 py-3 font-medium">לקוחה</th>
+                <th className="px-4 py-3 font-medium">טלפון ואימייל</th>
+                <th className="px-4 py-3 font-medium">כתובת</th>
+                <th className="px-4 py-3 font-medium">פרויקט</th>
+                <th className="px-4 py-3 font-medium">סטטוס</th>
+                <th className="px-5 py-3 font-medium">עודכן</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredCustomers.map((customer) => {
+                const statusMeta = caseStatusMeta[customer.caseStatus];
+                const isNotExecuted = notExecutedCustomers.has(getCustomerFullName(customer));
+                const primaryAddress = customer.addresses[0]?.fullAddress ?? '—';
+                return (
+                  <tr
+                    key={customer.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openCustomerCard(customer)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') openCustomerCard(customer);
+                    }}
+                    className="cursor-pointer border-b border-[var(--color-border)] transition-colors hover:bg-primary-50/50 focus:bg-primary-50/50 focus:outline-none"
+                  >
+                    <td className="px-5 py-4">
+                      <span className="font-display text-lg font-medium text-gray-900">{customer.firstName} {customer.lastName}</span>
+                    </td>
+                    <td className="px-4 py-4 text-gray-700">
+                      <span className="block">{customer.phone}</span>
+                      <span className="mt-1 block text-xs text-gray-500">{customer.email || 'ללא אימייל'}</span>
+                    </td>
+                    <td className="max-w-64 px-4 py-4 text-gray-700">
+                      <span className="line-clamp-2">{primaryAddress}</span>
+                      {customer.addresses.length > 1 && <span className="mt-1 block text-xs text-gray-500">ועוד {customer.addresses.length - 1}</span>}
+                    </td>
+                    <td className="max-w-56 px-4 py-4 text-gray-700"><span className="line-clamp-2">{customer.caseName}</span></td>
+                    <td className="px-4 py-4">
+                      <StatusBadge tone={isNotExecuted ? 'error' : statusMeta.tone} label={isNotExecuted ? 'עבודה לא בוצעה' : statusMeta.label} />
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-4 text-xs text-gray-500">
+                      {customer.updatedAt ? new Date(customer.updatedAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
           {filteredCustomers.length === 0 && (
-            <p className="px-5 py-5 text-sm text-gray-400">לא נמצאו לקוחות לפי החיפוש.</p>
+            <p className="px-5 py-8 text-center text-sm text-gray-400">לא נמצאו לקוחות לפי החיפוש.</p>
           )}
         </div>
       </div>
@@ -641,13 +697,41 @@ export default function CustomersPage() {
         onClose={() => {
           setOpenedCustomerId(null);
           setIsCreatingNew(false);
+          setCustomerEditing(false);
           setCardMessage('');
         }}
         title={isCreatingNew ? 'יצירת לקוח חדש' : 'כרטיס לקוח'}
         hasUnsavedChanges={detailsDirty}
       >
             <div className="p-6 space-y-4 text-right">
-              {(
+              {openedCustomer && !isCreatingNew && (
+                <section className="border-b border-[var(--color-border)] pb-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h2 className="font-display text-2xl font-medium text-gray-900">{openedCustomer.firstName} {openedCustomer.lastName}</h2>
+                      <p className="mt-1 text-sm text-gray-600">{openedCustomer.phone}</p>
+                      <p className="text-sm text-gray-500">{openedCustomer.email || 'ללא אימייל'}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (customerEditing) openCustomerCard(openedCustomer);
+                        else setCustomerEditing(true);
+                      }}
+                      className="border border-[var(--color-border-strong)] px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-white"
+                    >
+                      {customerEditing ? 'ביטול עריכה' : 'עריכת פרטים'}
+                    </button>
+                  </div>
+                  <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-gray-500">
+                    <StatusBadge tone={caseStatusMeta[openedCustomer.caseStatus].tone} label={caseStatusMeta[openedCustomer.caseStatus].label} />
+                    <span>{openedCustomer.caseName}</span>
+                    <span>{openedCustomer.addresses.length} כתובות שמורות</span>
+                  </div>
+                </section>
+              )}
+
+              {(isCreatingNew || customerEditing) && (
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <input value={cardFirstName} onChange={(e) => setCardFirstName(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right" placeholder="שם פרטי" />
@@ -669,12 +753,16 @@ export default function CustomersPage() {
                       <div className="sm:col-span-2">
                         <AzureMapsAddressInput
                           value={cardAddressInput}
-                          onChange={setCardAddressInput}
+                          onChange={(value) => {
+                            setCardAddressInput(value);
+                            if (value !== cardAddressSelection?.displayAddress) setCardAddressSelection(null);
+                          }}
+                          onSelectionChange={setCardAddressSelection}
                           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right"
                           placeholder={isCreatingNew ? 'עיר או כתובת מלאה' : 'הוספת כתובת חדשה (אופציונלי)'}
                         />
                         <span className="mt-1 block text-[11px] text-gray-500">
-                          הכתובת תאומת בעת השמירה; ניטור מיקום יופעל רק לכתובת בית מדויקת.
+                          בחירת כתובת מלאה עם עיר, רחוב ומספר בית מאמתת אותה אוטומטית.
                         </span>
                       </div>
                       <input
@@ -692,28 +780,16 @@ export default function CustomersPage() {
                     </div>
                   </div>
 
-                  {!isCreatingNew && openedCustomer && (
-                    <div>
-                      <p className="text-xs text-gray-500 mb-2">כתובות שמורות</p>
-                      <div className="space-y-2 max-h-[160px] overflow-y-auto">
-                        {openedCustomer.addresses.map((address) => (
-                          <div key={address.id} className="rounded-lg border border-gray-200 px-3 py-2">
-                            <p className="text-xs text-gray-500">{address.label}</p>
-                            <p className="text-sm text-gray-900">{address.fullAddress}</p>
-                            {(address.floor || address.apartment) && (
-                              <p className="text-[11px] text-gray-500 mt-1">
-                                {address.floor ? `קומה ${address.floor}` : ''}{address.floor && address.apartment ? ' • ' : ''}{address.apartment ? `דירה ${address.apartment}` : ''}
-                              </p>
-                            )}
-                            {address.location && (
-                              <p className="text-[11px] text-gray-500 mt-1">
-                                {address.location.latitude.toFixed(5)}, {address.location.longitude.toFixed(5)}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                  {!isCreatingNew && (
+                    <label className="block text-xs text-gray-600">
+                      הערות פנימיות
+                      <textarea
+                        value={cardNotes}
+                        onChange={(e) => setCardNotes(e.target.value)}
+                        className="mt-1 min-h-28 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right"
+                        placeholder="רגישויות, העדפות או פרטים תפעוליים"
+                      />
+                    </label>
                   )}
 
                   <button
@@ -725,6 +801,32 @@ export default function CustomersPage() {
                     {savingCustomer ? 'שומר…' : isCreatingNew ? 'יצירת לקוח' : 'שמירת שינויים'}
                   </button>
                 </>
+              )}
+
+              {openedCustomer && (
+                <section className="border-b border-[var(--color-border)] pb-4">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <p className="text-xs font-semibold text-gray-700">כתובות שמורות</p>
+                    <span className="text-xs text-gray-400">{openedCustomer.addresses.length}</span>
+                  </div>
+                  {openedCustomer.addresses.length === 0 ? (
+                    <p className="text-sm text-gray-400">אין כתובות שמורות.</p>
+                  ) : (
+                    <div className="divide-y divide-[var(--color-border)]">
+                      {openedCustomer.addresses.map((address) => (
+                        <div key={address.id} className="py-3">
+                          <p className="text-xs text-gray-500">{address.label}</p>
+                          <p className="mt-1 text-sm text-gray-900">{address.fullAddress}</p>
+                          {(address.floor || address.apartment) && (
+                            <p className="mt-1 text-[11px] text-gray-500">
+                              {address.floor ? `קומה ${address.floor}` : ''}{address.floor && address.apartment ? ' • ' : ''}{address.apartment ? `דירה ${address.apartment}` : ''}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
               )}
 
               {openedCustomer && (
@@ -818,21 +920,11 @@ export default function CustomersPage() {
                 </div>
               )}
 
-              {!isCreatingNew && (
-                <div className="space-y-2">
-                  <div className="rounded-lg border border-primary-100 bg-primary-50 px-3 py-2">
-                    <p className="text-xs text-primary-700">
-                      הערות פנימיות ללקוח (לא נשלחות ללקוח). מתאים לרגישויות, העדפות או פרטים תפעוליים.
-                    </p>
-                  </div>
-                  <textarea
-                    value={cardNotes}
-                    onChange={(e) => setCardNotes(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right min-h-[140px]"
-                    placeholder="הוספת הערה פנימית..."
-                  />
-                  <p className="text-xs text-gray-500">ההערה נשמרת עם לחיצה על "שמירת שינויים".</p>
-                </div>
+              {!isCreatingNew && openedCustomer && !customerEditing && (
+                <section className="border-y border-[var(--color-border)] py-4">
+                  <h3 className="text-xs font-semibold text-gray-700">הערות פנימיות</h3>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700">{openedCustomer.notes || 'אין הערות פנימיות.'}</p>
+                </section>
               )}
 
               {openedCustomer && (

@@ -3,6 +3,8 @@ import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { CreateAddressSchema } from '@workforce/shared';
 import { computeAddressGeocode, getConfiguredProvider } from '../lib/geocoding/service.js';
+import { getSelectionSecret } from '../lib/geocoding/selectionToken.js';
+import { resolveQuickCreateAddress } from '../domain/quickCreateAddress.js';
 
 export async function addressesRoutes(app: FastifyInstance) {
   app.get('/for-customer/:customerId', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
@@ -12,14 +14,23 @@ export async function addressesRoutes(app: FastifyInstance) {
 
   app.post('/', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const body = CreateAddressSchema.parse(req.body);
+    const selectionToken =
+      typeof (req.body as { selectionToken?: unknown } | null)?.selectionToken === 'string'
+        ? (req.body as { selectionToken: string }).selectionToken
+        : null;
     // Server-side geocoding (PBI #217). Client-supplied coordinates, if any, are
     // ignored — the status is derived only from our own lookup. Never blocks
     // create: any geocode failure yields NOT_REQUESTED/FAILED and proceeds.
     // Coordinates are written only for a validated RESOLVED result (and consumers
     // are additionally gated by addressMonitoringCoords).
-    const geo = await computeAddressGeocode({ provider: getConfiguredProvider(), fullAddress: body.fullAddress }).catch(
-      () => ({ apply: null }),
-    );
+    const geo = selectionToken
+      ? await resolveQuickCreateAddress(
+          { address: { mode: 'selected', token: selectionToken } },
+          { provider: null, secret: getSelectionSecret() },
+        )
+      : await computeAddressGeocode({ provider: getConfiguredProvider(), fullAddress: body.fullAddress }).catch(
+          () => ({ apply: null }),
+        );
     const address = await prisma.address.create({ data: { ...(body as any), ...(geo.apply ?? {}) } });
     reply.status(201);
     return address;
