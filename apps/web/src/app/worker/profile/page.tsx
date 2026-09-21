@@ -99,7 +99,7 @@ export default function WorkerProfilePage() {
           <button
             type="button"
             onClick={startEdit}
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#d8d3ca] bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-[var(--color-surface-muted)]"
           >
             <Pencil className="h-4 w-4" />
             עריכה
@@ -108,7 +108,7 @@ export default function WorkerProfilePage() {
       />
 
       {error || !profile ? (
-        <p className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500">
+        <p className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm text-gray-500">
           לא נמצא פרופיל עובד/ת לחשבון זה.
         </p>
       ) : (
@@ -169,7 +169,7 @@ export default function WorkerProfilePage() {
                   type="button"
                   onClick={() => setEditing(false)}
                   disabled={saving}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-gray-700 hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
                 >
                   <X className="w-3.5 h-3.5" />
                   ביטול

@@ -206,7 +206,7 @@ export default function WorkerReportsPage() {
           <button
             type="button"
             onClick={() => window.print()}
-            className="no-print inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#d8d3ca] bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
+            className="no-print inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-[var(--color-surface-muted)]"
           >
             <Download className="h-4 w-4" />
             הורדת PDF
@@ -242,7 +242,7 @@ export default function WorkerReportsPage() {
       {loading ? (
         <p className="text-sm text-gray-400">טוען…</p>
       ) : error || !data ? (
-        <p className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500">לא נמצא פרופיל עובד/ת לחשבון זה.</p>
+        <p className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm text-gray-500">לא נמצא פרופיל עובד/ת לחשבון זה.</p>
       ) : (
         <>
           {/* Summary */}
@@ -298,11 +298,11 @@ export default function WorkerReportsPage() {
           <section>
             <h2 className="text-sm font-semibold text-gray-900 mb-2">משמרות</h2>
             {data.shifts.length === 0 ? (
-              <p className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500">אין משמרות שהושלמו בחודש זה.</p>
+              <p className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm text-gray-500">אין משמרות שהושלמו בחודש זה.</p>
             ) : (
               <div className="space-y-2">
                 {data.shifts.map((s) => (
-                  <div key={s.shiftId} className="flex items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+                  <div key={s.shiftId} className="flex items-center justify-between gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2.5">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-gray-900">
                         {s.customerName || 'לקוח/ה'}
@@ -331,7 +331,7 @@ export default function WorkerReportsPage() {
               <h2 className="text-sm font-semibold text-gray-900 mb-2">היסטוריית גרסאות</h2>
               <ul className="space-y-1.5 text-xs text-gray-600">
                 {data.versions.map((v) => (
-                  <li key={v.id} className="flex items-center justify-between gap-2 rounded-lg border border-gray-100 bg-white px-2.5 py-1.5">
+                  <li key={v.id} className="flex items-center justify-between gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2.5 py-1.5">
                     <span>
                       גרסה {v.version} · {new Date(v.publishedAt).toLocaleDateString('he-IL', { dateStyle: 'short' })}
                     </span>
@@ -418,7 +418,7 @@ function ApprovalCard({
     );
   }
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+    <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
       <div>
         <h2 className="text-sm font-semibold text-gray-900">אישור הדוח החודשי</h2>
         <p className="text-xs text-gray-500 mt-0.5">בדקי את הנתונים ואשרי, או בקשי תיקון.</p>
@@ -515,7 +515,7 @@ function NotesSection({
       {notes.length > 0 && (
         <div className="space-y-2">
           {notes.map((n) => (
-            <div key={n.id} className="flex items-start justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+            <div key={n.id} className="flex items-start justify-between gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2.5">
               <div>
                 <p className="flex items-center gap-1.5 text-[11px] font-medium text-gray-500">
                   {n.type === 'MISSING_SHIFT' ? (
@@ -544,7 +544,7 @@ function NotesSection({
       )}
 
       {/* Add a comment on a shift */}
-      <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-2">
+      <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">
         <p className="text-xs font-semibold text-gray-700">הוספת הערה על משמרת</p>
         {shifts.length === 0 ? (
           <p className="text-xs text-gray-400">אין משמרות בחודש זה.</p>
@@ -554,7 +554,7 @@ function NotesSection({
               <select
                 value={commentShiftId}
                 onChange={(e) => setCommentShiftId(e.target.value)}
-                className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
+                className="rounded-lg border border-gray-300 bg-[var(--color-surface)] px-2 py-1.5 text-xs"
               >
                 <option value="">בחירת משמרת…</option>
                 {shifts.map((s) => (
@@ -588,7 +588,7 @@ function NotesSection({
       </div>
 
       {/* Report a missing shift */}
-      <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-2">
+      <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">
         <p className="text-xs font-semibold text-gray-700">דיווח על משמרת חסרה</p>
         <p className="text-[11px] text-gray-500">עבדת ביום שלא מופיע בדוח? כתבי את התאריך והפרטים.</p>
         <textarea

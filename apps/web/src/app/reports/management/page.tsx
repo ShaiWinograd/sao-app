@@ -224,7 +224,7 @@ export default function ReportsPage() {
             type="button"
             onClick={() => void handleExport('pdf')}
             disabled={isExporting}
-            className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs"
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-xs"
           >
             <Download className="w-3.5 h-3.5" />
             {isExporting ? 'מייצא...' : 'ייצוא PDF'}
@@ -233,7 +233,7 @@ export default function ReportsPage() {
             type="button"
             onClick={() => void handleExport('csv')}
             disabled={isExporting}
-            className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs"
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-xs"
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
             ייצוא CSV
@@ -241,7 +241,7 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+      <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
           <select
             value={period}
@@ -290,26 +290,26 @@ export default function ReportsPage() {
       ) : null}
 
       <section className="grid gap-4 md:grid-cols-4">
-        <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <article className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 shadow-sm">
           <div className="text-sm text-gray-500">הכנסה ברוטו</div>
           <div className="text-xl font-bold text-gray-900 mt-1">{formatCurrency(summary.grossRevenue)}</div>
         </article>
-        <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <article className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 shadow-sm">
           <div className="text-sm text-gray-500">רווח גולמי</div>
           <div className="text-xl font-bold text-emerald-700 mt-1">{formatCurrency(summary.grossProfit)}</div>
         </article>
-        <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <article className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 shadow-sm">
           <div className="text-sm text-gray-500">רווח נקי</div>
           <div className="text-xl font-bold text-primary-700 mt-1">{formatCurrency(summary.netProfit)}</div>
         </article>
-        <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <article className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 shadow-sm">
           <div className="text-sm text-gray-500">שולי רווח</div>
           <div className="text-xl font-bold text-gray-900 mt-1">{summary.profitMargin.toFixed(1)}%</div>
         </article>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <article className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 shadow-sm">
           <h2 className="text-lg font-semibold mb-3">נפח עבודה</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-xl border border-gray-200 p-3">
@@ -323,7 +323,7 @@ export default function ReportsPage() {
           </div>
         </article>
 
-        <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <article className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 shadow-sm">
           <h2 className="text-lg font-semibold mb-3">פירוט פיננסי</h2>
           <div className="space-y-2 text-sm">
             <div className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2">
@@ -361,7 +361,7 @@ export default function ReportsPage() {
       </div>
 
       {period === 'yearly' ? (
-        <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm overflow-x-auto">
+        <section className="overflow-x-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 shadow-sm">
           <h2 className="text-lg font-semibold mb-3">פירוט חודשי שנתי</h2>
           <table className="w-full text-sm">
             <thead>

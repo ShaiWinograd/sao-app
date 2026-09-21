@@ -173,12 +173,12 @@ function addDaysToDateKey(dateKey: string, days: number) {
 
 function getShiftTypeCardClasses(jobType: JobType) {
   if (jobType === 'אריזה') {
-    return 'border-red-200 bg-red-50 hover:border-red-300 hover:bg-red-100';
+    return 'border-[var(--color-calendar-aubergine-border)] bg-[var(--color-calendar-aubergine-soft)] hover:border-[var(--color-calendar-aubergine)]';
   }
   if (jobType === 'פריקה') {
-    return 'border-amber-200 bg-amber-50 hover:border-amber-300 hover:bg-amber-100';
+    return 'border-[var(--color-calendar-sand-border)] bg-[var(--color-calendar-sand-soft)] hover:border-[var(--color-calendar-sand)]';
   }
-  return 'border-blue-200 bg-blue-50 hover:border-blue-300 hover:bg-blue-100';
+  return 'border-[var(--color-calendar-sage-border)] bg-[var(--color-calendar-sage-soft)] hover:border-[var(--color-calendar-sage)]';
 }
 
 function InfoHint({ text }: { text: string }) {  return (
@@ -897,7 +897,13 @@ export default function DashboardPage() {
       const unfilledShifts = dayWorks.filter((work) => workStaffing(work).workerShortageSlots > 0).length;
       const openSlots = Math.max(required - assigned, 0);
       const coverage = required > 0 ? assigned / required : 1;
-      const coverageClass = isNonWorkingDay ? 'bg-gray-300' : coverage >= 1 ? 'bg-emerald-500' : coverage >= 0.75 ? 'bg-amber-500' : 'bg-rose-500';
+      const coverageClass = isNonWorkingDay
+        ? 'bg-[var(--color-border-strong)]'
+        : coverage >= 1
+          ? 'bg-[var(--color-calendar-sage)]'
+          : coverage >= 0.75
+            ? 'bg-[var(--color-calendar-sand)]'
+            : 'bg-[var(--color-calendar-unavailable)]';
       return {
         dateKey,
         dayLabel: date.toLocaleDateString('he-IL', { weekday: 'short' }),
@@ -1151,7 +1157,7 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={jumpToToday}
-                className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100"
+                className="inline-flex items-center rounded-lg border border-[var(--color-calendar-sage-border)] bg-[var(--color-calendar-sage-soft)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--color-calendar-sage)] hover:border-[var(--color-calendar-sage)]"
               >
                 היום
               </button>
@@ -1162,7 +1168,7 @@ export default function DashboardPage() {
                     const [year, month] = e.target.value.split('-').map(Number);
                     setAnchorDate(new Date(year, month - 1, 1));
                   }}
-                  className="h-8 rounded-lg border border-gray-300 bg-white px-2.5 text-[11px] font-semibold text-gray-700"
+                  className="h-8 rounded-lg border border-gray-300 bg-[var(--color-surface)] px-2.5 text-[11px] font-semibold text-gray-700"
                 >
                   {monthOptions.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -1187,7 +1193,7 @@ export default function DashboardPage() {
                 value={customFromDate}
                 onChange={(e) => setCustomFromDate(e.target.value)}
                 type="date"
-                className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-xs bg-white"
+                className="w-full rounded-md border border-gray-300 bg-[var(--color-surface)] px-2.5 py-1.5 text-xs"
               />
             </label>
             <label className="text-xs text-gray-700 space-y-1">
@@ -1196,7 +1202,7 @@ export default function DashboardPage() {
                 value={customToDate}
                 onChange={(e) => setCustomToDate(e.target.value)}
                 type="date"
-                className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-xs bg-white"
+                className="w-full rounded-md border border-gray-300 bg-[var(--color-surface)] px-2.5 py-1.5 text-xs"
               />
             </label>
           </div>
@@ -1205,21 +1211,21 @@ export default function DashboardPage() {
       </div>
 
       <div className="flex flex-col gap-2.5 lg:h-[calc(100vh-180px)] lg:min-h-[620px] min-h-0">
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden flex-1 min-h-[430px] flex flex-col">
+        <div className="flex min-h-[430px] flex-1 flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]">
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
               <h2 className="font-semibold text-gray-900">
                 תצוגת משמרות {selectedRangeContextLabel} ({displayedWorks.length})
               </h2>
               <Link
                 href="/jobs"
-                className="text-emerald-600 text-xs font-medium hover:text-emerald-700"
+                className="text-xs font-medium text-[var(--color-calendar-sage)] hover:underline"
               >
                 הצג הכל →
               </Link>
             </div>
 
             <div className="overflow-auto flex-1 min-h-0">
-              <div className="grid border-b border-gray-200 bg-gray-50" style={shiftGridStyle}>
+              <div className="grid border-b border-[var(--color-border)] bg-[var(--color-background)]" style={shiftGridStyle}>
                 <div className="p-2.5 text-xs font-semibold text-gray-700 border-l border-gray-200">עובדת</div>
                 {visibleShiftDates.map((date) => {
                   const dateKey = toDateKeyFromDate(date);
@@ -1227,29 +1233,29 @@ export default function DashboardPage() {
                   const isNonWorkingDay = isWorkCreationBlockedDay(dateKey);
                   const isToday = dateKey === todayDateKey;
                   return isNonWorkingDay ? (
-                    <div key={`head-${dateKey}`} className={`min-w-0 border-l border-gray-200 p-2.5 text-center text-gray-500 ${isToday ? 'bg-emerald-100' : 'bg-gray-200'}`}>
+                    <div key={`head-${dateKey}`} className={`min-w-0 border-l border-[var(--color-border)] p-2.5 text-center text-gray-500 ${isToday ? 'bg-[var(--color-calendar-sage-soft)] shadow-[inset_0_2px_0_var(--color-calendar-sage)]' : 'bg-[var(--color-background)]'}`}>
                       <div className="text-xs">{date.toLocaleDateString('he-IL', { weekday: 'short' })}</div>
                       <div className="text-xs font-semibold">{date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}</div>
-                      {isToday && <div className="text-[10px] font-semibold text-emerald-700 leading-3">היום</div>}
+                      {isToday && <div className="text-[10px] font-semibold leading-3 text-[var(--color-calendar-sage)]">היום</div>}
                       <div className="mt-0.5 text-[10px]">{nonWorkingLabel}</div>
                     </div>
                   ) : (
                     <div
                       key={`head-${dateKey}`}
-                      className={`min-w-0 p-2.5 text-center border-l border-gray-200 text-gray-700 ${isToday ? 'bg-emerald-50 text-emerald-700' : ''}`}
+                      className={`min-w-0 border-l border-[var(--color-border)] p-2.5 text-center text-gray-700 ${isToday ? 'bg-[var(--color-calendar-sage-soft)] text-[var(--color-calendar-sage)] shadow-[inset_0_2px_0_var(--color-calendar-sage)]' : ''}`}
                     >
                       <div className="text-xs">{date.toLocaleDateString('he-IL', { weekday: 'short' })}</div>
                       <div className="text-xs font-semibold">{date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}</div>
-                      {isToday && <div className="text-[10px] font-semibold text-emerald-700 leading-3">היום</div>}
-                      {nonWorkingLabel && <div className="text-[10px] text-amber-700">{nonWorkingLabel}</div>}
+                      {isToday && <div className="text-[10px] font-semibold leading-3 text-[var(--color-calendar-sage)]">היום</div>}
+                      {nonWorkingLabel && <div className="text-[10px] text-[var(--color-calendar-sand)]">{nonWorkingLabel}</div>}
                     </div>
                   );
                 })}
               </div>
 
-              <div className="grid border-b border-gray-200 bg-amber-50/40" style={shiftGridStyle}>
+              <div className="grid border-b border-[var(--color-border)] bg-[var(--color-calendar-sand-soft)]" style={shiftGridStyle}>
                 <div className="p-2.5 border-l border-gray-200 flex items-center gap-1.5 text-xs font-semibold text-gray-700">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                  <AlertTriangle className="h-3.5 w-3.5 text-[var(--color-calendar-sand)]" />
                   פערי איוש
                 </div>
                 {visibleShiftDates.map((date) => {
@@ -1260,7 +1266,7 @@ export default function DashboardPage() {
                   return (
                     <div
                       key={`unassigned-${dateKey}`}
-                      className={`min-h-[56px] border-l border-gray-100 p-1.5 ${isNonWorkingDay ? 'bg-gray-100' : isToday ? 'bg-emerald-50/40' : ''}`}
+                      className={`min-h-[56px] border-l border-[var(--color-border)] p-1.5 ${isNonWorkingDay ? 'bg-[var(--color-background)]' : isToday ? 'bg-[var(--color-calendar-sage-soft)]' : ''}`}
                     >
                       {isNonWorkingDay || openWorks.length === 0 ? null : (
                         <div className="space-y-1">
@@ -1275,7 +1281,7 @@ export default function DashboardPage() {
                                 <p className="text-[11px] font-semibold text-gray-900 truncate">{work.customerName}</p>
                                 <span
                                   title={`חסרים ${open} עובדים`}
-                                  className="shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-blue-100 text-blue-700 text-[11px] font-semibold px-1"
+                                  className="inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-[var(--color-calendar-sand-border)] px-1 text-[11px] font-semibold text-[var(--color-calendar-sand)]"
                                 >
                                   {open}
                                 </span>
@@ -1318,14 +1324,22 @@ export default function DashboardPage() {
                     return (
                       <div
                         key={`${worker.id}-${dateKey}`}
-                        className={`min-h-[70px] border-l border-gray-100 p-1.5 ${isNonWorkingDay ? (isToday ? 'bg-emerald-100' : 'bg-gray-100') : isToday ? 'bg-emerald-50/50' : 'bg-white'}`}
+                        className={`min-h-[70px] border-l border-[var(--color-border)] p-1.5 ${
+                          isNonWorkingDay
+                            ? isToday
+                              ? 'bg-[var(--color-calendar-sage-soft)]'
+                              : 'bg-[var(--color-background)]'
+                            : isToday
+                              ? 'bg-[var(--color-calendar-sage-soft)]'
+                              : 'bg-[var(--color-surface-muted)]'
+                        }`}
                       >
                         {isNonWorkingDay ? (
                           <p className="mt-5 text-center text-[11px] text-gray-500">{nonWorkingLabel}</p>
                         ) : unavailable ? (
-                          <div className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1.5 text-center">
-                            <p className="text-[11px] font-semibold text-rose-700">לא זמינה</p>
-                            <p className="text-[11px] text-rose-600">{unavailable.reason}</p>
+                          <div className="rounded-md border border-[var(--color-calendar-unavailable-border)] bg-[var(--color-calendar-unavailable-soft)] px-2 py-1.5 text-center">
+                            <p className="text-[11px] font-semibold text-[var(--color-calendar-unavailable)]">לא זמינה</p>
+                            <p className="text-[11px] text-[var(--color-calendar-unavailable)]">{unavailable.reason}</p>
                           </div>
                         ) : shifts.length > 0 ? (
                           <div className="space-y-1">
@@ -1384,7 +1398,7 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
-        <div className="bg-white rounded-lg border border-gray-200 shrink-0">
+        <div className="shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]">
           <div className="px-3 py-2.5 border-y border-gray-100">
             <h3 className="font-semibold text-gray-900 text-sm">סיכום שיבוץ לעבודות {selectedRangeContextLabel}</h3>
             <p className="text-xs text-gray-500 mt-1 mb-2">מבוסס על העבודות שמוצגות מעל</p>

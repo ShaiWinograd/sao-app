@@ -427,7 +427,7 @@ export default function WorkersPage() {
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value as 'all' | WorkerRole)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+            className="rounded-lg border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
           >
             <option value="all">כל התפקידים</option>
             <option value="ראש צוות">ראש צוות</option>
@@ -455,7 +455,7 @@ export default function WorkersPage() {
         </div>
       </div>
 
-      <div className="overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface)]">
+      <div className="overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface-muted)]">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-right">
             <thead className="border-b border-[var(--color-border)] bg-[var(--color-surface-muted)]">
@@ -550,7 +550,7 @@ export default function WorkersPage() {
 
       {editingWorkerId && (
         <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
-          <div className="w-full max-w-xl rounded-lg border border-gray-200 bg-white shadow-xl overflow-hidden">
+          <div className="w-full max-w-xl overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
               <button
                 type="button"
@@ -575,7 +575,7 @@ export default function WorkersPage() {
                   className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-right"
                   placeholder="אימייל"
                 />
-                <select value={editRole} onChange={(e) => setEditRole(e.target.value as WorkerRole)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white">
+                <select value={editRole} onChange={(e) => setEditRole(e.target.value as WorkerRole)} className="rounded-lg border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm">
                   <option value="ראש צוות">ראש צוות</option>
                   <option value="עובדת">עובדת</option>
                 </select>
@@ -583,7 +583,7 @@ export default function WorkersPage() {
                   <select
                     value={editHourlyWage}
                     onChange={(e) => setEditHourlyWage(Number(e.target.value))}
-                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                    className="rounded-lg border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
                   >
                     {HOURLY_WAGE_OPTIONS.map((option) => (
                       <option key={option} value={option}>
@@ -616,7 +616,7 @@ export default function WorkersPage() {
                     value={editEffectiveFrom}
                     onChange={(e) => setEditEffectiveFrom(e.target.value)}
                     disabled={editApplyImmediately}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white disabled:bg-gray-100"
+                    className="w-full rounded-lg border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm disabled:bg-gray-100"
                   />
                 </label>
               </div>
@@ -663,7 +663,7 @@ export default function WorkersPage() {
 
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
-          <div className="w-full max-w-3xl rounded-lg border border-gray-200 bg-white shadow-xl overflow-hidden">
+          <div className="w-full max-w-3xl overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
               <button
                 type="button"
@@ -726,7 +726,7 @@ export default function WorkersPage() {
                   <select
                     value={newRole}
                     onChange={(e) => setNewRole(e.target.value as WorkerRole)}
-                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                    className="mt-1 w-full rounded-lg border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
                   >
                     <option value="עובדת">עובדת</option>
                     <option value="ראש צוות">ראש צוות</option>
@@ -738,7 +738,7 @@ export default function WorkersPage() {
                     <select
                       value={newHourlyWage}
                       onChange={(e) => setNewHourlyWage(Number(e.target.value))}
-                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                      className="mt-1 w-full rounded-lg border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
                     >
                       {HOURLY_WAGE_OPTIONS.map((wage) => (
                         <option key={wage} value={wage}>{wage}</option>
@@ -761,7 +761,7 @@ export default function WorkersPage() {
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
-                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="rounded-lg border border-gray-300 bg-[var(--color-surface)] px-4 py-2 text-sm font-medium text-gray-700 hover:bg-[var(--color-surface-muted)]"
                 >
                   ביטול
                 </button>

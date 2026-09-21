@@ -21,9 +21,21 @@ type ApiJob = {
 };
 
 const JOB_TYPE: Record<ApiJob['jobType'], { label: string; cls: string; dot: string }> = {
-  PACKING: { label: 'אריזה', cls: 'bg-red-50 border-red-200 text-red-800', dot: 'bg-red-500' },
-  UNPACKING: { label: 'פריקה', cls: 'bg-amber-50 border-amber-200 text-amber-800', dot: 'bg-amber-500' },
-  HOME_ORGANIZATION: { label: 'סידור', cls: 'bg-blue-50 border-blue-200 text-blue-800', dot: 'bg-blue-500' },
+  PACKING: {
+    label: 'אריזה',
+    cls: 'border-[var(--color-calendar-aubergine-border)] bg-[var(--color-calendar-aubergine-soft)] text-[var(--color-calendar-aubergine)]',
+    dot: 'bg-[var(--color-calendar-aubergine)]',
+  },
+  UNPACKING: {
+    label: 'פריקה',
+    cls: 'border-[var(--color-calendar-sand-border)] bg-[var(--color-calendar-sand-soft)] text-[var(--color-calendar-sand)]',
+    dot: 'bg-[var(--color-calendar-sand)]',
+  },
+  HOME_ORGANIZATION: {
+    label: 'סידור',
+    cls: 'border-[var(--color-calendar-sage-border)] bg-[var(--color-calendar-sage-soft)] text-[var(--color-calendar-sage)]',
+    dot: 'bg-[var(--color-calendar-sage)]',
+  },
 };
 
 const WEEKDAYS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
@@ -116,7 +128,7 @@ export default function JobsPage() {
           <div className="flex items-center gap-2">
           <Link
             href="/shifts/swaps"
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#d8d3ca] bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-[var(--color-surface-muted)]"
           >
             <Repeat className="h-4 w-4" />
             החלפות משמרות
@@ -132,7 +144,7 @@ export default function JobsPage() {
         }
       />
 
-      <section className="overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface)]">
+      <section className="overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface-muted)]">
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-4">
           <button
             type="button"
@@ -174,7 +186,9 @@ export default function JobsPage() {
                   <div
                     key={cell.key}
                     className={`min-h-[100px] border p-1.5 ${
-                      cell.key === todayKey ? 'border-primary-400 bg-primary-50/50' : 'border-[var(--color-border)]'
+                      cell.key === todayKey
+                        ? 'border-[var(--color-calendar-sage-border)] bg-[var(--color-calendar-sage-soft)] shadow-[inset_0_2px_0_var(--color-calendar-sage)]'
+                        : 'border-[var(--color-border)]'
                     }`}
                   >
                     <div className="mb-1 text-[11px] font-medium text-gray-400">{cell.day}</div>
@@ -187,7 +201,7 @@ export default function JobsPage() {
                           <Link
                             key={job.id}
                             href={`/jobs/${job.id}`}
-                            className={`block border-r-2 bg-transparent px-1.5 py-1 text-[11px] leading-tight hover:bg-white/70 ${type.cls}`}
+                            className={`block border-r-2 bg-transparent px-1.5 py-1 text-[11px] leading-tight hover:bg-[var(--color-surface)] ${type.cls}`}
                           >
                             <div className="flex items-center gap-1 font-medium">
                               <span className={`h-1.5 w-1.5 rounded-full ${type.dot}`} />

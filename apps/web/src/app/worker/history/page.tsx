@@ -120,7 +120,7 @@ export default function WorkerHistoryPage() {
       </div>
 
       {error ? (
-        <p className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500">לא נמצא פרופיל עובד/ת לחשבון זה.</p>
+        <p className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm text-gray-500">לא נמצא פרופיל עובד/ת לחשבון זה.</p>
       ) : (
         <>
           {/* Summary */}

@@ -206,7 +206,7 @@ export default function CustomerReportPage() {
           {preview?.reportableJobs.map((j) => {
             const off = !!excluded[j.jobId];
             return (
-              <div key={j.jobId} className={`rounded-lg border px-3 py-2 ${off ? 'border-gray-200 bg-gray-50 opacity-60' : 'border-gray-200 bg-white'}`}>
+              <div key={j.jobId} className={`rounded-lg border px-3 py-2 ${off ? 'border-gray-200 bg-gray-50 opacity-60' : 'border-[var(--color-border)] bg-[var(--color-surface-muted)]'}`}>
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-900">
                     {j.date} · {JOB_TYPE_LABEL[j.jobType] ?? j.jobType} · {j.workerCount} עובדים · {j.billableHours} שעות לחיוב
@@ -307,7 +307,7 @@ export default function CustomerReportPage() {
           <h2 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1"><History className="w-4 h-4" /> היסטוריית גרסאות</h2>
           <ul className="space-y-2">
             {versions.map((v) => (
-              <li key={v.id} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm">
+              <li key={v.id} className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-2 text-sm">
                 <span>גרסה {v.versionNumber}{v.isCurrent ? ' (נוכחית)' : ''} · {money(v.finalAmount)} · {new Date(v.createdAt).toLocaleDateString('he-IL')}</span>
                 <button onClick={() => void downloadVersion(v.id, v.versionNumber)} className="inline-flex items-center gap-1 text-primary-600 hover:underline">
                   <Download className="w-4 h-4" /> PDF

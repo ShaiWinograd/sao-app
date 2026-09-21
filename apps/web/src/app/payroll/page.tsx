@@ -271,7 +271,7 @@ function OwnerWorkerReportsInner() {
       {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <section className="border-y border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+        <section className="border-y border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">
           {loading ? (
             <div className="flex items-center justify-center py-10 text-gray-400">
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -308,7 +308,7 @@ function OwnerWorkerReportsInner() {
           )}
         </section>
 
-        <section className="border-y border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+        <section className="border-y border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
           {!selected ? (
             <p className="flex items-center gap-2 py-10 text-sm text-gray-400">
               <FileText className="h-4 w-4" /> בחרי עובדת כדי לצפות בדוח ולפרסם

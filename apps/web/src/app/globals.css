@@ -16,6 +16,18 @@
   --color-text-muted: #918a82;
   --color-border: #e1dbd1;
   --color-border-strong: #d2cabf;
+  --color-calendar-sage: #465e4b;
+  --color-calendar-sage-soft: #e5eadd;
+  --color-calendar-sage-border: #cbd3c5;
+  --color-calendar-sand: #8a5438;
+  --color-calendar-sand-soft: #f0e5d7;
+  --color-calendar-sand-border: #dfcebb;
+  --color-calendar-aubergine: #65505a;
+  --color-calendar-aubergine-soft: #e9e3e6;
+  --color-calendar-aubergine-border: #d7cbd1;
+  --color-calendar-unavailable: #80534f;
+  --color-calendar-unavailable-soft: #f4e8e6;
+  --color-calendar-unavailable-border: #dfc6c2;
 
   /* Tailwind `primary` scale channels (default: muted green, §2.1) */
   --tw-primary-50: 244 247 245;
