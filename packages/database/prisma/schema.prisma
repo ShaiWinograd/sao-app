@@ -448,6 +448,9 @@ model Job {
   staffingMode         StaffingMode  @default(AUTO_APPROVE)
   jobNotes             String?
   workerVisibleNotes   String?
+  traineeName          String?
+  traineeHourlyWage    Decimal?      @db.Decimal(10, 2)
+  traineeApprovedHours Decimal?      @db.Decimal(10, 2)
   billingModel         BillingModel?
   billingRate          Decimal?      @db.Decimal(10, 2)
   locationRadiusMeters Int           @default(500)

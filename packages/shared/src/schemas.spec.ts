@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { JoinRequestSchema, CustomerSchema, CreateWorkerSchema } from './schemas';
+import { JoinRequestSchema, CustomerSchema, CreateJobSchema, CreateWorkerSchema } from './schemas';
 
 describe('JoinRequestSchema (§ join-request 500 fix)', () => {
   it('accepts a body WITHOUT workerId (worker is derived from the session)', () => {
@@ -24,6 +24,36 @@ describe('CustomerSchema (email optional)', () => {
     expect(parsed.firstName).toBe('TEST');
     expect(parsed.email).toBeUndefined();
     expect(parsed.lastName).toBe(''); // optional, defaults to ''
+  });
+
+  describe('CreateJobSchema (trainee labor)', () => {
+    const validJob = {
+      caseId: 'case-1',
+      customerId: 'customer-1',
+      addressId: 'address-1',
+      jobType: 'PACKING' as const,
+      date: '2026-10-01T00:00:00.000Z',
+      plannedStart: '2026-10-01T09:00:00.000Z',
+      plannedEnd: '2026-10-01T14:00:00.000Z',
+      requiredWorkerCount: 2,
+      staffingMode: 'MANAGER_APPROVAL' as const,
+    };
+
+    it('accepts an external trainee without a platform worker account', () => {
+      expect(
+        CreateJobSchema.parse({
+          ...validJob,
+          traineeName: 'נועה כהן',
+          traineeHourlyWage: 50,
+          traineeApprovedHours: 4.5,
+        }),
+      ).toMatchObject({ traineeName: 'נועה כהן', traineeHourlyWage: 50, traineeApprovedHours: 4.5 });
+    });
+
+    it('rejects negative trainee pay or hours', () => {
+      expect(() => CreateJobSchema.parse({ ...validJob, traineeHourlyWage: -1 })).toThrow();
+      expect(() => CreateJobSchema.parse({ ...validJob, traineeApprovedHours: -0.25 })).toThrow();
+    });
   });
 
   describe('CreateWorkerSchema (Hebrew system name)', () => {

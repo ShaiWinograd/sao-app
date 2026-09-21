@@ -354,7 +354,43 @@ export async function workerPayrollRoutes(app: FastifyInstance) {
       }),
     );
 
-    return { workers: rows, month: m, year: y };
+    const traineeJobs = await prisma.job.findMany({
+      where: {
+        traineeName: { not: null },
+        date: { gte: new Date(y, m - 1, 1), lt: new Date(y, m, 1) },
+      },
+      select: {
+        id: true,
+        date: true,
+        traineeName: true,
+        traineeHourlyWage: true,
+        traineeApprovedHours: true,
+        customer: { select: { firstName: true, lastName: true } },
+      },
+      orderBy: { date: 'asc' },
+    });
+    const externalLabor = traineeJobs.map((job) => {
+      const hours = Number(round2(money(job.traineeApprovedHours)));
+      const hourlyRate = Number(round2(money(job.traineeHourlyWage)));
+      return {
+        jobId: job.id,
+        date: job.date.toISOString(),
+        name: job.traineeName!,
+        customerName: `${job.customer.firstName} ${job.customer.lastName}`.trim(),
+        approvedHours: job.traineeApprovedHours == null ? null : hours,
+        hourlyRate,
+        total: Number(round2(hours * hourlyRate)),
+        requiresHours: job.traineeApprovedHours == null,
+      };
+    });
+
+    return {
+      workers: rows,
+      externalLabor,
+      externalLaborTotal: Number(round2(externalLabor.reduce((sum, line) => sum + line.total, 0))),
+      month: m,
+      year: y,
+    };
   });
 
   // Owner: a worker's live draft plus published version history (spec §19).

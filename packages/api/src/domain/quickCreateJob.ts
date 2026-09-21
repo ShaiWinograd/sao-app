@@ -39,6 +39,8 @@ export interface QuickJobInput {
   requiresTeamLeader?: boolean;
   initialStatus?: 'RESERVATION' | 'APPROVED';
   notes?: string;
+  traineeName?: string;
+  traineeHourlyWage?: number;
   idempotencyKey?: string;
 }
 
@@ -140,6 +142,8 @@ export async function createQuickJob(
         plannedEnd,
         requiredWorkerCount: body.requiredWorkerCount,
         jobNotes: body.notes ?? null,
+        traineeName: body.traineeName?.trim() || null,
+        traineeHourlyWage: body.traineeName ? body.traineeHourlyWage ?? 0 : null,
         formTemplateId: defaultTemplate?.id ?? null,
         status: body.initialStatus ?? 'RESERVATION',
         idempotencyKey: body.idempotencyKey ?? null,

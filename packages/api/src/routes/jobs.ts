@@ -400,6 +400,9 @@ export async function jobsRoutes(app: FastifyInstance) {
     requiresTeamLeader: z.boolean().optional(),
     initialStatus: z.enum(['RESERVATION', 'APPROVED']).optional(),
     notes: z.string().optional(),
+    traineeName: z.string().trim().min(1).optional(),
+    traineeHourlyWage: z.number().min(0).optional(),
+    selectedWorkerIds: z.array(z.string().min(1)).max(20).optional(),
     // Idempotency key (one per opened form) so a repeated submit / retry cannot
     // create a second job (spec: duplicate-creation safeguard).
     idempotencyKey: z.string().min(8).max(200).optional(),
@@ -428,6 +431,89 @@ export async function jobsRoutes(app: FastifyInstance) {
     await logAudit((req as any).user, 'CREATE', 'Job', job.id, null, { status: job.status, quick: true }, 'quick-created');
     await notifyJobPublished(job.id);
 
+    const selectedWorkerIds = body.selectedWorkerIds ?? [];
+    const invitedWorkerIds = selectedWorkerIds.slice(0, body.requiredWorkerCount);
+    const assignmentFailures: Array<{ workerId: string; error: string }> = selectedWorkerIds
+      .slice(body.requiredWorkerCount)
+      .map((workerId) => ({ workerId, error: 'מספר העובדות שנבחרו גדול ממספר המקומות בעבודה' }));
+    let leaderAssigned = false;
+    for (const workerId of invitedWorkerIds) {
+      try {
+        const worker = await prisma.worker.findUnique({ where: { id: workerId } });
+        if (!worker) {
+          assignmentFailures.push({ workerId, error: 'העובדת לא נמצאה' });
+          continue;
+        }
+        const existingInvitation = await prisma.shift.findFirst({
+          where: { jobId: job.id, workerId },
+          select: { id: true, assignmentRole: true },
+        });
+        if (existingInvitation) {
+          if (existingInvitation.assignmentRole === 'TEAM_LEADER') leaderAssigned = true;
+          continue;
+        }
+        const dateKey = body.date.slice(0, 10);
+        const occupied = await prisma.shift.findFirst({
+          where: {
+            workerId,
+            joinRequestStatus: { in: ['PENDING', 'AWAITING_WORKER', 'APPROVED'] },
+            job: { date: new Date(`${dateKey}T00:00:00.000Z`) },
+          },
+          select: { id: true },
+        });
+        const availability = await prisma.workerAvailability.findMany({
+          where: { workerId },
+          select: { type: true, startDate: true, endDate: true, weekday: true },
+        });
+        if (
+          occupied ||
+          isUnavailableOn(
+            availability.map((block) => ({
+              type: block.type,
+              startDate: block.startDate?.toISOString() ?? null,
+              endDate: block.endDate?.toISOString() ?? null,
+              weekday: block.weekday,
+            })),
+            dateKey,
+          )
+        ) {
+          assignmentFailures.push({ workerId, error: 'העובדת אינה זמינה בתאריך שנבחר' });
+          continue;
+        }
+        const canLead = ((worker.skills as string[]) ?? []).includes(MANAGER_SKILL);
+        const assignmentRole = body.requiresTeamLeader && !leaderAssigned && canLead ? 'TEAM_LEADER' : 'REGULAR';
+        const shift = await prisma.shift.create({
+          data: {
+            workerId,
+            jobId: job.id,
+            scheduledStart: job.plannedStart,
+            scheduledEnd: job.plannedEnd,
+            joinRequestStatus: 'AWAITING_WORKER',
+            assignmentRole,
+            attendanceStatus: 'SCHEDULED',
+            hourlyWageSnapshot: worker.hourlyWage,
+            dailyPaymentSnapshot: worker.dailyPaymentAmount,
+            workerNameSnapshot: `${worker.firstName} ${worker.lastName}`.trim(),
+          },
+        });
+        if (assignmentRole === 'TEAM_LEADER') leaderAssigned = true;
+        await prisma.notification.create({
+          data: {
+            userId: worker.userId,
+            title: 'שובצת למשמרת – נדרש אישורך',
+            body: `בעל/ת העסק שיבץ/ה אותך לעבודה בתאריך ${dateKey}. יש לאשר או לדחות ביומן.`,
+            data: { type: 'DIRECT_ASSIGNMENT', shiftId: shift.id, jobId: job.id } as any,
+          },
+        });
+      } catch (error) {
+        req.log.error({ error, workerId, jobId: job.id }, 'Failed to invite selected worker during quick create');
+        assignmentFailures.push({ workerId, error: 'השיבוץ נכשל' });
+      }
+    }
+    if (body.requiresTeamLeader && invitedWorkerIds.length > 0 && !leaderAssigned) {
+      assignmentFailures.push({ workerId: '', error: 'לא נבחרה ראש צוות זמינה; העבודה נוצרה ללא ראש צוות משובצת' });
+    }
+
     // Advisory capacity warning (spec §17) — never blocks creation.
     const parsedDate = new Date(`${body.date.slice(0, 10)}T00:00:00.000Z`);
     const activeWorkers = await prisma.worker.count({ where: { isActive: true } });
@@ -438,7 +524,7 @@ export async function jobsRoutes(app: FastifyInstance) {
     const available = Math.max(0, activeWorkers - new Set(occupied.map((s) => s.workerId)).size);
 
     reply.status(201);
-    return { job, capacityWarning: available < body.requiredWorkerCount, availableWorkers: available };
+    return { job, capacityWarning: available < body.requiredWorkerCount, availableWorkers: available, assignmentFailures };
   });
 
   app.post('/', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {

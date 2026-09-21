@@ -80,11 +80,9 @@ export default function WorkerShiftsPage() {
   const [swaps, setSwaps] = useState<SwapMine[]>([]);
   const [replacements, setReplacements] = useState<OpenReplacement[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'all' | 'mine'>('mine');
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [joinTarget, setJoinTarget] = useState<BoardShift | null>(null);
-  const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDate, setSelectedDate] = useState(() => toDateKey(new Date()));
   const selectedInitialDate = useRef(false);
 
@@ -134,13 +132,7 @@ export default function WorkerShiftsPage() {
       .find((shift) => new Date(shift.date).getTime() >= today.getTime());
     if (!nextShift) return;
 
-    const target = new Date(nextShift.date);
-    const currentWeek = new Date(today);
-    currentWeek.setDate(today.getDate() - today.getDay());
-    const targetWeek = new Date(target);
-    targetWeek.setDate(target.getDate() - target.getDay());
-    setSelectedDate(toDateKey(target));
-    setWeekOffset(Math.round((targetWeek.getTime() - currentWeek.getTime()) / (7 * 24 * 60 * 60 * 1000)));
+    setSelectedDate(toDateKey(nextShift.date));
     selectedInitialDate.current = true;
   }, [board]);
 
@@ -266,28 +258,66 @@ export default function WorkerShiftsPage() {
         return aTime - bTime;
       })[0] ?? null;
   }, [myShifts]);
-  const visible = tab === 'all' ? board : myShifts;
-  const weekDays = useMemo(() => {
+  const visible = board;
+  const calendarDays = useMemo(() => {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
-    start.setDate(start.getDate() - start.getDay() + weekOffset * 7);
-    return Array.from({ length: 7 }, (_, index) => {
+    return Array.from({ length: 21 }, (_, index) => {
       const date = new Date(start);
       date.setDate(start.getDate() + index);
       return date;
     });
-  }, [weekOffset]);
-  const selectedShifts = useMemo(
-    () => visible.filter((shift) => toDateKey(shift.date) === selectedDate),
-    [selectedDate, visible],
+  }, []);
+  const groupedShifts = useMemo(
+    () =>
+      Array.from(
+        visible.reduce((groups, shift) => {
+          const key = toDateKey(shift.date);
+          groups.set(key, [...(groups.get(key) ?? []), shift]);
+          return groups;
+        }, new Map<string, BoardShift[]>()),
+      ).sort(([a], [b]) => a.localeCompare(b)),
+    [visible],
   );
-  const weekLabel = `${weekDays[0].toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })} – ${weekDays[6].toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })}`;
-  const moveWeek = (delta: number) => {
-    const firstDay = new Date(weekDays[0]);
-    firstDay.setDate(firstDay.getDate() + delta * 7);
-    setWeekOffset((value) => value + delta);
-    setSelectedDate(toDateKey(firstDay));
-  };
+
+  const markUnavailable = useCallback(async () => {
+    setBusy(`availability-${selectedDate}`);
+    setMessage(null);
+    try {
+      const auth = await authHeaders(getToken);
+      await api.post('/workers/me/availability', { type: 'DATE', startDate: selectedDate }, auth);
+      setMessage(`סומן שאינך זמינה ב-${new Date(`${selectedDate}T00:00:00`).toLocaleDateString('he-IL')}.`);
+    } catch {
+      setMessage('לא ניתן לסמן את היום כלא זמין. ייתכן שכבר יש לך שיבוץ ביום הזה.');
+    } finally {
+      setBusy(null);
+    }
+  }, [selectedDate, getToken]);
+
+  const downloadCalendar = useCallback(() => {
+    const events = myShifts
+      .filter((shift) => shift.myStatus === 'APPROVED')
+      .map((shift) => {
+        const start = `${toDateKey(shift.date).replaceAll('-', '')}T${formatScheduledTime(shift.plannedStart).replace(':', '')}00`;
+        const end = `${toDateKey(shift.date).replaceAll('-', '')}T${formatScheduledTime(shift.plannedEnd).replace(':', '')}00`;
+        return [
+          'BEGIN:VEVENT',
+          `UID:${shift.jobId}@space-and-order`,
+          `DTSTART;TZID=Asia/Jerusalem:${start}`,
+          `DTEND;TZID=Asia/Jerusalem:${end}`,
+          `SUMMARY:${jobTypeLabel(shift.jobType)} - ${shift.customerName}`,
+          `LOCATION:${shift.address ?? ''}`,
+          'END:VEVENT',
+        ].join('\r\n');
+      });
+    const calendar = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Space and Order//Worker Calendar//HE', ...events, 'END:VCALENDAR'].join('\r\n');
+    const url = URL.createObjectURL(new Blob([calendar], { type: 'text/calendar;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'space-and-order-shifts.ics';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }, [myShifts]);
 
   if (loading) return <p className="text-sm text-gray-400">טוען…</p>;
 
@@ -299,25 +329,17 @@ export default function WorkerShiftsPage() {
         description="כל מה שצריך לדעת ולעשות לקראת העבודה הבאה."
       />
 
-      <div className="grid grid-cols-2 border-b border-[var(--color-border-strong)] text-sm">
-        {([['mine', 'היומן שלי'], ['all', 'משמרות פתוחות']] as [typeof tab, string][]).map(([v, label]) => (
-          <button
-            key={v}
-            type="button"
-            onClick={() => setTab(v)}
-            className={`min-h-11 border-b-2 px-3 py-2 font-semibold transition-colors ${
-              tab === v
-                ? 'border-primary-700 text-primary-800'
-                : 'border-transparent text-[var(--color-text-secondary)] hover:border-primary-200 hover:text-[#292724]'
-            }`}
-          >
-            {label}
-            {v === 'mine' && myShifts.length > 0 ? ` (${myShifts.length})` : ''}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-y border-[var(--color-border-strong)] py-3">
+        <div>
+          <p className="text-sm font-semibold text-[#292724]">היומן של כולן</p>
+          <p className="text-xs text-[var(--color-text-secondary)]">שיבוצים, הזמנות שמחכות לאישורך ומשמרות פתוחות במקום אחד.</p>
+        </div>
+        <button type="button" onClick={downloadCalendar} className="border border-primary-700 px-3 py-2 text-xs font-semibold text-primary-800">
+          הוספה ל-Google או Apple Calendar
+        </button>
       </div>
 
-      {tab === 'mine' && nextMyShift && (
+      {nextMyShift && (
         <section className="grid gap-4 border-t-2 border-primary-700 bg-primary-100/70 p-4 sm:grid-cols-[minmax(0,1fr)_6rem] sm:p-5">
           <div>
             <p className="text-[11px] font-semibold tracking-[0.12em] text-primary-700">המשמרת הבאה</p>
@@ -365,30 +387,21 @@ export default function WorkerShiftsPage() {
             <p className="text-sm font-semibold text-[#292724]">השבוע שלך</p>
             <button
               type="button"
-              onClick={() => {
-                setWeekOffset(0);
-                setSelectedDate(toDateKey(new Date()));
-              }}
+              onClick={() => setSelectedDate(toDateKey(new Date()))}
               className="mt-1 text-[11px] font-semibold text-primary-700 underline decoration-primary-300 underline-offset-4"
             >
               חזרה להיום
             </button>
           </div>
-          <div className="flex items-center gap-4 text-xs">
-            <button type="button" onClick={() => moveWeek(-1)} className="text-[var(--color-text-secondary)] hover:text-primary-700">
-              שבוע קודם
-            </button>
-            <span className="min-w-32 text-center font-semibold text-[#292724]">{weekLabel}</span>
-            <button type="button" onClick={() => moveWeek(1)} className="text-[var(--color-text-secondary)] hover:text-primary-700">
-              שבוע הבא
-            </button>
-          </div>
+          <button type="button" onClick={() => void markUnavailable()} disabled={busy === `availability-${selectedDate}`} className="border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 disabled:opacity-50">
+            לא זמינה ביום שנבחר
+          </button>
         </div>
         <div
-          className="mx-auto grid max-w-[900px] grid-cols-7 gap-1 border-y border-[var(--color-border)] py-3"
+          className="mx-auto flex max-w-[900px] gap-1 overflow-x-auto border-y border-[var(--color-border)] py-3"
           data-testid="worker-week-calendar"
         >
-          {weekDays.map((date) => {
+          {calendarDays.map((date) => {
             const key = toDateKey(date);
             const active = key === selectedDate;
             const hasShift = visible.some((shift) => toDateKey(shift.date) === key);
@@ -397,7 +410,7 @@ export default function WorkerShiftsPage() {
                 key={key}
                 type="button"
                 onClick={() => setSelectedDate(key)}
-                className={`flex min-h-[76px] flex-col items-center justify-center px-1 transition-colors ${
+                className={`flex min-h-[76px] min-w-16 flex-col items-center justify-center px-1 transition-colors ${
                   active ? 'bg-primary-700 text-white' : 'text-[var(--color-text-secondary)] hover:bg-primary-50'
                 }`}
               >
@@ -416,7 +429,7 @@ export default function WorkerShiftsPage() {
         <div className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-xs text-primary-800">{message}</div>
       )}
 
-      {tab === 'mine' && swaps.length > 0 && (
+      {swaps.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-gray-900">בקשות החלפת משמרות</h2>
           {swaps.map((s) => (
@@ -446,19 +459,18 @@ export default function WorkerShiftsPage() {
 
       {visible.length === 0 ? (
         <EmptyState
-          title={tab === 'all' ? 'אין משמרות מתוזמנות כרגע' : 'אין לך משמרות משובצות'}
+          title="אין משמרות מתוזמנות כרגע"
           description="עבודות חדשות ושינויים בשיבוץ יופיעו כאן ברגע שיפורסמו."
         />
       ) : (
         <>
-          <div className="space-y-0">
-            {selectedShifts.length === 0 ? (
-              <div className="border-y border-dashed border-[var(--color-border-strong)] px-5 py-7 text-center">
-                <p className="text-sm font-semibold text-gray-800">אין משמרות ביום שנבחר</p>
-                <p className="mt-1 text-xs text-gray-500">אפשר לבחור יום אחר מהלוח השבועי.</p>
-              </div>
-            ) : (
-              selectedShifts.map((s) => (
+          <div className="space-y-8">
+            {groupedShifts.map(([dateKey, shifts]) => (
+              <section key={dateKey} id={`worker-day-${dateKey}`} className={selectedDate === dateKey ? 'scroll-mt-24' : ''}>
+                <div className="sticky top-0 z-10 border-b border-[var(--color-border-strong)] bg-[var(--color-background)] py-2">
+                  <h2 className="font-display text-xl text-[#292724]">{new Date(`${dateKey}T00:00:00`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>
+                </div>
+                {shifts.map((s) => (
                 <div key={s.jobId} className="grid grid-cols-[3.75rem_minmax(0,1fr)] items-start gap-4 border-b border-[var(--color-border)] py-4 sm:grid-cols-[5rem_minmax(0,1fr)]">
                   <div className="border-l border-[var(--color-border)] pl-3 text-center" dir="ltr">
                     <p className="font-display text-2xl leading-none text-[#292724]">{formatScheduledTime(s.plannedStart)}</p>
@@ -472,13 +484,14 @@ export default function WorkerShiftsPage() {
                     onCancelRequest={() => s.myShiftId && void cancelRequest(s.myShiftId)}
                   />
                 </div>
-              ))
-            )}
+                ))}
+              </section>
+            ))}
           </div>
         </>
       )}
 
-      {tab === 'all' && replacements.length > 0 && (
+      {replacements.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-gray-900">משמרות הדורשות החלפה</h2>
           {replacements.map((r) => (

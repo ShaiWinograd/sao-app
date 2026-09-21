@@ -39,7 +39,7 @@ test.describe('Worker desktop layout', () => {
     await page.goto('/worker/history');
     await page.getByRole('link', { name: 'מעבר למסך המשמרות' }).click();
     await expect(page).toHaveURL(/\/worker$/);
-    await expect(page.getByRole('button', { name: 'שבוע הבא' })).toBeVisible();
+    await expect(page.getByText('היומן של כולן')).toBeVisible();
 
     const main = page.locator('main');
     await main.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: 300, clientY: 400 });
@@ -100,8 +100,9 @@ test.describe('Worker desktop layout', () => {
     await expect(page.getByText('שי').first()).toBeVisible();
     await page.getByRole('button', { name: /תל אביב/ }).first().click();
     await expect(page.getByTitle('מפה של תל אביב')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'שבוע הבא' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'היומן שלי' })).toHaveClass(/border-primary-700/);
+    await expect(page.getByText('היומן של כולן')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'לא זמינה ביום שנבחר' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'הוספה ל-Google או Apple Calendar' })).toBeVisible();
 
     const mainBounds = await page.locator('main').boundingBox();
     const calendarBounds = await page.getByTestId('worker-week-calendar').boundingBox();

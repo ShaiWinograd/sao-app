@@ -125,12 +125,10 @@ test.describe('Job detail — staffing consistency (PR-1)', () => {
 
     await page.goto('/jobs/job-slotless');
 
-    await page.getByRole('tab', { name: 'צוות ובקשות' }).click();
-    await expect(page.getByText('אורית וינוגרד')).toBeVisible();
+    await expect(page.getByText('אורית וינוגרד').first()).toBeVisible();
     await expect(page.getByText('מקום פנוי')).toHaveCount(0);
 
-    await page.getByRole('tab', { name: 'נוכחות' }).click();
-    await expect(page.getByText('אורית וינוגרד')).toBeVisible();
+    await expect(page.getByText('אורית וינוגרד').last()).toBeVisible();
   });
 
   test('approves a pending join request (slotId=null) from the Workers tab', async ({ page }) => {
@@ -144,8 +142,6 @@ test.describe('Job detail — staffing consistency (PR-1)', () => {
     });
 
     await page.goto('/jobs/job-pending');
-    await page.getByRole('tab', { name: 'צוות ובקשות' }).click();
-
     await expect(page.getByText('רון כהן').first()).toBeVisible();
     await page.getByRole('button', { name: 'אישור', exact: true }).click();
 
@@ -158,10 +154,8 @@ test.describe('Job detail — staffing consistency (PR-1)', () => {
     });
 
     await page.goto('/jobs/job-awaiting-leader');
-    await page.getByRole('tab', { name: 'צוות ובקשות' }).click();
-
     // The awaiting leader is shown (in the Team Leader section)…
-    await expect(page.getByText('דנה לוי')).toBeVisible();
+    await expect(page.getByText('דנה לוי').first()).toBeVisible();
     // …no empty-leader "assign" affordance is offered while the invitation reserves it…
     await expect(page.getByText('לא מאויש')).toHaveCount(0);
     // …and the leader requirement is still unmet until she accepts.
@@ -174,11 +168,9 @@ test.describe('Job detail — staffing consistency (PR-1)', () => {
     });
 
     await page.goto('/jobs/job-full-missing-leader');
-    await page.getByRole('tab', { name: 'צוות ובקשות' }).click();
-
     // Both regular workers are shown, the leader is still missing…
-    await expect(page.getByText('רות בר')).toBeVisible();
-    await expect(page.getByText('מיה גל')).toBeVisible();
+    await expect(page.getByText('רות בר').first()).toBeVisible();
+    await expect(page.getByText('מיה גל').first()).toBeVisible();
     await expect(page.getByText('חסר ראש צוות').first()).toBeVisible();
     // …no assign affordance (capacity is full)…
     await expect(page.getByRole('button', { name: 'שיבוץ' })).toHaveCount(0);
@@ -192,8 +184,6 @@ test.describe('Job detail — staffing consistency (PR-1)', () => {
     });
 
     await page.goto('/jobs/job-role-selector');
-    await page.getByRole('tab', { name: 'צוות ובקשות' }).click();
-
     // The eligible worker's role selector includes the TEAM_LEADER option…
     const eligibleSelect = page.locator('li', { hasText: 'נועה שמש' }).locator('select[title="תפקיד בעבודה"]');
     await expect(eligibleSelect.locator('option', { hasText: 'ראש צוות' })).toHaveCount(1);

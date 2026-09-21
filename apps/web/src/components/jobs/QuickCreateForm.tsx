@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { Loader2, Plus, AlertTriangle, CheckCircle2 } from 'lucide-react';
@@ -17,6 +17,7 @@ function makeIdemKey(): string {
 // (POST /jobs/quick). Reused by the /jobs/new page and the Home side panel.
 
 type CustomerMatch = { id: string; firstName: string; lastName: string; phone: string };
+type WorkerCandidate = { id: string; name: string; available: boolean; reason?: string };
 
 export type QuickCreateCapacity = { warning: boolean; available: number };
 
@@ -65,6 +66,11 @@ export function QuickCreateForm({
   const [requiresTeamLeader, setRequiresTeamLeader] = useState(true);
   const [initialStatus, setInitialStatus] = useState<'RESERVATION' | 'APPROVED'>('RESERVATION');
   const [notes, setNotes] = useState('');
+  const [selectedWorkerIds, setSelectedWorkerIds] = useState<string[]>([]);
+  const [workerCandidates, setWorkerCandidates] = useState<WorkerCandidate[]>([]);
+  const [hasTrainee, setHasTrainee] = useState(false);
+  const [traineeName, setTraineeName] = useState('');
+  const [traineeHourlyWage, setTraineeHourlyWage] = useState('50');
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +78,31 @@ export function QuickCreateForm({
   // create a second job. Regenerated after a successful create.
   const idemKeyRef = useRef<string>(makeIdemKey());
   const [createdJobId, setCreatedJobId] = useState<string | null>(null);
+
+  const calendarDays = useMemo(() => {
+    const anchor = new Date(`${date}T00:00:00`);
+    return Array.from({ length: 14 }, (_, index) => {
+      const value = new Date(anchor);
+      value.setDate(anchor.getDate() + index - 3);
+      return value;
+    });
+  }, [date]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const auth = await authHeaders(getToken);
+        const res = await api.get<WorkerCandidate[]>(
+          `/workers/availability?date=${date}&requiresManager=${requiresTeamLeader}`,
+          auth,
+        );
+        setWorkerCandidates(res.data ?? []);
+        setSelectedWorkerIds((ids) => ids.filter((id) => res.data.some((candidate) => candidate.id === id && candidate.available)));
+      } catch {
+        setWorkerCandidates([]);
+      }
+    })();
+  }, [date, requiresTeamLeader, getToken]);
 
   const searchCustomers = useCallback(
     async (term: string) => {
@@ -129,6 +160,10 @@ export function QuickCreateForm({
       setError('יש לבחור כתובת מדויקת מהרשימה או לאשר שמירה ידנית ללא ניטור מיקום.');
       return;
     }
+    if (hasTrainee && (!traineeName.trim() || Number(traineeHourlyWage) < 0)) {
+      setError('יש להזין שם מלא ושכר שעתי למתלמדת.');
+      return;
+    }
     setBusy(true);
     try {
       const auth = await authHeaders(getToken);
@@ -157,9 +192,18 @@ export function QuickCreateForm({
         requiresTeamLeader,
         initialStatus,
         notes: notes.trim() || undefined,
+        selectedWorkerIds,
+        ...(hasTrainee
+          ? { traineeName: traineeName.trim(), traineeHourlyWage: Number(traineeHourlyWage) || 0 }
+          : {}),
         idempotencyKey: idemKeyRef.current,
       };
-      const res = await api.post<{ job: { id: string }; capacityWarning: boolean; availableWorkers: number }>(
+      const res = await api.post<{
+        job: { id: string };
+        capacityWarning: boolean;
+        availableWorkers: number;
+        assignmentFailures?: Array<{ workerId: string; error: string }>;
+      }>(
         '/jobs/quick',
         payload,
         auth,
@@ -168,6 +212,9 @@ export function QuickCreateForm({
       // a second submission; regenerate the key so the next job is distinct.
       setCreatedJobId(res.data.job.id);
       idemKeyRef.current = makeIdemKey();
+      if (res.data.assignmentFailures?.length) {
+        setError('העבודה נוצרה, אך חלק מהעובדות לא שובצו כי זמינותן השתנתה.');
+      }
       onCreated(res.data.job.id, { warning: res.data.capacityWarning, available: res.data.availableWorkers });
     } catch (err) {
       const data = (err as { response?: { data?: { error?: string; message?: string; correlationId?: string } } })?.response?.data;
@@ -176,7 +223,7 @@ export function QuickCreateForm({
     } finally {
       setBusy(false);
     }
-  }, [generalReservation, selectedCustomerId, custFirst, custLast, custPhone, custEmail, jobType, date, startTime, endTime, cityOrAddress, addressSelection, manualAddressConfirmed, workerCount, requiresTeamLeader, initialStatus, notes, getToken, onCreated]);
+  }, [generalReservation, selectedCustomerId, custFirst, custLast, custPhone, custEmail, jobType, date, startTime, endTime, cityOrAddress, addressSelection, manualAddressConfirmed, workerCount, requiresTeamLeader, initialStatus, notes, selectedWorkerIds, hasTrainee, traineeName, traineeHourlyWage, getToken, onCreated]);
 
   return (
     <div className="quick-create-form space-y-0" dir="rtl">
@@ -268,6 +315,26 @@ export function QuickCreateForm({
           <span className="block text-gray-600 mb-1">תאריך</span>
           <input type="date" value={date} min={todayKey()} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
         </label>
+        <div className="sm:col-span-2">
+          <p className="mb-2 text-xs font-medium text-gray-600">בחירה מהירה מהיומן</p>
+          <div className="flex gap-2 overflow-x-auto border-y border-[var(--color-border)] py-2">
+            {calendarDays.map((calendarDate) => {
+              const key = calendarDate.toLocaleDateString('en-CA');
+              const active = key === date;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setDate(key)}
+                  className={`min-w-14 px-2 py-2 text-center ${active ? 'bg-primary-700 text-white' : 'text-gray-600 hover:bg-primary-50'}`}
+                >
+                  <span className="block text-[10px]">{calendarDate.toLocaleDateString('he-IL', { weekday: 'short' })}</span>
+                  <span className="font-display block text-xl">{calendarDate.getDate()}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <label className="text-sm">
           <span className="block text-gray-600 mb-1">שעת התחלה</span>
           <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
@@ -320,6 +387,68 @@ export function QuickCreateForm({
           <span className="block text-gray-600 mb-1">הערות (אופציונלי)</span>
           <input value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
         </label>
+      </section>
+
+      <section className="border-b border-[var(--color-border)] py-6">
+        <h2 className="text-sm font-semibold text-gray-900">הזמנת עובדות זמינות</h2>
+        <p className="mt-1 text-xs text-gray-500">העובדות שתבחרי יקבלו שיבוץ שמחייב אישור או דחייה.</p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {workerCandidates.map((candidate) => (
+            <label
+              key={candidate.id}
+              className={`flex items-center justify-between border px-3 py-2 text-sm ${
+                candidate.available ? 'border-[var(--color-border)]' : 'border-gray-200 text-gray-400'
+              }`}
+            >
+              <span>{candidate.name}{candidate.available ? '' : ' · לא זמינה'}</span>
+              <input
+                type="checkbox"
+                disabled={!candidate.available}
+                checked={selectedWorkerIds.includes(candidate.id)}
+                onChange={(event) =>
+                  setSelectedWorkerIds((ids) =>
+                    event.target.checked ? [...ids, candidate.id] : ids.filter((id) => id !== candidate.id),
+                  )
+                }
+              />
+            </label>
+          ))}
+          {workerCandidates.length === 0 && <p className="text-xs text-gray-500">לא נמצאו עובדות זמינות לתאריך זה.</p>}
+        </div>
+      </section>
+
+      <section className="border-b border-[var(--color-border)] py-6">
+        <label className="flex items-center justify-between text-sm font-medium text-gray-800">
+          <span>יש מתלמדת בעבודה</span>
+          <input type="checkbox" checked={hasTrainee} onChange={(event) => setHasTrainee(event.target.checked)} />
+        </label>
+        {hasTrainee && (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="text-sm">
+              <span className="mb-1 block text-gray-600">שם מלא</span>
+              <input
+                value={traineeName}
+                onChange={(event) => setTraineeName(event.target.value)}
+                required
+                className="w-full border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-2"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-gray-600">שכר שעתי</span>
+              <input
+                type="number"
+                min={0}
+                value={traineeHourlyWage}
+                onChange={(event) => setTraineeHourlyWage(event.target.value)}
+                required
+                className="w-full border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-2"
+              />
+            </label>
+            <p className="text-xs text-gray-500 sm:col-span-2">
+              שעות המתלמדת יוזנו ידנית לאחר העבודה ויופיעו רק בעלויות השכר, לא בחיוב הלקוח.
+            </p>
+          </div>
+        )}
       </section>
 
       {/* Status */}
