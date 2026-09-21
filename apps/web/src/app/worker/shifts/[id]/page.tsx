@@ -13,7 +13,7 @@ import {
   type WorkerAnswerValue,
   jobTypeLabel,
   jobTypeClasses,
-  formatTime,
+  formatScheduledTime,
   customerName,
   attendanceBadge,
   missingFormBadge,
@@ -399,7 +399,7 @@ export default function WorkerShiftDetailPage() {
           </p>
           <p className="flex items-center gap-2">
             <Clock className="w-4 h-4 text-gray-400" />
-            {formatTime(shift.scheduledStart)}–{formatTime(shift.scheduledEnd)}
+            {formatScheduledTime(shift.scheduledStart)}–{formatScheduledTime(shift.scheduledEnd)}
           </p>
           <p className="flex items-start gap-2">
             <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
@@ -728,7 +728,7 @@ function ShiftChangePanel({
                 <option value="">בחירת משמרת</option>
                 {candidates.map((candidate) => (
                   <option key={candidate.shiftId} value={candidate.shiftId}>
-                    {new Date(candidate.date).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })} · {jobTypeLabel(candidate.jobType)} · {formatTime(candidate.plannedStart)}–{formatTime(candidate.plannedEnd)}
+                    {new Date(candidate.date).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })} · {jobTypeLabel(candidate.jobType)} · {formatScheduledTime(candidate.plannedStart)}–{formatScheduledTime(candidate.plannedEnd)}
                   </option>
                 ))}
               </select>

@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireOwner, requireAnyRole } from '../middleware/auth.js';
 import { WorkerReportApprovalSchema, WorkerReportNoteSchema } from '@workforce/shared';
-import { UserRole, presentWorkerReportStatus, computeWorkerPayLine, summarizeWorkerPay, projectWorkerFacingReport, buildWorkerReportPdfModel } from '@workforce/shared';
+import { UserRole, presentWorkerReportStatus, computeWorkerPayLine, summarizeWorkerPay, projectWorkerFacingReport, buildWorkerReportPdfModel, formatBusinessTime, formatJobTime } from '@workforce/shared';
 import { money, round2 } from '../lib/money.js';
 import { renderWorkerReportPdf as renderWorkerReportPdfDocument } from '../lib/pdf.js';
 import { latestWorkerReport as latestReport } from '../lib/workerReport.js';
@@ -43,8 +43,6 @@ async function computeMonthlyReport(workerId: string, m: number, y: number) {
 
   const JOB_TYPE_LABEL: Record<string, string> = { PACKING: 'אריזה', UNPACKING: 'פריקה', HOME_ORGANIZATION: 'סידור' };
   const ROLE_LABEL: Record<string, string> = { REGULAR: 'עובדת', TEAM_LEADER: 'ראש צוות', BACKUP: 'גיבוי' };
-  const heTime = (d: Date) => d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' });
-
   // Pay is computed per worked job/day on hours rounded to the nearest half hour
   // (spec §19), BEFORE monthly aggregation. Exact attendance is preserved.
   const payLines = shifts.map((shift) =>
@@ -65,14 +63,14 @@ async function computeMonthlyReport(workerId: string, m: number, y: number) {
       date: shift.job.date.toISOString().slice(0, 10),
       caseName: shift.job.case?.name ?? '',
       shiftLabel: JOB_TYPE_LABEL[shift.job.jobType] ?? shift.job.jobType,
-      startTime: heTime(shift.scheduledStart),
-      endTime: heTime(shift.scheduledEnd),
+      startTime: formatJobTime(shift.scheduledStart),
+      endTime: formatJobTime(shift.scheduledEnd),
       jobType: shift.job.jobType,
       role: shift.assignmentRole,
       roleLabel: ROLE_LABEL[shift.assignmentRole] ?? shift.assignmentRole,
       // Approved clock-in/out (final attendance); null until resolved.
-      clockIn: shift.actualStart ? heTime(shift.actualStart) : null,
-      clockOut: shift.actualEnd ? heTime(shift.actualEnd) : null,
+      clockIn: shift.actualStart ? formatBusinessTime(shift.actualStart) : null,
+      clockOut: shift.actualEnd ? formatBusinessTime(shift.actualEnd) : null,
       customerName: `${shift.job.customer.firstName} ${shift.job.customer.lastName}`.trim(),
       // Exact approved attendance (preserved) plus the rounded hours used for pay.
       approvedHours: round2(p.exactHours),

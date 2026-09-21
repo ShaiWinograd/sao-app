@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
+import { formatJobTime } from '@workforce/shared';
 import { ArrowRight, Repeat } from 'lucide-react';
 import { api, authHeaders } from '../../../lib/api';
 
@@ -43,11 +44,7 @@ function jobTypeLabel(t: string): string {
 }
 
 function formatTime(iso: string): string {
-  try {
-    return new Date(iso).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return '';
-  }
+  return formatJobTime(iso);
 }
 
 function shiftLabel(s: SwapShift): string {

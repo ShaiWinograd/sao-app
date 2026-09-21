@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { ArrowRight, CheckCircle2, RefreshCw, Send, UserCheck, XCircle, Repeat, AlertTriangle, ArrowUpCircle } from 'lucide-react';
-import { evaluateJobPublishReadiness, MANAGER_SKILL, deriveJobStatusBadge, formatAuditEvent, deriveJobStaffing } from '@workforce/shared';
+import { evaluateJobPublishReadiness, MANAGER_SKILL, deriveJobStatusBadge, formatAuditEvent, deriveJobStaffing, formatJobTime } from '@workforce/shared';
 import { api, authHeaders } from '../../../lib/api';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 import AddressGeocodeState from '../../../components/geocode/AddressGeocodeState';
@@ -105,11 +105,7 @@ function formatDate(value: string | null | undefined): string {
 }
 
 function formatTime(value: string | null | undefined): string {
-  if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? '—'
-    : date.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+  return formatJobTime(value) || '—';
 }
 
 export default function JobDetailPage() {
