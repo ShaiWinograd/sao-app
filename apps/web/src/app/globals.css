@@ -79,6 +79,14 @@ html {
   background: var(--color-background);
 }
 
+.font-display {
+  font-family: 'Frank Ruhl Libre', Georgia, serif;
+}
+
+.editorial-rule {
+  border-color: var(--color-border);
+}
+
 .app-main input:not([type='checkbox']):not([type='radio']),
 .app-main select,
 .app-main textarea {

@@ -55,4 +55,48 @@ test.describe('Worker desktop layout', () => {
     await drawer.dispatchEvent('pointerup', { pointerType: 'touch', clientX: 210, clientY: 405 });
     await expect(page.getByRole('dialog', { name: 'תפריט ניווט' })).toHaveCount(0);
   });
+
+  test('leads with the worker schedule and next confirmed shift on desktop', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const nextDate = new Date();
+    nextDate.setDate(nextDate.getDate() + 1);
+    nextDate.setHours(0, 0, 0, 0);
+
+    await page.route('**/api/v1/jobs/board', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            jobId: 'job-next',
+            jobType: 'HOME_ORGANIZATION',
+            date: nextDate.toISOString(),
+            plannedStart: '09:00',
+            plannedEnd: '15:00',
+            customerName: 'משפחת לוי',
+            address: 'תל אביב',
+            requiredWorkerCount: 2,
+            assignedWorkers: [{ name: 'שי', isTeamLeader: false }],
+            openSpots: 1,
+            myStatus: 'APPROVED',
+            myShiftId: 'shift-next',
+          },
+        ]),
+      }),
+    );
+    await page.route('**/api/v1/shifts/swaps/mine', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    );
+    await page.route('**/api/v1/shifts/replacement-requests/open', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    );
+
+    await page.goto('/worker');
+
+    await expect(page.getByRole('heading', { name: 'המשמרות שלי' })).toBeVisible();
+    await expect(page.getByText('המשמרת הבאה')).toBeVisible();
+    await expect(page.getByText('משפחת לוי').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'השבוע הבא' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'היומן שלי' })).toHaveClass(/border-primary-700/);
+  });
 });

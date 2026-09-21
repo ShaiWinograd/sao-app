@@ -198,9 +198,9 @@ export default function WorkerReportsPage() {
   return (
     <div className="mx-auto w-full max-w-[1120px] space-y-6">
       <PageHeader
-        eyebrow="שכר ושעות"
-        title="הדוחות שלי"
-        description="סיכום חודשי של משמרות, שעות ותשלומים."
+        eyebrow="YOUR TIME, CLEARLY TOLD"
+        title="שעות ושכר"
+        description="תמונה חודשית ברורה של העבודה, השעות והתשלום שלך."
         icon={<Wallet className="h-6 w-6" />}
         action={data && !loading && !error ? (
           <button
@@ -220,7 +220,7 @@ export default function WorkerReportsPage() {
       </div>
 
       {/* Month navigation */}
-      <div className="no-print flex items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2">
+      <div className="no-print flex items-center justify-between border-y border-[var(--color-border)] px-3 py-3">
         <button type="button" onClick={() => step(-1)} aria-label="חודש קודם" className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-50">
           <ChevronRight className="w-4 h-4" />
         </button>
@@ -246,7 +246,7 @@ export default function WorkerReportsPage() {
       ) : (
         <>
           {/* Summary */}
-          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+          <div className="space-y-4 border-y border-[var(--color-border)] py-5">
             <div className="flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
                 <Wallet className="w-4 h-4 text-gray-400" />
@@ -268,7 +268,7 @@ export default function WorkerReportsPage() {
                 </span>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <div className="grid grid-cols-2 divide-x divide-x-reverse divide-[var(--color-border)] text-sm sm:grid-cols-4">
               <Stat label="ימי עבודה" value={String(data.summary.workdays)} />
               <Stat label="שעות נוכחות" value={`${data.summary.totalApprovedHours}`} icon={<Clock className="w-3.5 h-3.5" />} />
               <Stat label="שעות לתשלום" value={data.summary.totalPaidHours != null ? `${data.summary.totalPaidHours}` : `${data.summary.totalApprovedHours}`} />
@@ -366,12 +366,12 @@ export default function WorkerReportsPage() {
 
 function Stat({ label, value, icon, strong }: { label: string; value: string; icon?: React.ReactNode; strong?: boolean }) {
   return (
-    <div className="rounded-lg bg-gray-50 px-3 py-2">
+    <div className="px-4 py-2">
       <p className="flex items-center gap-1 text-[11px] text-gray-500">
         {icon}
         {label}
       </p>
-      <p className={`mt-0.5 ${strong ? 'text-base font-bold text-gray-900' : 'text-sm font-medium text-gray-800'}`}>{value}</p>
+      <p className={`font-display mt-1 ${strong ? 'text-2xl font-medium text-gray-900' : 'text-xl font-medium text-gray-800'}`}>{value}</p>
     </div>
   );
 }
