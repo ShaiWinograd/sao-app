@@ -149,7 +149,7 @@ export default function SettingsPage() {
         icon={<SlidersHorizontal className="h-6 w-6" />}
       />
 
-      <section className="border-y border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+      <section className="border-y border-[var(--color-border)] bg-[var(--color-surface-muted)] p-5">
         <div className="flex items-center gap-2 mb-2">
           <UserCog className="w-4 h-4 text-gray-500" />
           <h2 className="text-lg font-semibold">תצוגת הרשאות</h2>
@@ -169,7 +169,7 @@ export default function SettingsPage() {
       <TeamInviteCard />
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <article className="space-y-3 border-y border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+        <article className="space-y-3 border-y border-[var(--color-border)] bg-[var(--color-surface-muted)] p-5">
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="w-4 h-4 text-gray-500" />
             <h2 className="text-lg font-semibold">הגדרות תפעול</h2>
@@ -193,7 +193,7 @@ export default function SettingsPage() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <article className="space-y-3 border-y border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+        <article className="space-y-3 border-y border-[var(--color-border)] bg-[var(--color-surface-muted)] p-5">
           <h2 className="text-lg font-semibold">סגירת חודש והרשאות רגישות</h2>
           <label className="inline-flex items-center gap-2 text-sm text-gray-700">
             <input
@@ -227,7 +227,7 @@ export default function SettingsPage() {
           </div>
         </article>
 
-        <article className="space-y-3 border-y border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+        <article className="space-y-3 border-y border-[var(--color-border)] bg-[var(--color-surface-muted)] p-5">
           <h2 className="text-lg font-semibold">מצב שמירה</h2>
           <p className="text-sm text-gray-500">הגדרות נשמרות לשרת, והחודש הנבחר נשלט דרך דוחות ניהול.</p>
           <button
@@ -283,7 +283,7 @@ function TeamInviteCard() {
   };
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+    <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 shadow-sm">
       <div className="flex items-center gap-2 mb-2">
         <UserPlus className="w-4 h-4 text-gray-500" />
         <h2 className="text-lg font-semibold">הזמנת חברי צוות (ניהול)</h2>
@@ -307,7 +307,7 @@ function TeamInviteCard() {
           <select
             value={role}
             onChange={(e) => setRole(e.target.value as 'ADMIN' | 'OWNER')}
-            className="mt-1 block rounded-xl border border-gray-300 px-3 py-2 text-sm bg-white"
+            className="mt-1 block rounded-xl border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
           >
             <option value="ADMIN">מנהל/ת</option>
             <option value="OWNER">בעל/ת עסק</option>

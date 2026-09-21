@@ -551,7 +551,7 @@ export default function CustomersPage() {
         }
       />
 
-      <div className="overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface)]">
+      <div className="overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface-muted)]">
         <div className="border-b border-[var(--color-border)] px-5 py-5">
           <h3 className="font-display text-2xl font-medium text-gray-900">ספר הלקוחות</h3>
           <p className="text-xs text-gray-500 mt-1">סינון לפי סטטוסים: משוריין / מאושר לביצוע / עבודה הסתיימה / עבודה שולמה / עבודה לא בוצעה</p>
@@ -568,7 +568,7 @@ export default function CustomersPage() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as CustomerCaseFilter)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+              className="rounded-lg border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
             >
               <option value="all">כל הסטטוסים</option>
               <option value="none">ללא פרויקט</option>
@@ -692,7 +692,7 @@ export default function CustomersPage() {
                   <div className="space-y-3 rounded-lg border border-gray-100 p-3">
                     <p className="text-xs font-medium text-gray-700">הוספת כתובת</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <select value={cardAddressLabel} onChange={(e) => setCardAddressLabel(e.target.value as CustomerAddress['label'])} className="sm:col-span-2 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white">
+                      <select value={cardAddressLabel} onChange={(e) => setCardAddressLabel(e.target.value as CustomerAddress['label'])} className="sm:col-span-2 rounded-lg border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm">
                         <option value="דירה ישנה">דירה ישנה</option>
                         <option value="דירה חדשה">דירה חדשה</option>
                         <option value="מחסן">מחסן</option>
@@ -817,7 +817,7 @@ export default function CustomersPage() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <select value={template} onChange={(e) => applyTemplate(e.target.value as TemplateKey)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white">
+                    <select value={template} onChange={(e) => applyTemplate(e.target.value as TemplateKey)} className="rounded-lg border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm">
                       <option value="quote">תבנית: הצעת מחיר</option>
                       <option value="summary">תבנית: סיכום עבודה</option>
                       <option value="custom">תבנית: הודעה חופשית</option>
@@ -899,7 +899,7 @@ export default function CustomersPage() {
                           <ul className="space-y-2">
                             {customerReports.closed.map((c) => (
                               <li key={c.caseId}>
-                                <Link href={`/cases/${c.caseId}/customer-report`} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 hover:border-primary-300">
+                                <Link href={`/cases/${c.caseId}/customer-report`} className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-gray-800 hover:border-primary-300">
                                   <span className="font-medium">גרסה {c.latestVersion} · היסטוריה והורדה</span>
                                   <span className="text-xs text-gray-500">{c.finalAmount == null ? '—' : `${Number(c.finalAmount).toLocaleString('he-IL')} ₪`}</span>
                                 </Link>
