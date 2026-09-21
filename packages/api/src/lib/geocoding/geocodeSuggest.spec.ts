@@ -133,7 +133,7 @@ describe('buildSuggestions', () => {
     if (res.ok) expect(res.candidates.length).toBeLessThanOrEqual(MAX_SUGGESTIONS);
   });
 
-  it('marks a lower-ranked candidate ambiguous by its NEAREST competitor (not just the top), and it cannot RESOLVE', async () => {
+  it('marks a lower-ranked candidate ambiguous, but verifies it after the owner explicitly selects the complete address', async () => {
     // c0 is the clear top; c1 is far from c0 but nearly tied with c2.
     const c0 = house({ providerPlaceId: 'p0', confidence: 0.95, components: { streetName: 'ישעיהו', streetNumber: '10', municipality: 'רמת גן', postalCode: null, countryCode: 'IL' } });
     const c1 = house({ providerPlaceId: 'p1', confidence: 0.70, components: { streetName: 'ישעיהו', streetNumber: '22', municipality: 'רמת גן', postalCode: null, countryCode: 'IL' } });
@@ -146,9 +146,14 @@ describe('buildSuggestions', () => {
     const mid = verifySelectionToken(res.candidates[1].token, SECRET);
     expect(top.ok && top.payload.ambiguous).toBe(false);
     expect(mid.ok && mid.payload.ambiguous).toBe(true);
-    // The ambiguous lower-ranked selection cannot become RESOLVED on submit.
-    await expect(
-      resolveQuickCreateAddress({ address: { mode: 'selected', token: res.candidates[1].token } }, { provider: null, secret: SECRET }),
-    ).rejects.toMatchObject({ code: 'ADDRESS_NOT_RESOLVABLE' });
+    const selected = await resolveQuickCreateAddress(
+      { address: { mode: 'selected', token: res.candidates[1].token } },
+      { provider: null, secret: SECRET },
+    );
+    expect(selected.apply).toMatchObject({
+      geocodeStatus: 'RESOLVED',
+      normalizedAddress: 'ישעיהו 22, רמת גן',
+      geocodeReason: 'RESOLVED_EXACT',
+    });
   });
 });

@@ -21,12 +21,11 @@
 
 import type { GeocodeStatus } from '@workforce/shared';
 import { AppError } from '../lib/errors.js';
-import { classifyCandidate } from '../lib/geocoding/decision.js';
 import { hasCompleteIsraeliHouse } from '../lib/geocoding/suggest.js';
 import { verifySelectionToken } from '../lib/geocoding/selectionToken.js';
 import { computeAddressGeocode } from '../lib/geocoding/service.js';
 import type { AddressGeoPersistence } from '../lib/geocoding/service.js';
-import type { GeocodeCandidate, GeocodeProvider } from '../lib/geocoding/types.js';
+import type { GeocodeProvider } from '../lib/geocoding/types.js';
 
 export type SelectedAddressInput = { mode: 'selected'; token: string };
 export type ManualAddressInput = { mode: 'manual'; text: string; confirmedUnresolved: true };
@@ -108,40 +107,26 @@ export async function resolveQuickCreateAddress(
     }
     const p = verified.payload;
 
-    // Independently recheck the RESOLVED prerequisites from the STRUCTURED
-    // components — never trust a bound `precision: 'HOUSE'` on its own. A complete
-    // Israeli house address requires street name, house number, municipality, and
-    // countryCode === 'IL'. Anything short of that is downgraded so classify
-    // rejects it (no silent RESOLVED for an incomplete/foreign address).
-    const qualifies = p.precision === 'HOUSE' && hasCompleteIsraeliHouse(p.components);
-    const candidate: GeocodeCandidate = {
-      provider: p.provider,
-      providerPlaceId: p.providerPlaceId,
-      formattedAddress: p.display,
-      latitude: p.lat,
-      longitude: p.lon,
-      precision: qualifies ? 'HOUSE' : p.precision === 'HOUSE' ? 'STREET' : p.precision,
-      city: p.city,
-      confidence: p.confidence,
-      components: p.components,
-    };
+    // The owner explicitly chose this server-provided result. A signed selection
+    // with city, street, house number, and valid coordinates is verified
+    // automatically; ranking ambiguity and provider confidence only matter before
+    // the owner chooses. The HMAC keeps all persisted coordinates server-owned.
+    const hasValidCoordinates =
+      Number.isFinite(p.lat) &&
+      Number.isFinite(p.lon) &&
+      p.lat >= -90 &&
+      p.lat <= 90 &&
+      p.lon >= -180 &&
+      p.lon <= 180;
+    const qualifies =
+      p.precision === 'HOUSE' &&
+      hasCompleteIsraeliHouse(p.components) &&
+      hasValidCoordinates;
 
-    // Revalidate through the EXACT same rules used for a server-initiated geocode.
-    // The municipality is enforced above via hasCompleteIsraeliHouse; pass it as
-    // the expected city so a component/city inconsistency is also caught.
-    const { status, reason } = classifyCandidate(candidate, {
-      ambiguous: p.ambiguous,
-      expectedCity: p.components?.municipality ?? null,
-      requireHouseLevel: true,
-    });
-
-    if (status !== 'RESOLVED') {
-      // Do NOT silently create a NEEDS_REVIEW job — surface the failure so the owner
-      // can search/select again or deliberately use the manual fallback.
+    if (!qualifies) {
       throw new AppError(422, 'ADDRESS_NOT_RESOLVABLE', 'לא ניתן לאמת את הכתובת שנבחרה כמדויקת.', {
-        reason,
         displayAddress: p.display,
-        precision: candidate.precision,
+        precision: p.precision,
       });
     }
 
@@ -155,7 +140,7 @@ export async function resolveQuickCreateAddress(
         geocodeProvider: p.provider,
         geocodeProviderPlaceId: p.providerPlaceId,
         geocodedAt: now,
-        geocodeReason: reason,
+        geocodeReason: 'RESOLVED_EXACT',
       },
     };
   }
