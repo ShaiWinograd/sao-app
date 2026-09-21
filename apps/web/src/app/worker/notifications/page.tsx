@@ -76,7 +76,7 @@ export default function WorkerNotificationsPage() {
           <button
             type="button"
             onClick={() => void markAllRead()}
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#d8d3ca] bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-[var(--color-surface-muted)]"
           >
             <Check className="h-4 w-4" />
             סמן הכל כנקרא

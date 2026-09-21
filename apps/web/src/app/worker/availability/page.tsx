@@ -126,11 +126,11 @@ export default function WorkerAvailabilityPage() {
       />
 
       {error ? (
-        <p className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500">לא נמצא פרופיל עובד/ת לחשבון זה.</p>
+        <p className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm text-gray-500">לא נמצא פרופיל עובד/ת לחשבון זה.</p>
       ) : (
         <>
           {/* Add block */}
-          <div className="space-y-5 border-t border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-6 sm:px-7">
+          <div className="space-y-5 border-y border-[var(--color-border)] bg-[var(--color-surface-muted)] px-5 py-6 sm:px-7">
             <h2 className="font-display text-2xl font-medium text-gray-900">מתי לא תהיי זמינה?</h2>
             <div className="flex max-w-full overflow-x-auto border-b border-[var(--color-border)] text-xs" data-swipe-navigation="ignore">
               {([['DATE', 'תאריך בודד'], ['RANGE', 'טווח תאריכים'], ['WEEKLY', 'יום קבוע בשבוע']] as [BlockType, string][]).map(([v, label]) => (
@@ -151,7 +151,7 @@ export default function WorkerAvailabilityPage() {
               {type === 'WEEKLY' ? (
                 <label className="text-xs text-gray-600">
                   יום בשבוע
-                  <select value={weekday} onChange={(e) => setWeekday(Number(e.target.value))} className="mt-1 block rounded-lg border border-gray-300 px-2 py-1.5 text-sm bg-white">
+                  <select value={weekday} onChange={(e) => setWeekday(Number(e.target.value))} className="mt-1 block rounded-lg border border-gray-300 bg-[var(--color-surface)] px-2 py-1.5 text-sm">
                     {WEEKDAYS.map((w, i) => (
                       <option key={i} value={i}>{w}</option>
                     ))}

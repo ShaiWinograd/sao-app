@@ -415,7 +415,7 @@ export default function WorkerShiftsPage() {
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-gray-900">בקשות החלפת משמרות</h2>
           {swaps.map((s) => (
-            <div key={s.id} className="rounded-xl border border-gray-200 bg-white p-3 space-y-2 text-xs">
+            <div key={s.id} className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3 text-xs">
               <p className="font-semibold text-gray-900">
                 {s.direction === 'INCOMING' ? `${s.counterpartName} מציע/ה החלפה` : `הצעת החלפה ל${s.counterpartName}`}
                 {' · '}
@@ -477,7 +477,7 @@ export default function WorkerShiftsPage() {
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-gray-900">משמרות הדורשות החלפה</h2>
           {replacements.map((r) => (
-            <div key={r.requestId} className="relative overflow-hidden rounded-xl border border-gray-200 bg-white p-4 pr-5">
+            <div key={r.requestId} className="relative overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 pr-5">
               <span className={`absolute inset-y-0 right-0 w-1.5 ${jobTypeStripColor(r.jobType)}`} />
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-bold text-gray-900">{jobTypeLabel(r.jobType)}</span>
@@ -585,7 +585,7 @@ function ShiftCard({
           <CardHeader shift={shift} />
           <CardMeta shift={shift} />
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px] font-medium text-gray-500">
+            <span className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-0.5 text-[11px] font-medium text-gray-500">
               {shift.openSpots} מקומות פנויים
             </span>
             <AssignedNames workers={shift.assignedWorkers} />
@@ -711,7 +711,7 @@ function JoinModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-xl bg-white p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-sm space-y-3 rounded-xl bg-[var(--color-surface)] p-5" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-base font-bold text-gray-900">בקשה להצטרף למשמרת</h2>
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
           <p className="font-semibold text-gray-900">{jobTypeLabel(shift.jobType)} · {shift.customerName}</p>
