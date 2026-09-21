@@ -78,8 +78,6 @@ const MOM_OWNER_NAME = 'אורית';
 const initialCustomers: Customer[] = [];
 const initialCases: CustomerCase[] = [];
 
-const dashboardAvailability: Array<{ workerName: string; dateKey: string; reason: string }> = [];
-
 function normalizePhone(value: string) {
   return value.replace(/\D/g, '');
 }
@@ -312,7 +310,7 @@ export default function DashboardPage() {
   type AssignedWorker = { name: string; isTeamLead: boolean; joinRequestStatus: string | null; assignmentRole: string | null };
   type ActiveWork = {
     id: number;
-    jobId?: string;
+    jobId: string;
     customerName: string;
     caseId: string;
     caseName: string;
@@ -369,11 +367,19 @@ export default function DashboardPage() {
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
   const [cases, setCases] = useState<CustomerCase[]>(initialCases);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  // Job-first Quick Create side panel (spec §6.1/§8): opened from an empty future
-  // grid cell or the primary button, prefilled with the cell's date.
+  // Job-first Quick Create is opened from a date-level action.
   const [quickCreateDate, setQuickCreateDate] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [joinPanelOpen, setJoinPanelOpen] = useState(false);
+  const [dashboardAvailability, setDashboardAvailability] = useState<Array<{ workerId: string; dateKey: string; reason: string }>>([]);
+  const [assignmentTarget, setAssignmentTarget] = useState<{
+    workerId: string;
+    workerName: string;
+    workerRole: DashboardWorkerRole;
+    dateKey: string;
+  } | null>(null);
+  const [assignmentBusyJobId, setAssignmentBusyJobId] = useState<string | null>(null);
+  const [assignmentError, setAssignmentError] = useState<string | null>(null);
   const [attention, setAttention] = useState<OwnerTasks | null>(null);
   const [openAttentionKey, setOpenAttentionKey] = useState<string | null>(null);
   const [editingWorkId, setEditingWorkId] = useState<number | null>(null);
@@ -569,7 +575,7 @@ export default function DashboardPage() {
   const attentionItems = useMemo(() => {
     if (!attention) return [] as Array<{ key: string; label: string; count: number; href: string }>;
     return [
-      { key: 'joinRequests', label: 'בקשות הצטרפות', count: attention.joinRequests, href: '/jobs' },
+      { key: 'joinRequests', label: 'בקשות הצטרפות — לבדיקה ואישור', count: attention.joinRequests, href: '/jobs' },
       { key: 'pendingAcceptance', label: 'ממתין לאישור העובד/ת', count: attention.pendingAcceptance, href: '/jobs' },
       { key: 'replacementRequests', label: 'בקשות החלפה', count: attention.replacementRequests, href: '/shifts/swaps' },
       { key: 'swapApprovals', label: 'אישורי החלפת משמרות', count: attention.swapApprovals, href: '/shifts/swaps' },
@@ -873,6 +879,33 @@ export default function DashboardPage() {
     return dates;
   }, [selectedRange, anchorDate, monthAnchor, customFromDate, customToDate]);
 
+  const visibleAvailabilityRange = useMemo(() => {
+    if (visibleShiftDates.length === 0) return null;
+    return {
+      start: toDateKeyFromDate(visibleShiftDates[0]),
+      end: toDateKeyFromDate(visibleShiftDates[visibleShiftDates.length - 1]),
+    };
+  }, [visibleShiftDates]);
+
+  useEffect(() => {
+    if (!visibleAvailabilityRange) {
+      setDashboardAvailability([]);
+      return;
+    }
+    void (async () => {
+      try {
+        const auth = await authHeaders(getToken);
+        const res = await api.get<Array<{ workerId: string; dateKey: string; reason: string }>>(
+          `/workers/calendar-availability?start=${visibleAvailabilityRange.start}&end=${visibleAvailabilityRange.end}`,
+          auth,
+        );
+        setDashboardAvailability(res.data ?? []);
+      } catch {
+        setDashboardAvailability([]);
+      }
+    })();
+  }, [getToken, reloadKey, visibleAvailabilityRange]);
+
   const shiftsByWorkerDate = useMemo(() => {
     const map = new Map<string, ActiveWork[]>();
     displayedWorks.forEach((work) => {
@@ -930,6 +963,37 @@ export default function DashboardPage() {
     });
     return map;
   }, [displayedWorks]);
+
+  const assignmentJobs = useMemo(() => {
+    if (!assignmentTarget) return [];
+    return (unassignedWorksByDate.get(assignmentTarget.dateKey) ?? []).filter(
+      ({ work }) => !work.assignedWorkers.some((assigned) => assigned.name === assignmentTarget.workerName),
+    );
+  }, [assignmentTarget, unassignedWorksByDate]);
+
+  const assignWorkerFromCalendar = async (work: ActiveWork) => {
+    if (!assignmentTarget) return;
+    setAssignmentBusyJobId(work.jobId);
+    setAssignmentError(null);
+    try {
+      const auth = await authHeaders(getToken);
+      const needsTeamLead =
+        work.requiredTeamLeads > 0 && !work.assignedWorkers.some((assigned) => assigned.isTeamLead);
+      const role = needsTeamLead && assignmentTarget.workerRole !== 'עובדת' ? 'TEAM_LEADER' : 'REGULAR';
+      await api.post(
+        '/shifts/admin-assign',
+        { jobId: work.jobId, workerId: assignmentTarget.workerId, role },
+        auth,
+      );
+      setAssignmentTarget(null);
+      setReloadKey((key) => key + 1);
+    } catch (error) {
+      const data = (error as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
+      setAssignmentError(data?.message ?? data?.error ?? 'השיבוץ נכשל. ייתכן שהעובדת אינה זמינה או שכבר שובצה בתאריך זה.');
+    } finally {
+      setAssignmentBusyJobId(null);
+    }
+  };
 
   const shiftCountByWorkerName = useMemo(() => {
     const map = new Map<string, number>();
@@ -1032,7 +1096,7 @@ export default function DashboardPage() {
                 key={item.key}
                 type="button"
                 onClick={() => setJoinPanelOpen(true)}
-                className="inline-flex items-center gap-1.5 bg-[var(--color-calendar-sand-soft)] px-3 py-1.5 text-[11px] font-medium text-[var(--color-calendar-sand)] hover:bg-[var(--color-calendar-sand-border)]"
+                className="inline-flex items-center gap-2 border border-[var(--color-calendar-sand-border)] bg-[var(--color-calendar-sand-soft)] px-4 py-2 text-xs font-semibold text-[var(--color-calendar-sand)] hover:bg-[var(--color-calendar-sand-border)]"
               >
                 {item.label}
                 <span aria-hidden="true">·</span>
@@ -1234,7 +1298,8 @@ export default function DashboardPage() {
                   const nonWorkingLabel = getNonWorkingDayLabel(dateKey);
                   const isNonWorkingDay = isWorkCreationBlockedDay(dateKey);
                   const isToday = dateKey === todayDateKey;
-                  return isNonWorkingDay ? (
+                  const isPast = dateKey < todayDateKey;
+                  return isNonWorkingDay || isPast ? (
                     <div key={`head-${dateKey}`} className={`min-w-0 border-l border-[var(--color-border)] p-2.5 text-center text-gray-500 ${isToday ? 'bg-[var(--color-calendar-sage-soft)] shadow-[inset_0_2px_0_var(--color-calendar-sage)]' : 'bg-[var(--color-background)]'}`}>
                       <div className="text-xs">{date.toLocaleDateString('he-IL', { weekday: 'short' })}</div>
                       <div className="text-xs font-semibold">{date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}</div>
@@ -1242,15 +1307,19 @@ export default function DashboardPage() {
                       <div className="mt-0.5 text-[10px]">{nonWorkingLabel}</div>
                     </div>
                   ) : (
-                    <div
+                    <button
+                      type="button"
                       key={`head-${dateKey}`}
+                      onClick={() => setQuickCreateDate(dateKey)}
+                      aria-label={`יצירת עבודה בתאריך ${dateKey}`}
                       className={`min-w-0 border-l border-[var(--color-border)] p-2.5 text-center text-gray-700 ${isToday ? 'bg-[var(--color-calendar-sage-soft)] text-[var(--color-calendar-sage)] shadow-[inset_0_2px_0_var(--color-calendar-sage)]' : ''}`}
                     >
                       <div className="text-xs">{date.toLocaleDateString('he-IL', { weekday: 'short' })}</div>
                       <div className="text-xs font-semibold">{date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}</div>
                       {isToday && <div className="text-[10px] font-semibold leading-3 text-[var(--color-calendar-sage)]">היום</div>}
                       {nonWorkingLabel && <div className="text-[10px] text-[var(--color-calendar-sand)]">{nonWorkingLabel}</div>}
-                    </div>
+                      <div className="mt-1 text-[10px] font-medium text-[var(--color-calendar-sage)]">יצירת עבודה</div>
+                    </button>
                   );
                 })}
               </div>
@@ -1320,8 +1389,8 @@ export default function DashboardPage() {
                     const isNonWorkingDay = isWorkCreationBlockedDay(dateKey);
                     const isToday = dateKey === todayDateKey;
                     const isPast = dateKey < todayDateKey;
-                    const canQuickCreate = !isNonWorkingDay && !isPast;
-                    const unavailable = dashboardAvailability.find((item) => item.workerName === worker.name && item.dateKey === dateKey);
+                    const canAssign = !isNonWorkingDay && !isPast;
+                    const unavailable = dashboardAvailability.find((item) => item.workerId === worker.id && item.dateKey === dateKey);
                     const shifts = shiftsByWorkerDate.get(`${worker.name}|${dateKey}`) ?? [];
                     return (
                       <div
@@ -1379,15 +1448,23 @@ export default function DashboardPage() {
                             })}
                             {shifts.length > 2 && <p className="text-[11px] text-gray-500 text-center">+{shifts.length - 2} נוספות</p>}
                           </div>
-                        ) : canQuickCreate ? (
+                        ) : canAssign ? (
                           <button
                             type="button"
-                            onClick={() => setQuickCreateDate(dateKey)}
-                            aria-label={`יצירת עבודה בתאריך ${dateKey}`}
+                            onClick={() => {
+                              setAssignmentError(null);
+                              setAssignmentTarget({
+                                workerId: worker.id,
+                                workerName: worker.name,
+                                workerRole: worker.role,
+                                dateKey,
+                              });
+                            }}
+                            aria-label={`שיבוץ ${worker.name} בתאריך ${dateKey}`}
                             className="group flex h-full min-h-[54px] w-full flex-col items-center justify-center rounded-md text-[11px] text-gray-300 transition-colors hover:bg-primary-50 hover:text-primary-600"
                           >
                             <span className="inline-flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                              <Plus className="h-3 w-3" /> עבודה
+                              <Plus className="h-3 w-3" /> שיבוץ
                             </span>
                           </button>
                         ) : (
@@ -1443,6 +1520,70 @@ export default function DashboardPage() {
             }}
             onCancel={() => setQuickCreateDate(null)}
           />
+        </div>
+      </SidePanel>
+
+      <SidePanel
+        open={assignmentTarget !== null}
+        onClose={() => {
+          setAssignmentTarget(null);
+          setAssignmentError(null);
+        }}
+        title="שיבוץ עובדת"
+      >
+        <div className="space-y-4 p-6" dir="rtl">
+          {assignmentTarget && (
+            <>
+              <div className="border-b border-[var(--color-border)] pb-3">
+                <p className="font-semibold text-gray-900">{assignmentTarget.workerName}</p>
+                <p className="text-sm text-gray-500">
+                  {parseDateKey(assignmentTarget.dateKey).toLocaleDateString('he-IL', {
+                    weekday: 'long',
+                    day: '2-digit',
+                    month: '2-digit',
+                  })}
+                </p>
+              </div>
+              {assignmentError && (
+                <p className="border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{assignmentError}</p>
+              )}
+              {assignmentJobs.length === 0 ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-600">אין עבודות עם מקום פנוי בתאריך הזה.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const dateKey = assignmentTarget.dateKey;
+                      setAssignmentTarget(null);
+                      setQuickCreateDate(dateKey);
+                    }}
+                    className="w-full bg-[var(--color-calendar-sage)] px-4 py-2.5 text-sm font-medium text-white hover:opacity-90"
+                  >
+                    יצירת עבודה בתאריך
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-600">בחרי עבודה לשיבוץ. העובדת תצטרך לאשר את ההזמנה.</p>
+                  {assignmentJobs.map(({ work, open }) => (
+                    <button
+                      key={work.jobId}
+                      type="button"
+                      onClick={() => void assignWorkerFromCalendar(work)}
+                      disabled={assignmentBusyJobId !== null}
+                      className="w-full border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-right hover:border-[var(--color-calendar-sage)] disabled:opacity-50"
+                    >
+                      <span className="block font-semibold text-gray-900">{work.customerName} · {work.jobType}</span>
+                      <span className="block text-xs text-gray-500">{work.address} · {open} מקומות פנויים</span>
+                      <span className="mt-2 block text-xs font-medium text-[var(--color-calendar-sage)]">
+                        {assignmentBusyJobId === work.jobId ? 'משבצת…' : 'שיבוץ לעבודה'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
       </SidePanel>
 

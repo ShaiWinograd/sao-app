@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Repeat } from 'lucide-react';
 import { api, authHeaders } from '../../lib/api';
@@ -57,6 +58,7 @@ function formatTime(iso: string): string {
 }
 
 export default function JobsPage() {
+  const router = useRouter();
   const { getToken } = useAuth();
   const [jobs, setJobs] = useState<ApiJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -185,11 +187,23 @@ export default function JobsPage() {
                 ) : (
                   <div
                     key={cell.key}
+                    role={cell.key >= todayKey ? 'button' : undefined}
+                    tabIndex={cell.key >= todayKey ? 0 : undefined}
+                    onClick={() => {
+                      if (cell.key >= todayKey) router.push(`/jobs/new?date=${cell.key}`);
+                    }}
+                    onKeyDown={(event) => {
+                      if (cell.key >= todayKey && (event.key === 'Enter' || event.key === ' ')) {
+                        event.preventDefault();
+                        router.push(`/jobs/new?date=${cell.key}`);
+                      }
+                    }}
+                    aria-label={cell.key >= todayKey ? `יצירת עבודה בתאריך ${cell.key}` : undefined}
                     className={`min-h-[100px] border p-1.5 ${
                       cell.key === todayKey
                         ? 'border-[var(--color-calendar-sage-border)] bg-[var(--color-calendar-sage-soft)] shadow-[inset_0_2px_0_var(--color-calendar-sage)]'
                         : 'border-[var(--color-border)]'
-                    }`}
+                    } ${cell.key >= todayKey ? 'cursor-pointer hover:border-[var(--color-calendar-sage-border)]' : ''}`}
                   >
                     <div className="mb-1 text-[11px] font-medium text-gray-400">{cell.day}</div>
                     <div className="space-y-1">
@@ -201,6 +215,7 @@ export default function JobsPage() {
                           <Link
                             key={job.id}
                             href={`/jobs/${job.id}`}
+                            onClick={(event) => event.stopPropagation()}
                             className={`block border-r-2 bg-transparent px-1.5 py-1 text-[11px] leading-tight hover:bg-[var(--color-surface)] ${type.cls}`}
                           >
                             <div className="flex items-center gap-1 font-medium">

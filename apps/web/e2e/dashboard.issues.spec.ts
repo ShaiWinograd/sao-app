@@ -65,6 +65,56 @@ test.describe('Dashboard urgent and workflow sections', () => {
         ]),
       });
     });
+
+    await page.route('**/api/v1/workers', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: 'worker-michal',
+            firstName: 'מיכל',
+            lastName: 'כהן',
+            skills: ['GENERAL_WORKER'],
+          },
+        ]),
+      });
+    });
+
+    await page.route('**/api/v1/workers/calendar-availability*', async (route) => {
+      const availableBlockDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleDateString('en-CA');
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            workerId: 'worker-michal',
+            dateKey: availableBlockDate,
+            reason: 'חופשה',
+          },
+        ]),
+      });
+    });
+
+    await page.route('**/api/v1/admin/tasks', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          joinRequests: 0,
+          pendingAcceptance: 0,
+          replacementRequests: 0,
+          swapApprovals: 0,
+          attendanceReview: 0,
+          reportCorrections: 0,
+          customerReportReady: 0,
+          todayInReservation: 0,
+          pastNotCompleted: 0,
+          todayInReservationJobs: [],
+          pastNotCompletedJobs: [],
+        }),
+      });
+    });
   });
 
   test('shows workflow sections with direct actions and no separate urgent panel', async ({
@@ -128,6 +178,31 @@ test.describe('Dashboard urgent and workflow sections', () => {
     const logoBounds = await brand.locator('img').boundingBox();
     expect(logoBounds?.width).toBeGreaterThanOrEqual(92);
     await expect(page.getByRole('heading', { name: 'היום בעסק' })).toBeVisible();
+  });
+
+  test('uses date headers for creation and worker cells for assignment', async ({ page }) => {
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString('en-CA');
+    const assignment: { jobId?: string; workerId?: string; role?: string } = {};
+    await page.route('**/api/v1/shifts/admin-assign', async (route) => {
+      Object.assign(assignment, route.request().postDataJSON());
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ shift: { id: 'shift-created' } }),
+      });
+    });
+
+    await page.goto('/dashboard');
+
+    await expect(page.getByText('לא זמינה', { exact: true })).toBeVisible();
+    await expect(page.getByText('חופשה', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: `יצירת עבודה בתאריך ${tomorrow}` })).toBeVisible();
+
+    await page.getByRole('button', { name: `שיבוץ מיכל כהן בתאריך ${tomorrow}` }).click();
+    await expect(page.getByRole('heading', { name: 'שיבוץ עובדת' })).toBeVisible();
+    await page.getByRole('button', { name: /שיבוץ לעבודה/ }).click();
+
+    await expect.poll(() => assignment).toEqual({ jobId: 'job-1', workerId: 'worker-michal', role: 'REGULAR' });
   });
 
   test('creates a job with the server-signed geocoded address selection', async ({ page }) => {

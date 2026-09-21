@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
-import { ArrowRight, MapPin, Clock, CalendarDays, Users, Phone, Navigation, Star, LogIn, LogOut, CheckCircle2, Loader2, Repeat, X } from 'lucide-react';
+import { ArrowRight, MapPin, Clock, CalendarDays, Users, Phone, Navigation, Star, LogIn, LogOut, CheckCircle2, Loader2 } from 'lucide-react';
 import { requiresManagerNoteForEndShift } from '@workforce/shared';
 import { api, authHeaders } from '../../../../lib/api';
 import {
@@ -492,9 +492,9 @@ export default function WorkerShiftDetailPage() {
         <div className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-xs text-primary-800">{actionMsg}</div>
       )}
 
-      {/* Drop / replacement request (only before the shift starts) */}
+      {/* One guided flow for changing this shift. */}
       {shift.joinRequestStatus === 'APPROVED' && shift.attendanceStatus === 'SCHEDULED' && !isCancelled && (
-        <DropReplacementPanel
+        <ShiftChangePanel
           pending={pendingReplacement}
           within48={new Date(shift.scheduledStart).getTime() - Date.now() < 48 * 3600 * 1000}
           reason={dropReason}
@@ -503,15 +503,6 @@ export default function WorkerShiftDetailPage() {
           suggestedWorkerId={suggestedWorkerId}
           setSuggestedWorkerId={setSuggestedWorkerId}
           busy={busy}
-          onRequest={() => void requestReplacement()}
-          onCancel={() => void cancelReplacement()}
-        />
-      )}
-
-      {/* Two-way swap proposal (before the shift starts) */}
-      {shift.joinRequestStatus === 'APPROVED' && shift.attendanceStatus === 'SCHEDULED' && !isCancelled && colleagues.length > 0 && (
-        <SwapProposePanel
-          colleagues={colleagues}
           colleagueId={swapColleagueId}
           setColleagueId={setSwapColleagueId}
           candidates={swapCandidates}
@@ -519,7 +510,8 @@ export default function WorkerShiftDetailPage() {
           setToShiftId={setSwapToShiftId}
           note={swapNote}
           setNote={setSwapNote}
-          busy={busy}
+          onRequestReplacement={() => void requestReplacement()}
+          onCancelReplacement={() => void cancelReplacement()}
           onPropose={() => void proposeSwap()}
         />
       )}
@@ -569,8 +561,14 @@ type SwapCandidate = {
   customerName: string;
 };
 
-function SwapProposePanel({
+function ShiftChangePanel({
+  pending,
+  within48,
+  reason,
+  setReason,
   colleagues,
+  suggestedWorkerId,
+  setSuggestedWorkerId,
   colleagueId,
   setColleagueId,
   candidates,
@@ -579,91 +577,9 @@ function SwapProposePanel({
   note,
   setNote,
   busy,
+  onRequestReplacement,
+  onCancelReplacement,
   onPropose,
-}: {
-  colleagues: { id: string; name: string }[];
-  colleagueId: string;
-  setColleagueId: (v: string) => void;
-  candidates: SwapCandidate[];
-  toShiftId: string;
-  setToShiftId: (v: string) => void;
-  note: string;
-  setNote: (v: string) => void;
-  busy: boolean;
-  onPropose: () => void;
-}) {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
-      <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-        <Repeat className="w-4 h-4 text-gray-400" />
-        החלפת משמרות עם עובד/ת אחר/ת
-      </h2>
-      <p className="text-xs text-gray-500">בחר/י עובד/ת ומשמרת שלה/ו להחלפה. ההחלפה תתבצע רק לאחר אישור העובד/ת ובעל/ת העסק.</p>
-      <label className="block text-xs text-gray-600">
-        עובד/ת
-        <select
-          value={colleagueId}
-          onChange={(e) => setColleagueId(e.target.value)}
-          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-        >
-          <option value="">בחר/י עובד/ת</option>
-          {colleagues.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      {colleagueId && candidates.length === 0 && (
-        <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">אין לעובד/ת זו משמרות זמינות להחלפה.</p>
-      )}
-      {candidates.length > 0 && (
-        <label className="block text-xs text-gray-600">
-          המשמרת שלה/ו
-          <select
-            value={toShiftId}
-            onChange={(e) => setToShiftId(e.target.value)}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-          >
-            <option value="">בחר/י משמרת</option>
-            {candidates.map((c) => (
-              <option key={c.shiftId} value={c.shiftId}>
-                {new Date(c.date).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })} · {jobTypeLabel(c.jobType)} · {formatTime(c.plannedStart)}–{formatTime(c.plannedEnd)}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      <textarea
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        rows={2}
-        placeholder="הערה (רשות)"
-        className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-      />
-      <button
-        type="button"
-        onClick={onPropose}
-        disabled={busy || !toShiftId}
-        className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
-      >
-        שליחת הצעת החלפה
-      </button>
-    </div>
-  );
-}
-
-function DropReplacementPanel({
-  pending,
-  within48,
-  reason,
-  setReason,
-  colleagues,
-  suggestedWorkerId,
-  setSuggestedWorkerId,
-  busy,
-  onRequest,
-  onCancel,
 }: {
   pending: { id: string; status: string; reason: string } | null;
   within48: boolean;
@@ -672,26 +588,32 @@ function DropReplacementPanel({
   colleagues: { id: string; name: string }[];
   suggestedWorkerId: string;
   setSuggestedWorkerId: (v: string) => void;
+  colleagueId: string;
+  setColleagueId: (v: string) => void;
+  candidates: SwapCandidate[];
+  toShiftId: string;
+  setToShiftId: (v: string) => void;
+  note: string;
+  setNote: (v: string) => void;
   busy: boolean;
-  onRequest: () => void;
-  onCancel: () => void;
+  onRequestReplacement: () => void;
+  onCancelReplacement: () => void;
+  onPropose: () => void;
 }) {
+  const [mode, setMode] = useState<'replacement' | 'swap'>(within48 ? 'swap' : 'replacement');
+
   if (pending) {
     return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
-        <p className="flex items-center gap-2 text-sm font-semibold text-amber-800">
-          <Repeat className="w-4 h-4" />
-          בקשת החלפה נשלחה
-        </p>
-        <p className="text-xs text-amber-700">הבקשה ממתינה לאישור בעל/ת העסק. עד לאישור את נשארת משובצת למשמרת.</p>
-        {pending.reason && <p className="text-xs text-amber-700">סיבה: {pending.reason}</p>}
+      <div className="border-y border-[var(--color-calendar-sand-border)] bg-[var(--color-calendar-sand-soft)] p-4 space-y-2">
+        <p className="text-sm font-semibold text-gray-900">בקשה לשינוי המשמרת נשלחה</p>
+        <p className="text-xs text-gray-600">הבקשה ממתינה לאישור בעל/ת העסק. עד לאישור את נשארת משובצת.</p>
+        {pending.reason && <p className="text-xs text-gray-600">סיבה: {pending.reason}</p>}
         <button
           type="button"
-          onClick={onCancel}
+          onClick={onCancelReplacement}
           disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+          className="border border-[var(--color-calendar-sand-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs font-medium text-[var(--color-calendar-sand)] hover:opacity-80 disabled:opacity-50"
         >
-          <X className="w-3.5 h-3.5" />
           ביטול הבקשה
         </button>
       </div>
@@ -699,50 +621,136 @@ function DropReplacementPanel({
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
-      <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-        <Repeat className="w-4 h-4 text-gray-400" />
-        ירידה מהמשמרת / בקשת החלפה
-      </h2>
-      {within48 ? (
-        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-          לא ניתן לרדת מהמשמרת פחות מ-48 שעות לפני תחילתה. אפשר לבקש החלפה עם עובד/ת אחר/ת.
-        </p>
-      ) : (
-        <p className="text-xs text-gray-500">הבקשה תישלח לאישור בעל/ת העסק. עד לאישור את נשארת משובצת למשמרת.</p>
-      )}
-      <textarea
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        rows={2}
-        placeholder="סיבת הבקשה"
-        className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-      />
-      {colleagues.length > 0 && (
-        <label className="block text-xs text-gray-600">
-          הצעת עובד/ת ספציפי/ת (רשות)
-          <select
-            value={suggestedWorkerId}
-            onChange={(e) => setSuggestedWorkerId(e.target.value)}
-            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+    <div className="border-y border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 space-y-4">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--color-calendar-sage)]">שינוי המשמרת</p>
+        <h2 className="mt-1 text-base font-semibold text-gray-900">לא יכולה לעבוד במשמרת הזו?</h2>
+        <p className="mt-1 text-xs text-gray-600">בחרי איך תרצי להעביר אותה. בכל מקרה השינוי יושלם רק לאחר האישורים הנדרשים.</p>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => !within48 && setMode('replacement')}
+          disabled={within48}
+          className={`border p-3 text-right ${
+            mode === 'replacement'
+              ? 'border-[var(--color-calendar-sage)] bg-[var(--color-calendar-sage-soft)]'
+              : 'border-[var(--color-border)] bg-[var(--color-surface)]'
+          } disabled:cursor-not-allowed disabled:opacity-55`}
+        >
+          <span className="block text-sm font-semibold text-gray-900">מחליפה אותי</span>
+          <span className="mt-1 block text-xs text-gray-600">
+            {within48 ? 'לא ניתן לפתוח בקשת שחרור פחות מ-48 שעות לפני המשמרת.' : 'המשמרת עוברת לעובדת אחרת.'}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('swap')}
+          disabled={colleagues.length === 0}
+          className={`border p-3 text-right ${
+            mode === 'swap'
+              ? 'border-[var(--color-calendar-sage)] bg-[var(--color-calendar-sage-soft)]'
+              : 'border-[var(--color-border)] bg-[var(--color-surface)]'
+          } disabled:cursor-not-allowed disabled:opacity-55`}
+        >
+          <span className="block text-sm font-semibold text-gray-900">מחליפות בינינו משמרות</span>
+          <span className="mt-1 block text-xs text-gray-600">את לוקחת משמרת שלה והיא לוקחת את שלך.</span>
+        </button>
+      </div>
+
+      {mode === 'replacement' ? (
+        <div className="space-y-3">
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={2}
+            placeholder="למה את צריכה שינוי?"
+            className="block w-full border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
+          />
+          {colleagues.length > 0 && (
+            <label className="block text-xs text-gray-600">
+              יש לך מחליפה מתאימה? (רשות)
+              <select
+                value={suggestedWorkerId}
+                onChange={(e) => setSuggestedWorkerId(e.target.value)}
+                className="mt-1 block w-full border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
+              >
+                <option value="">לא — פרסום לכל העובדות</option>
+                {colleagues.map((colleague) => (
+                  <option key={colleague.id} value={colleague.id}>{colleague.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          <button
+            type="button"
+            onClick={onRequestReplacement}
+            disabled={busy || within48}
+            className="bg-[var(--color-calendar-sage)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
           >
-            <option value="">ללא הצעה — פתוח לכלם</option>
-            {colleagues.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
+            פרסום בקשת מחליפה
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {within48 && (
+            <p className="border border-[var(--color-calendar-sand-border)] bg-[var(--color-calendar-sand-soft)] px-3 py-2 text-xs text-[var(--color-calendar-sand)]">
+              נשארו פחות מ-48 שעות. החלפה הדדית היא האפשרות הזמינה באפליקציה; אם אין משמרת מתאימה, פני לבעלת העסק.
+            </p>
+          )}
+          <label className="block text-xs text-gray-600">
+            עם מי תרצי להחליף?
+            <select
+              value={colleagueId}
+              onChange={(e) => setColleagueId(e.target.value)}
+              className="mt-1 block w-full border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
+            >
+              <option value="">בחירת עובדת</option>
+              {colleagues.map((colleague) => (
+                <option key={colleague.id} value={colleague.id}>{colleague.name}</option>
+              ))}
+            </select>
+          </label>
+          {colleagueId && candidates.length === 0 && (
+            <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs text-gray-500">
+              אין לעובדת הזו משמרת מתאימה להחלפה כרגע.
+            </p>
+          )}
+          {candidates.length > 0 && (
+            <label className="block text-xs text-gray-600">
+              איזו משמרת שלה תיקחי?
+              <select
+                value={toShiftId}
+                onChange={(e) => setToShiftId(e.target.value)}
+                className="mt-1 block w-full border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
+              >
+                <option value="">בחירת משמרת</option>
+                {candidates.map((candidate) => (
+                  <option key={candidate.shiftId} value={candidate.shiftId}>
+                    {new Date(candidate.date).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })} · {jobTypeLabel(candidate.jobType)} · {formatTime(candidate.plannedStart)}–{formatTime(candidate.plannedEnd)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            placeholder="הערה (רשות)"
+            className="block w-full border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
+          />
+          <button
+            type="button"
+            onClick={onPropose}
+            disabled={busy || !toShiftId}
+            className="bg-[var(--color-calendar-sage)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+          >
+            שליחת הצעת החלפה
+          </button>
+        </div>
       )}
-      <button
-        type="button"
-        onClick={onRequest}
-        disabled={busy}
-        className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
-      >
-        {within48 ? 'בקשת החלפה' : 'שליחת בקשה'}
-      </button>
     </div>
   );
 }

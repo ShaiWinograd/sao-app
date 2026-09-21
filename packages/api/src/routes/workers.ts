@@ -81,6 +81,65 @@ export async function workersRoutes(app: FastifyInstance) {
     );
   });
 
+  // Owner calendar availability for a bounded visible date range.
+  app.get('/calendar-availability', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
+    const query = req.query as { start?: string; end?: string };
+    if (
+      !query.start ||
+      !query.end ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(query.start) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(query.end) ||
+      query.start > query.end
+    ) {
+      return reply.status(400).send({ error: 'A valid start and end date are required' });
+    }
+
+    const start = new Date(`${query.start}T00:00:00.000Z`);
+    const end = new Date(`${query.end}T00:00:00.000Z`);
+    const dayCount = Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1;
+    if (dayCount > 62) {
+      return reply.status(400).send({ error: 'Availability ranges are limited to 62 days' });
+    }
+
+    const workers = await prisma.worker.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        availability: {
+          select: { type: true, startDate: true, endDate: true, weekday: true, reason: true },
+        },
+      },
+      orderBy: { firstName: 'asc' },
+    });
+
+    const dates = Array.from({ length: dayCount }, (_, index) => {
+      const date = new Date(start);
+      date.setUTCDate(start.getUTCDate() + index);
+      return date.toISOString().slice(0, 10);
+    });
+
+    return workers.flatMap((worker) => {
+      const blocks = worker.availability.map((block) => ({
+        ...block,
+        startDate: block.startDate?.toISOString() ?? null,
+        endDate: block.endDate?.toISOString() ?? null,
+      }));
+      return dates.flatMap((dateKey) => {
+        const block = blocks.find((candidate) => isUnavailableOn([candidate], dateKey));
+        return block
+          ? [{
+              workerId: worker.id,
+              workerName: `${worker.firstName} ${worker.lastName}`.trim(),
+              dateKey,
+              reason: block.reason?.trim() || 'סומנה כלא זמינה',
+            }]
+          : [];
+      });
+    });
+  });
+
   // Candidate-date finder — ranks dates in a range by staffing coverage.
   app.get('/available-dates', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const query = req.query as {
