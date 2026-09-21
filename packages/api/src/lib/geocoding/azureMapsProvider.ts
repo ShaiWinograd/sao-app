@@ -6,8 +6,8 @@
 // must never reach the browser/mobile bundle and is never logged here. The
 // existing browser autocomplete uses a SEPARATE public `NEXT_PUBLIC_*` key.
 //
-// DORMANT: nothing instantiates this at runtime yet. Tests inject a fake key and
-// a mocked fetch, so no real key and no network call are ever used in CI.
+// Runtime calls are made only by the API through the authenticated geocode
+// endpoint. Tests inject a fake key and mocked fetch, so CI makes no real call.
 
 import type {
   GeocodeAddressComponents,
