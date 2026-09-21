@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Contact, Mail, MessageCircle, Plus, Search } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronsUpDown, Contact, Mail, MessageCircle, Plus, Search } from 'lucide-react';
 import Link from 'next/link';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
 import { SidePanel } from '../../components/ui/SidePanel';
@@ -33,7 +33,8 @@ type Customer = {
 };
 
 type CustomerCaseFilter = 'all' | Customer['caseStatus'] | 'not_executed';
-type CustomerSort = 'updated_desc' | 'updated_asc' | 'name_asc' | 'name_desc' | 'status';
+type CustomerSortColumn = 'name' | 'contact' | 'address' | 'project' | 'status' | 'updated';
+type SortDirection = 'asc' | 'desc';
 
 type DeletedCaseHistoryEntry = {
   customerName: string;
@@ -190,6 +191,15 @@ function normalizePhone(value: string) {
   return value.replace(/\D/g, '');
 }
 
+function normalizeSearchText(value: string) {
+  return value
+    .normalize('NFKC')
+    .toLocaleLowerCase('he')
+    .replace(/[^\p{L}\p{N}@.]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function isValidIsraeliPhone(value: string) {
   const normalized = normalizePhone(value);
   if (!normalized.startsWith('0')) return false;
@@ -236,7 +246,8 @@ export default function CustomersPage() {
   const [isLoadingWorks, setIsLoadingWorks] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<CustomerCaseFilter>('all');
-  const [sortBy, setSortBy] = useState<CustomerSort>('updated_desc');
+  const [sortColumn, setSortColumn] = useState<CustomerSortColumn>('updated');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [notExecutedCustomers, setNotExecutedCustomers] = useState<Set<string>>(new Set());
   const [openedCustomerId, setOpenedCustomerId] = useState<string | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
@@ -372,34 +383,72 @@ export default function CustomersPage() {
   }, [isCreatingNew, customerEditing, openedCustomer, cardFirstName, cardLastName, cardPhone, cardEmail, cardAddressInput]);
 
   const filteredCustomers = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
+    const term = normalizeSearchText(searchTerm);
+    const phoneTerm = normalizePhone(searchTerm);
+    const isPhoneSearch = phoneTerm.length > 0 && /^[\d\s()+.-]+$/.test(searchTerm.trim());
     const filtered = customers.filter((customer) => {
       const isNotExecuted = notExecutedCustomers.has(getCustomerFullName(customer));
       if (statusFilter === 'not_executed' && !isNotExecuted) return false;
       if (statusFilter !== 'all' && statusFilter !== 'not_executed' && customer.caseStatus !== statusFilter) return false;
       if (!term) return true;
-      const fullName = `${customer.firstName} ${customer.lastName}`.toLowerCase();
+      const fullName = normalizeSearchText(`${customer.firstName} ${customer.lastName}`);
       return (
         fullName.includes(term) ||
-        normalizePhone(customer.phone).includes(normalizePhone(term)) ||
-        customer.email.toLowerCase().includes(term) ||
-        customer.caseName.toLowerCase().includes(term) ||
-        customer.addresses.some((address) => address.fullAddress.toLowerCase().includes(term))
+        (isPhoneSearch && normalizePhone(customer.phone).includes(phoneTerm)) ||
+        normalizeSearchText(customer.email).includes(term) ||
+        normalizeSearchText(customer.caseName).includes(term) ||
+        customer.addresses.some((address) => normalizeSearchText(address.fullAddress).includes(term))
       );
     });
     return filtered.sort((a, b) => {
-      if (sortBy === 'name_asc' || sortBy === 'name_desc') {
-        const result = getCustomerFullName(a).localeCompare(getCustomerFullName(b), 'he');
-        return sortBy === 'name_asc' ? result : -result;
+      let result = 0;
+      if (sortColumn === 'name') {
+        result = getCustomerFullName(a).localeCompare(getCustomerFullName(b), 'he');
+      } else if (sortColumn === 'contact') {
+        result = normalizePhone(a.phone).localeCompare(normalizePhone(b.phone), 'he');
+        if (result === 0) result = a.email.localeCompare(b.email, 'he');
+      } else if (sortColumn === 'address') {
+        result = (a.addresses[0]?.fullAddress ?? '').localeCompare(b.addresses[0]?.fullAddress ?? '', 'he');
+      } else if (sortColumn === 'project') {
+        result = a.caseName.localeCompare(b.caseName, 'he');
+      } else if (sortColumn === 'status') {
+        result = caseStatusMeta[a.caseStatus].label.localeCompare(caseStatusMeta[b.caseStatus].label, 'he');
+      } else {
+        const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+        const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        result = aTime - bTime;
       }
-      if (sortBy === 'status') {
-        return caseStatusMeta[a.caseStatus].label.localeCompare(caseStatusMeta[b.caseStatus].label, 'he');
-      }
-      const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-      const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-      return sortBy === 'updated_asc' ? aTime - bTime : bTime - aTime;
+      return sortDirection === 'asc' ? result : -result;
     });
-  }, [customers, notExecutedCustomers, searchTerm, sortBy, statusFilter]);
+  }, [customers, notExecutedCustomers, searchTerm, sortColumn, sortDirection, statusFilter]);
+
+  const requestSort = (column: CustomerSortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortColumn(column);
+    setSortDirection(column === 'updated' ? 'desc' : 'asc');
+  };
+
+  const sortIcon = (column: CustomerSortColumn) => {
+    if (sortColumn !== column) return <ChevronsUpDown className="h-3.5 w-3.5 text-gray-400" aria-hidden="true" />;
+    return sortDirection === 'asc'
+      ? <ArrowUp className="h-3.5 w-3.5 text-primary-700" aria-hidden="true" />
+      : <ArrowDown className="h-3.5 w-3.5 text-primary-700" aria-hidden="true" />;
+  };
+
+  const sortableHeader = (column: CustomerSortColumn, label: string) => (
+    <button
+      type="button"
+      onClick={() => requestSort(column)}
+      className="inline-flex items-center gap-1.5 py-1 font-medium text-gray-600 hover:text-gray-950"
+      aria-label={`מיון לפי ${label}${sortColumn === column ? `, ${sortDirection === 'asc' ? 'עולה' : 'יורד'}` : ''}`}
+    >
+      <span>{label}</span>
+      {sortIcon(column)}
+    </button>
+  );
 
   const openCustomerCard = (customer: Customer) => {
     setOpenedCustomerId(customer.id);
@@ -596,42 +645,16 @@ export default function CustomersPage() {
       <div className="overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface-muted)]">
         <div className="border-b border-[var(--color-border)] px-5 py-5">
           <h3 className="font-display text-2xl font-medium text-gray-900">ספר הלקוחות</h3>
-          <p className="text-xs text-gray-500 mt-1">סינון לפי סטטוסים: משוריין / מאושר לביצוע / עבודה הסתיימה / עבודה שולמה / עבודה לא בוצעה</p>
-          <div className="mt-3 grid grid-cols-1 lg:grid-cols-4 gap-3">
-            <div className="relative lg:col-span-2">
+          <p className="mt-1 text-xs text-gray-500">חיפוש חופשי בכל פרטי הלקוח. מיון וסינון זמינים ישירות בכותרות הטבלה.</p>
+          <div className="relative mt-4 max-w-2xl">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 pr-9 pl-3 py-2 text-sm text-right"
-                placeholder="חיפוש לפי שם / טלפון / אימייל"
+                className="w-full border-0 border-b border-[var(--color-border-strong)] bg-transparent py-2.5 pl-3 pr-9 text-sm text-right outline-none transition-colors placeholder:text-gray-400 focus:border-primary-600"
+                placeholder="חיפוש לפי שם, טלפון, אימייל, פרויקט או כתובת"
+                aria-label="חיפוש לקוחות"
               />
-            </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as CustomerCaseFilter)}
-              className="rounded-lg border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
-            >
-              <option value="all">כל הסטטוסים</option>
-              <option value="none">ללא פרויקט</option>
-              <option value="planned">משוריין</option>
-              <option value="in_progress">מאושר לביצוע</option>
-              <option value="completed_unpaid">עבודה הסתיימה</option>
-              <option value="completed_paid">עבודה שולמה</option>
-              <option value="not_executed">עבודה לא בוצעה</option>
-            </select>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as CustomerSort)}
-              className="rounded-lg border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
-              aria-label="מיון לקוחות"
-            >
-              <option value="updated_desc">עודכן לאחרונה</option>
-              <option value="updated_asc">עודכן לפני זמן רב</option>
-              <option value="name_asc">שם א–ת</option>
-              <option value="name_desc">שם ת–א</option>
-              <option value="status">סטטוס</option>
-            </select>
           </div>
         </div>
 
@@ -639,12 +662,30 @@ export default function CustomersPage() {
           <table className="w-full min-w-[900px] border-collapse text-right text-sm">
             <thead className="sticky top-0 z-10 bg-[var(--color-surface-muted)] text-xs text-gray-500">
               <tr className="border-b border-[var(--color-border-strong)]">
-                <th className="px-5 py-3 font-medium">לקוחה</th>
-                <th className="px-4 py-3 font-medium">טלפון ואימייל</th>
-                <th className="px-4 py-3 font-medium">כתובת</th>
-                <th className="px-4 py-3 font-medium">פרויקט</th>
-                <th className="px-4 py-3 font-medium">סטטוס</th>
-                <th className="px-5 py-3 font-medium">עודכן</th>
+                <th className="px-5 py-3">{sortableHeader('name', 'לקוחה')}</th>
+                <th className="px-4 py-3">{sortableHeader('contact', 'טלפון ואימייל')}</th>
+                <th className="px-4 py-3">{sortableHeader('address', 'כתובת')}</th>
+                <th className="px-4 py-3">{sortableHeader('project', 'פרויקט')}</th>
+                <th className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    {sortableHeader('status', 'סטטוס')}
+                    <select
+                      value={statusFilter}
+                      onChange={(event) => setStatusFilter(event.target.value as CustomerCaseFilter)}
+                      className="max-w-28 border-0 border-b border-[var(--color-border-strong)] bg-transparent py-1 text-[11px] text-gray-600 outline-none focus:border-primary-600"
+                      aria-label="סינון לפי סטטוס"
+                    >
+                      <option value="all">הכול</option>
+                      <option value="none">ללא פרויקט</option>
+                      <option value="planned">משוריין</option>
+                      <option value="in_progress">מאושר לביצוע</option>
+                      <option value="completed_unpaid">עבודה הסתיימה</option>
+                      <option value="completed_paid">עבודה שולמה</option>
+                      <option value="not_executed">לא בוצעה</option>
+                    </select>
+                  </div>
+                </th>
+                <th className="px-5 py-3">{sortableHeader('updated', 'עודכן')}</th>
               </tr>
             </thead>
             <tbody>
@@ -702,15 +743,15 @@ export default function CustomersPage() {
         }}
         title={isCreatingNew ? 'יצירת לקוח חדש' : 'כרטיס לקוח'}
         hasUnsavedChanges={detailsDirty}
+        widthClassName="sm:max-w-xl"
       >
-            <div className="p-6 space-y-4 text-right">
+            <div className="space-y-0 p-6 text-right">
               {openedCustomer && !isCreatingNew && (
-                <section className="border-b border-[var(--color-border)] pb-5">
+                <section className="border-y border-[var(--color-border-strong)] bg-[var(--color-surface-muted)] px-4 py-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <h2 className="font-display text-2xl font-medium text-gray-900">{openedCustomer.firstName} {openedCustomer.lastName}</h2>
-                      <p className="mt-1 text-sm text-gray-600">{openedCustomer.phone}</p>
-                      <p className="text-sm text-gray-500">{openedCustomer.email || 'ללא אימייל'}</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary-700">WORK CARD</p>
+                      <h2 className="mt-1 font-display text-2xl font-medium text-gray-900">{openedCustomer.firstName} {openedCustomer.lastName}</h2>
                     </div>
                     <button
                       type="button"
@@ -718,21 +759,24 @@ export default function CustomersPage() {
                         if (customerEditing) openCustomerCard(openedCustomer);
                         else setCustomerEditing(true);
                       }}
-                      className="border border-[var(--color-border-strong)] px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-white"
+                      className="border-b border-gray-700 px-1 py-1 text-xs font-semibold text-gray-700 hover:text-primary-700"
                     >
                       {customerEditing ? 'ביטול עריכה' : 'עריכת פרטים'}
                     </button>
                   </div>
-                  <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-gray-500">
-                    <StatusBadge tone={caseStatusMeta[openedCustomer.caseStatus].tone} label={caseStatusMeta[openedCustomer.caseStatus].label} />
-                    <span>{openedCustomer.caseName}</span>
-                    <span>{openedCustomer.addresses.length} כתובות שמורות</span>
-                  </div>
+                  <dl className="mt-4 grid grid-cols-2 gap-x-5 gap-y-3 border-t border-[var(--color-border)] pt-4 text-xs sm:grid-cols-3">
+                    <div><dt className="text-gray-400">טלפון</dt><dd className="mt-1 font-medium text-gray-800">{openedCustomer.phone}</dd></div>
+                    <div><dt className="text-gray-400">אימייל</dt><dd className="mt-1 truncate font-medium text-gray-800">{openedCustomer.email || 'ללא אימייל'}</dd></div>
+                    <div><dt className="text-gray-400">סטטוס</dt><dd className="mt-1"><StatusBadge tone={caseStatusMeta[openedCustomer.caseStatus].tone} label={caseStatusMeta[openedCustomer.caseStatus].label} /></dd></div>
+                    <div><dt className="text-gray-400">פרויקט</dt><dd className="mt-1 font-medium text-gray-800">{openedCustomer.caseName}</dd></div>
+                    <div><dt className="text-gray-400">עדכון אחרון</dt><dd className="mt-1 font-medium text-gray-800">{openedCustomer.updatedAt ? new Date(openedCustomer.updatedAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</dd></div>
+                    <div><dt className="text-gray-400">כתובות</dt><dd className="mt-1 font-medium text-gray-800">{openedCustomer.addresses.length} שמורות</dd></div>
+                  </dl>
                 </section>
               )}
 
               {(isCreatingNew || customerEditing) && (
-                <>
+                <section className="space-y-4 border-b border-[var(--color-border)] py-5">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <input value={cardFirstName} onChange={(e) => setCardFirstName(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right" placeholder="שם פרטי" />
                     <input value={cardLastName} onChange={(e) => setCardLastName(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right" placeholder="שם משפחה" />
@@ -740,7 +784,7 @@ export default function CustomersPage() {
                     <input value={cardEmail} onChange={(e) => setCardEmail(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right" placeholder="אימייל (אופציונלי)" inputMode="email" />
                   </div>
 
-                  <div className="space-y-3 rounded-lg border border-gray-100 p-3">
+                  <div className="space-y-3 border-y border-[var(--color-border)] py-4">
                     <p className="text-xs font-medium text-gray-700">הוספת כתובת</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <select value={cardAddressLabel} onChange={(e) => setCardAddressLabel(e.target.value as CustomerAddress['label'])} className="sm:col-span-2 rounded-lg border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm">
@@ -800,11 +844,11 @@ export default function CustomersPage() {
                   >
                     {savingCustomer ? 'שומר…' : isCreatingNew ? 'יצירת לקוח' : 'שמירת שינויים'}
                   </button>
-                </>
+                </section>
               )}
 
               {openedCustomer && (
-                <section className="border-b border-[var(--color-border)] pb-4">
+                <section className="border-b border-[var(--color-border)] py-5">
                   <div className="mb-2 flex items-center justify-between gap-3">
                     <p className="text-xs font-semibold text-gray-700">כתובות שמורות</p>
                     <span className="text-xs text-gray-400">{openedCustomer.addresses.length}</span>
@@ -830,7 +874,7 @@ export default function CustomersPage() {
               )}
 
               {openedCustomer && (
-                <div className="space-y-4">
+                <section className="space-y-4 border-b border-[var(--color-border)] py-5">
                   {isLoadingWorks ? (
                     <p className="text-sm text-gray-500">טוען עבודות…</p>
                   ) : relatedWorks.length === 0 ? (
@@ -850,7 +894,7 @@ export default function CustomersPage() {
                             <Link
                               key={work.id}
                               href={`/jobs/${work.id}`}
-                              className="block rounded-lg border border-gray-200 px-3 py-2 hover:border-primary-300"
+                              className="block border-b border-[var(--color-border)] px-1 py-3 hover:border-primary-400"
                             >
                               <p className="text-sm font-semibold text-gray-900">{work.jobType} • {work.date}</p>
                               {work.address && <p className="text-xs text-gray-600 mt-1">{work.address}</p>}
@@ -861,16 +905,16 @@ export default function CustomersPage() {
                       </div>
                     ))
                   )}
-                </div>
+                </section>
               )}
 
               {!isCreatingNew && (
-                <div className="space-y-3">
+                <section className="space-y-3 border-b border-[var(--color-border)] py-5">
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => setChannel('email')}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border ${channel === 'email' ? 'bg-blue-50 border-blue-300 text-blue-700' : 'border-gray-300 text-gray-700'}`}
+                      className={`inline-flex items-center gap-1.5 border-b px-2 py-1.5 text-xs ${channel === 'email' ? 'border-primary-700 text-primary-800' : 'border-gray-300 text-gray-600'}`}
                     >
                       <Mail className="w-3.5 h-3.5" />
                       אימייל
@@ -878,7 +922,7 @@ export default function CustomersPage() {
                     <button
                       type="button"
                       onClick={() => setChannel('whatsapp')}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border ${channel === 'whatsapp' ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'border-gray-300 text-gray-700'}`}
+                      className={`inline-flex items-center gap-1.5 border-b px-2 py-1.5 text-xs ${channel === 'whatsapp' ? 'border-primary-700 text-primary-800' : 'border-gray-300 text-gray-600'}`}
                     >
                       <MessageCircle className="w-3.5 h-3.5" />
                       וואטסאפ
@@ -917,7 +961,7 @@ export default function CustomersPage() {
                   >
                     {channel === 'email' ? 'שליחת אימייל' : 'שליחה בוואטסאפ'}
                   </button>
-                </div>
+                </section>
               )}
 
               {!isCreatingNew && openedCustomer && !customerEditing && (
