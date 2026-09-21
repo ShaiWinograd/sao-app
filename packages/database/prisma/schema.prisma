@@ -308,6 +308,8 @@ model WorkerAvailability {
   endDate   DateTime?
   weekday   Int?
   reason    String?
+  startTime String?               @db.VarChar(5)
+  endTime   String?               @db.VarChar(5)
   createdAt DateTime              @default(now())
   updatedAt DateTime              @updatedAt
 

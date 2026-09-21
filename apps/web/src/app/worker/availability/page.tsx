@@ -14,6 +14,8 @@ type Block = {
   endDate?: string | null;
   weekday?: number | null;
   reason?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
 };
 
 const WEEKDAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
@@ -29,9 +31,10 @@ function fmt(iso?: string | null): string {
 }
 
 function describe(b: Block): string {
-  if (b.type === 'WEEKLY') return `כל יום ${WEEKDAYS[b.weekday ?? 0]}`;
-  if (b.type === 'RANGE') return `${fmt(b.startDate)} – ${fmt(b.endDate)}`;
-  return fmt(b.startDate);
+  const hours = b.startTime && b.endTime ? ` · ${b.startTime}–${b.endTime}` : ' · כל היום';
+  if (b.type === 'WEEKLY') return `כל יום ${WEEKDAYS[b.weekday ?? 0]}${hours}`;
+  if (b.type === 'RANGE') return `${fmt(b.startDate)} – ${fmt(b.endDate)}${hours}`;
+  return `${fmt(b.startDate)}${hours}`;
 }
 
 export default function WorkerAvailabilityPage() {

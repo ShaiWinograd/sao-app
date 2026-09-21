@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { rankWorkerAvailability, type WorkerCandidate } from './worker-availability';
+import { isUnavailableDuring } from './availability-blocks';
 
 function candidate(overrides: Partial<WorkerCandidate> & { id: string; name: string }): WorkerCandidate {
   return {
@@ -18,6 +19,18 @@ describe('rankWorkerAvailability', () => {
       [candidate({ id: 'w1', name: 'א', isActive: false })],
     );
     expect(result).toHaveLength(0);
+  });
+
+  describe('isUnavailableDuring', () => {
+    it('treats an all-day block as unavailable for every shift', () => {
+      expect(isUnavailableDuring([{ type: 'DATE', startDate: '2026-08-01' }], '2026-08-01', '09:00', '12:00')).toBe(true);
+    });
+
+    it('only blocks shifts overlapping a partial-day block', () => {
+      const blocks = [{ type: 'DATE' as const, startDate: '2026-08-01', startTime: '13:00', endTime: '17:00' }];
+      expect(isUnavailableDuring(blocks, '2026-08-01', '09:00', '12:00')).toBe(false);
+      expect(isUnavailableDuring(blocks, '2026-08-01', '16:00', '18:00')).toBe(true);
+    });
   });
 
   it('ranks available workers above booked ones', () => {

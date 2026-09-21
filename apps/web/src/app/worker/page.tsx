@@ -64,6 +64,8 @@ type AvailabilityBlock = {
   endDate: string | null;
   weekday: number | null;
   reason: string | null;
+  startTime: string | null;
+  endTime: string | null;
 };
 
 function shortDate(iso: string): string {
@@ -84,12 +86,13 @@ function shiftDateTime(date: string, time: string): number {
 
 function availabilityForDate(blocks: AvailabilityBlock[], dateKey: string): AvailabilityBlock | null {
   const weekday = new Date(`${dateKey}T12:00:00`).getDay();
+  const exact = blocks.find((block) => block.type === 'DATE' && block.startDate?.slice(0, 10) === dateKey);
+  if (exact) return exact;
   return (
     blocks.find((block) => {
       if (block.type === 'WEEKLY') return block.weekday === weekday;
       const start = block.startDate?.slice(0, 10);
       if (!start) return false;
-      if (block.type === 'DATE') return start === dateKey;
       const end = block.endDate?.slice(0, 10);
       return Boolean(end && start <= dateKey && dateKey <= end);
     }) ?? null
@@ -106,8 +109,12 @@ export default function WorkerShiftsPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [joinTarget, setJoinTarget] = useState<BoardShift | null>(null);
+  const [availabilityTarget, setAvailabilityTarget] = useState<string | null>(null);
+  const [shiftFilter, setShiftFilter] = useState<'ALL' | 'MINE'>('ALL');
+  const [nextShiftExpanded, setNextShiftExpanded] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => toDateKey(new Date()));
   const selectedInitialDate = useRef(false);
+  const initialCalendarPositioned = useRef(false);
 
   const loadBoard = useCallback(async () => {
     try {
@@ -163,9 +170,9 @@ export default function WorkerShiftsPage() {
     const nextShift = [...board]
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .find((shift) => new Date(shift.date).getTime() >= today.getTime());
-    if (!nextShift) return;
-
-    setSelectedDate(toDateKey(nextShift.date));
+    if (nextShift) {
+      setSelectedDate(toDateKey(nextShift.date));
+    }
     selectedInitialDate.current = true;
   }, [board]);
 
@@ -291,25 +298,24 @@ export default function WorkerShiftsPage() {
         return aTime - bTime;
       })[0] ?? null;
   }, [myShifts]);
-  const visible = board;
+  const visible = useMemo(
+    () => shiftFilter === 'MINE' ? board.filter((shift) => shift.myStatus !== 'NONE') : board,
+    [board, shiftFilter],
+  );
   const calendarDays = useMemo(() => {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
-    const minimumEnd = new Date(start);
-    minimumEnd.setDate(start.getDate() + 20);
-    const lastShift = visible.reduce<Date | null>((latest, shift) => {
-      const date = new Date(shift.date);
-      date.setHours(0, 0, 0, 0);
-      return !latest || date > latest ? date : latest;
-    }, null);
-    const end = lastShift && lastShift > minimumEnd ? lastShift : minimumEnd;
+    start.setMonth(start.getMonth() - 2);
+    const end = new Date();
+    end.setHours(0, 0, 0, 0);
+    end.setMonth(end.getMonth() + 2);
     const dayCount = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
     return Array.from({ length: dayCount }, (_, index) => {
       const date = new Date(start);
       date.setDate(start.getDate() + index);
       return date;
     });
-  }, [visible]);
+  }, []);
   const shiftsByDate = useMemo(
     () =>
       visible.reduce((groups, shift) => {
@@ -320,6 +326,27 @@ export default function WorkerShiftsPage() {
     [visible],
   );
 
+  useEffect(() => {
+    if (
+      loading ||
+      initialCalendarPositioned.current ||
+      (board.length > 0 && !selectedInitialDate.current)
+    ) {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`worker-day-${selectedDate}`)?.scrollIntoView({
+        block: 'start',
+      });
+      document.querySelector<HTMLElement>(`[data-worker-date="${selectedDate}"]`)?.scrollIntoView({
+        block: 'nearest',
+        inline: 'center',
+      });
+      initialCalendarPositioned.current = true;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [board.length, loading, selectedDate]);
+
   const selectDate = useCallback((dateKey: string) => {
     setSelectedDate(dateKey);
     window.setTimeout(() => {
@@ -327,16 +354,25 @@ export default function WorkerShiftsPage() {
     }, 0);
   }, []);
 
-  const markUnavailable = useCallback(async (dateKey: string) => {
+  const saveAvailability = useCallback(async (
+    dateKey: string,
+    values: { reason?: string; startTime?: string; endTime?: string },
+    existing?: AvailabilityBlock | null,
+  ) => {
     setBusy(`availability-${dateKey}`);
     setMessage(null);
     try {
       const auth = await authHeaders(getToken);
-      await api.post('/workers/me/availability', { type: 'DATE', startDate: dateKey }, auth);
+      if (existing?.type === 'DATE') {
+        await api.patch(`/workers/me/availability/${existing.id}`, { type: 'DATE', startDate: dateKey, ...values }, auth);
+      } else {
+        await api.post('/workers/me/availability', { type: 'DATE', startDate: dateKey, ...values }, auth);
+      }
       await loadAvailability();
-      setMessage(`סומן שאינך זמינה ב-${new Date(`${dateKey}T00:00:00`).toLocaleDateString('he-IL')}.`);
+      setAvailabilityTarget(null);
+      setMessage(`הזמינות ל-${new Date(`${dateKey}T00:00:00`).toLocaleDateString('he-IL')} נשמרה.`);
     } catch {
-      setMessage('לא ניתן לסמן את היום כלא זמין. ייתכן שכבר יש לך שיבוץ ביום הזה.');
+      setMessage('לא ניתן לשמור את הזמינות. ייתכן שיש חפיפה עם שיבוץ קיים.');
     } finally {
       setBusy(null);
     }
@@ -349,6 +385,7 @@ export default function WorkerShiftsPage() {
       const auth = await authHeaders(getToken);
       await api.delete(`/workers/me/availability/${blockId}`, auth);
       await loadAvailability();
+      setAvailabilityTarget(null);
       setMessage(`הזמינות ל-${new Date(`${dateKey}T00:00:00`).toLocaleDateString('he-IL')} עודכנה.`);
     } catch {
       setMessage('לא ניתן לעדכן את הזמינות. נסי שוב.');
@@ -420,15 +457,26 @@ export default function WorkerShiftsPage() {
             </div>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
               <span className="text-xs font-semibold text-[#53644b]">● השיבוץ שלך מאושר</span>
-              {nextMyShift.myShiftId && (
-                <Link
-                  href={`/worker/shifts/${nextMyShift.myShiftId}`}
-                  className="border border-primary-700 px-4 py-2 text-xs font-semibold text-primary-800 transition-colors hover:bg-primary-700 hover:text-white"
-                >
-                  כל פרטי המשמרת ←
-                </Link>
-              )}
+              <button
+                type="button"
+                aria-expanded={nextShiftExpanded}
+                onClick={() => setNextShiftExpanded((value) => !value)}
+                className="border border-primary-700 px-4 py-2 text-xs font-semibold text-primary-800 transition-colors hover:bg-primary-700 hover:text-white"
+              >
+                {nextShiftExpanded ? 'סגירת הפרטים' : 'כל פרטי המשמרת'}
+              </button>
             </div>
+            {nextShiftExpanded && (
+              <div className="mt-4 border-t border-primary-200 pt-4">
+                <ShiftCard
+                  shift={nextMyShift}
+                  busy={Boolean(nextMyShift.myShiftId && busy === nextMyShift.myShiftId)}
+                  onAskToJoin={() => setJoinTarget(nextMyShift)}
+                  onRespond={(accepted) => nextMyShift.myShiftId && void respondAssignment(nextMyShift.myShiftId, accepted)}
+                  onCancelRequest={() => nextMyShift.myShiftId && void cancelRequest(nextMyShift.myShiftId)}
+                />
+              </div>
+            )}
           </div>
           <div className="hidden border-r border-[var(--color-border-strong)] pr-4 text-center sm:block">
             <span className="font-display block text-4xl leading-none text-primary-700">
@@ -442,7 +490,7 @@ export default function WorkerShiftsPage() {
       )}
 
       <section
-        className="pb-4"
+        className="sticky top-0 z-30 -mx-3 bg-[var(--color-background)] px-3 pb-3 pt-2 shadow-[0_1px_0_var(--color-border)] sm:-mx-6 sm:px-6"
         data-swipe-navigation="ignore"
       >
         <div className="mx-auto mb-3 flex max-w-[900px] flex-wrap items-end justify-between gap-3">
@@ -456,6 +504,22 @@ export default function WorkerShiftsPage() {
               חזרה להיום
             </button>
           </div>
+          <div className="inline-flex border border-[var(--color-border-strong)] p-0.5 text-xs" aria-label="סינון משמרות">
+            <button
+              type="button"
+              onClick={() => setShiftFilter('ALL')}
+              className={`px-3 py-1.5 font-semibold ${shiftFilter === 'ALL' ? 'bg-primary-700 text-white' : 'text-gray-600'}`}
+            >
+              כל המשמרות
+            </button>
+            <button
+              type="button"
+              onClick={() => setShiftFilter('MINE')}
+              className={`px-3 py-1.5 font-semibold ${shiftFilter === 'MINE' ? 'bg-primary-700 text-white' : 'text-gray-600'}`}
+            >
+              קשורות אליי
+            </button>
+          </div>
         </div>
         <div
           className="mx-auto flex max-w-[900px] gap-1 overflow-x-auto border-y border-[var(--color-border)] py-3"
@@ -465,10 +529,12 @@ export default function WorkerShiftsPage() {
             const key = toDateKey(date);
             const active = key === selectedDate;
             const hasShift = visible.some((shift) => toDateKey(shift.date) === key);
+            const hasAvailability = Boolean(availabilityForDate(availability, key));
             return (
               <button
                 key={key}
                 type="button"
+                data-worker-date={key}
                 onClick={() => selectDate(key)}
                 className={`flex min-h-[76px] min-w-16 flex-col items-center justify-center px-1 transition-colors ${
                   active ? 'bg-primary-700 text-white' : 'text-[var(--color-text-secondary)] hover:bg-primary-50'
@@ -478,7 +544,13 @@ export default function WorkerShiftsPage() {
                   {date.toLocaleDateString('he-IL', { weekday: 'long' })}
                 </span>
                 <span className="font-display mt-1 text-2xl font-semibold leading-none">{date.getDate()}</span>
-                <span className={`mt-1 h-1 w-1 rounded-full ${hasShift ? (active ? 'bg-white' : 'bg-primary-500') : 'bg-transparent'}`} />
+                <span className="mt-1 flex h-1.5 items-center gap-1">
+                  <span className={`h-1 w-1 rounded-full ${hasShift ? (active ? 'bg-white' : 'bg-primary-500') : 'bg-transparent'}`} />
+                  <span
+                    aria-label={hasAvailability ? 'הוגדרה זמינות' : undefined}
+                    className={`h-1.5 w-1.5 rounded-full ${hasAvailability ? (active ? 'bg-rose-200' : 'bg-rose-500') : 'bg-transparent'}`}
+                  />
+                </span>
               </button>
             );
           })}
@@ -498,7 +570,7 @@ export default function WorkerShiftsPage() {
                 {s.direction === 'INCOMING' ? `${s.counterpartName} מציע/ה החלפה` : `הצעת החלפה ל${s.counterpartName}`}
                 {' · '}
                 <span className={s.status === 'PENDING_WORKER' ? 'text-amber-700' : 'text-blue-700'}>
-                  {s.status === 'PENDING_WORKER' ? 'ממתין לאישור העובד/ת' : 'ממתין לבעל/ת העסק'}
+                  {s.status === 'PENDING_WORKER' ? 'ממתין לאישור העובד/ת' : 'ממתין לאישור'}
                 </span>
               </p>
               <p className="text-gray-600">
@@ -526,50 +598,36 @@ export default function WorkerShiftsPage() {
               <section
                 key={dateKey}
                 id={`worker-day-${dateKey}`}
-                className={`scroll-mt-24 border-b border-[var(--color-border)] pb-4 ${
+                className={`scroll-mt-44 border-b border-[var(--color-border)] ${
                   selectedDate === dateKey ? 'bg-primary-50/35' : ''
                 }`}
               >
-                <div className="sticky top-0 z-10 border-b border-[var(--color-border-strong)] bg-[var(--color-background)] py-2">
-                  <h2 className="font-display text-xl text-[#292724]">{new Date(`${dateKey}T00:00:00`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>
+                <div className="flex items-center justify-between border-b border-[var(--color-border)] py-2">
+                  <h2 className="font-display text-lg text-[#292724]">{new Date(`${dateKey}T00:00:00`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>
                 </div>
                 {shifts.length === 0 ? (
-                  <div className="flex min-h-24 flex-wrap items-center justify-between gap-3 px-1 py-4">
-                    <div>
-                      <p className="text-sm font-medium text-gray-700">אין משמרת ביום הזה</p>
-                      <p className="mt-1 text-xs text-[var(--color-text-muted)]">
-                        {availabilityBlock ? 'היום מסומן כלא זמין.' : 'אפשר לסמן כאן אי-זמינות.'}
-                      </p>
-                    </div>
-                    {availabilityBlock?.type === 'DATE' ? (
-                      <button
-                        type="button"
-                        onClick={() => void removeUnavailable(availabilityBlock.id, dateKey)}
-                        disabled={busy === `availability-${dateKey}`}
-                        className="border border-[var(--color-calendar-sage)] px-3 py-2 text-xs font-semibold text-[var(--color-calendar-sage)] disabled:opacity-50"
-                      >
-                        סימון כזמינה
-                      </button>
-                    ) : availabilityBlock ? (
-                      <Link href="/worker/availability" className="border border-[var(--color-border-strong)] px-3 py-2 text-xs font-semibold text-gray-700">
-                        שינוי זמינות
-                      </Link>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => void markUnavailable(dateKey)}
-                        disabled={busy === `availability-${dateKey}`}
-                        className="border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 disabled:opacity-50"
-                      >
-                        לא זמינה ביום הזה
-                      </button>
-                    )}
+                  <div className="flex min-h-12 items-center justify-between gap-3 px-1 py-2">
+                    <span className="text-xs text-[var(--color-text-muted)]">אין משמרות</span>
+                    <button
+                      type="button"
+                      onClick={() => setAvailabilityTarget(dateKey)}
+                      disabled={busy === `availability-${dateKey}`}
+                      className={`px-2 py-1 text-xs font-semibold disabled:opacity-50 ${
+                        availabilityBlock ? 'text-rose-700' : 'text-[#53644b]'
+                      }`}
+                    >
+                      {availabilityBlock
+                        ? availabilityBlock.startTime && availabilityBlock.endTime
+                          ? `לא זמינה ${availabilityBlock.startTime}–${availabilityBlock.endTime}`
+                          : 'לא זמינה'
+                        : 'זמינה'}
+                    </button>
                   </div>
                 ) : shifts.map((s) => (
-                <div key={s.jobId} className="grid grid-cols-[3.75rem_minmax(0,1fr)] items-start gap-4 border-b border-[var(--color-border)] py-4 sm:grid-cols-[5rem_minmax(0,1fr)]">
+                <div key={s.jobId} className="grid grid-cols-[4rem_minmax(0,1fr)] items-start gap-3 border-b border-[var(--color-border)] py-3 sm:grid-cols-[5rem_minmax(0,1fr)]">
                   <div className="border-l border-[var(--color-border)] pl-3 text-center" dir="ltr">
-                    <p className="font-display text-2xl leading-none text-[#292724]">{formatScheduledTime(s.plannedStart)}</p>
-                    <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">{formatScheduledTime(s.plannedEnd)}</p>
+                    <p className="text-sm font-semibold tabular-nums leading-none text-[#292724]">{formatScheduledTime(s.plannedStart)}</p>
+                    <p className="mt-1 text-xs tabular-nums text-[var(--color-text-muted)]">{formatScheduledTime(s.plannedEnd)}</p>
                   </div>
                   <ShiftCard
                     shift={s}
@@ -627,6 +685,16 @@ export default function WorkerShiftsPage() {
           onClose={() => setJoinTarget(null)}
         />
       )}
+      {availabilityTarget && (
+        <AvailabilityModal
+          dateKey={availabilityTarget}
+          existing={availabilityForDate(availability, availabilityTarget)}
+          busy={busy === `availability-${availabilityTarget}`}
+          onSave={(values, existing) => void saveAvailability(availabilityTarget, values, existing)}
+          onRemove={(blockId) => void removeUnavailable(blockId, availabilityTarget)}
+          onClose={() => setAvailabilityTarget(null)}
+        />
+      )}
     </div>
   );
 }
@@ -653,7 +721,6 @@ function CardMeta({ shift }: { shift: BoardShift }) {
   return (
     <>
       <p className="mt-1 text-sm font-semibold text-gray-900">{shift.customerName}</p>
-      <p className="mt-0.5 text-xs text-gray-600">{formatScheduledTime(shift.plannedStart)}–{formatScheduledTime(shift.plannedEnd)}</p>
       {shift.address && (
         <p className="mt-0.5 text-xs text-gray-600">{shift.address}</p>
       )}
@@ -693,7 +760,7 @@ function ShiftCard({
   if (shift.myStatus === 'NONE' && shift.openSpots > 0) {
     if (shift.blockedSameDay) {
       return (
-        <div className="relative w-full px-1 text-right opacity-70">
+        <div className={`relative w-full border-r-2 bg-gray-50/50 px-3 py-1 text-right opacity-70 ${jobTypeBorderColor(shift.jobType)}`}>
           <CardHeader shift={shift} />
           <CardMeta shift={shift} />
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -710,7 +777,7 @@ function ShiftCard({
       <button
         type="button"
         onClick={onAskToJoin}
-        className="relative w-full px-1 text-right transition-colors hover:text-primary-800"
+        className={`relative w-full border-r-2 bg-gray-50/50 px-3 py-1 text-right opacity-80 transition-colors hover:opacity-100 ${jobTypeBorderColor(shift.jobType)}`}
       >
         <CardHeader shift={shift} />
         <CardMeta shift={shift} />
@@ -795,7 +862,7 @@ function ShiftCard({
       </Link>
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-          ממתין לאישור בעל/ת העסק
+          ממתין לאישור
         </span>
         <button
           type="button"
@@ -805,6 +872,92 @@ function ShiftCard({
         >
           ביטול בקשה
         </button>
+      </div>
+    </div>
+  );
+}
+
+function AvailabilityModal({
+  dateKey,
+  existing,
+  busy,
+  onSave,
+  onRemove,
+  onClose,
+}: {
+  dateKey: string;
+  existing: AvailabilityBlock | null;
+  busy: boolean;
+  onSave: (values: { reason?: string; startTime?: string; endTime?: string }, existing: AvailabilityBlock | null) => void;
+  onRemove: (blockId: string) => void;
+  onClose: () => void;
+}) {
+  const [allDay, setAllDay] = useState(!existing?.startTime || !existing?.endTime);
+  const [startTime, setStartTime] = useState(existing?.startTime ?? '09:00');
+  const [endTime, setEndTime] = useState(existing?.endTime ?? '17:00');
+  const [reason, setReason] = useState(existing?.reason ?? '');
+  const invalidHours = !allDay && startTime >= endTime;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="עדכון זמינות"
+        className="w-full max-w-sm bg-[var(--color-surface)] p-5 shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <p className="text-[11px] font-semibold tracking-[0.12em] text-primary-700">זמינות</p>
+        <h2 className="font-display mt-1 text-2xl text-[#292724]">
+          {new Date(`${dateKey}T00:00:00`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}
+        </h2>
+        <div className="mt-4 grid grid-cols-2 border border-[var(--color-border-strong)] p-0.5 text-xs">
+          <button type="button" onClick={() => setAllDay(true)} className={`px-3 py-2 font-semibold ${allDay ? 'bg-primary-700 text-white' : 'text-gray-600'}`}>
+            כל היום
+          </button>
+          <button type="button" onClick={() => setAllDay(false)} className={`px-3 py-2 font-semibold ${!allDay ? 'bg-primary-700 text-white' : 'text-gray-600'}`}>
+            שעות מסוימות
+          </button>
+        </div>
+        {!allDay && (
+          <div className="mt-4 grid grid-cols-2 gap-3" dir="ltr">
+            <label className="text-xs text-gray-600">
+              Start
+              <input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} className="mt-1 w-full border border-gray-300 px-2 py-2 text-sm" />
+            </label>
+            <label className="text-xs text-gray-600">
+              End
+              <input type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} className="mt-1 w-full border border-gray-300 px-2 py-2 text-sm" />
+            </label>
+          </div>
+        )}
+        <label className="mt-4 block text-xs text-gray-600">
+          סיבה (רשות)
+          <input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={200} className="mt-1 w-full border border-gray-300 px-3 py-2 text-sm" />
+        </label>
+        {invalidHours && <p className="mt-2 text-xs text-rose-600">שעת הסיום חייבת להיות אחרי שעת ההתחלה.</p>}
+        <div className="mt-5 flex items-center gap-2">
+          <button
+            type="button"
+            disabled={busy || invalidHours}
+            onClick={() => onSave({
+              reason: reason.trim() || undefined,
+              startTime: allDay ? undefined : startTime,
+              endTime: allDay ? undefined : endTime,
+            }, existing)}
+            className="bg-primary-700 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            סימון כלא זמינה
+          </button>
+          {existing?.type === 'DATE' && (
+            <button type="button" disabled={busy} onClick={() => onRemove(existing.id)} className="px-3 py-2 text-xs font-semibold text-[#53644b] disabled:opacity-50">
+              סימון כזמינה
+            </button>
+          )}
+          <button type="button" disabled={busy} onClick={onClose} className="mr-auto px-2 py-2 text-xs text-gray-500">
+            ביטול
+          </button>
+        </div>
       </div>
     </div>
   );

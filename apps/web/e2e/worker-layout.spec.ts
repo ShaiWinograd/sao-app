@@ -125,12 +125,23 @@ test.describe('Worker desktop layout', () => {
     await page.route('**/api/v1/shifts/replacement-requests/open', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
     );
-    await page.route('**/api/v1/workers/me/availability', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
-    );
+    let availabilityPayload: Record<string, unknown> | null = null;
+    let savedAvailability: Record<string, unknown>[] = [];
+    await page.route('**/api/v1/workers/me/availability', async (route) => {
+      if (route.request().method() === 'POST') {
+        availabilityPayload = route.request().postDataJSON() as Record<string, unknown>;
+        savedAvailability = [{ id: 'availability-1', ...availabilityPayload }];
+        await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id: 'availability-1' }) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(savedAvailability) });
+    });
 
     await page.goto('/worker');
 
+    const nextDateKey = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
+    await expect(page.locator(`#worker-day-${nextDateKey}`)).toBeInViewport();
+    await expect(page.locator(`[data-worker-date="${nextDateKey}"]`)).toBeInViewport();
     await expect(page.getByRole('heading', { name: 'המשמרות שלי' })).toBeVisible();
     await expect(page.getByText('המשמרת הבאה')).toBeVisible();
     await expect(page.getByText('משפחת לוי').first()).toBeVisible();
@@ -139,8 +150,23 @@ test.describe('Worker desktop layout', () => {
     await page.getByRole('button', { name: /תל אביב/ }).first().click();
     await expect(page.getByTitle('מפה של תל אביב')).toBeVisible();
     await expect(page.getByText('היומן של כולן')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'לא זמינה ביום הזה' }).first()).toBeVisible();
-    await expect(page.getByRole('link', { name: 'החלפה או בקשת מחליפה' })).toBeVisible();
+    await page.getByRole('button', { name: 'חזרה להיום' }).click();
+    const availableDay = page.getByRole('button', { name: 'זמינה', exact: true }).first();
+    await expect(availableDay).toBeVisible();
+    await availableDay.click();
+    await expect(page.getByRole('dialog', { name: 'עדכון זמינות' })).toBeVisible();
+    await page.getByRole('button', { name: 'שעות מסוימות' }).click();
+    await page.locator('input[type="time"]').first().fill('13:00');
+    await page.locator('input[type="time"]').last().fill('17:00');
+    await page.getByLabel('סיבה (רשות)').fill('לימודים');
+    await page.getByRole('button', { name: 'סימון כלא זמינה' }).click();
+    expect(availabilityPayload).toMatchObject({ type: 'DATE', startTime: '13:00', endTime: '17:00', reason: 'לימודים' });
+    await expect(page.locator('[aria-label="הוגדרה זמינות"]')).toHaveCount(1);
+
+    await page.getByRole('button', { name: 'כל פרטי המשמרת' }).click();
+    await expect(page).toHaveURL(/\/worker$/);
+    await expect(page.getByRole('button', { name: 'סגירת הפרטים' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'החלפה או בקשת מחליפה' }).first()).toBeVisible();
     await expect(page.getByText('נועה ישראלי')).toBeVisible();
     await expect(page.getByText('רמת גן 4')).toBeVisible();
     await expect(page.getByRole('button', { name: 'אישור' })).toBeVisible();
@@ -149,6 +175,8 @@ test.describe('Worker desktop layout', () => {
     await expect(page.getByText('גבעתיים 8')).toBeVisible();
     await expect(page.getByText('לחצי כדי לבקש להצטרף ›')).toBeVisible();
     await expect(page.getByRole('button', { name: 'הוספה ל-Google או Apple Calendar' })).toBeVisible();
+    await page.getByRole('button', { name: 'קשורות אליי' }).click();
+    await expect(page.getByText('דנה כהן')).toHaveCount(0);
 
     const mainBounds = await page.locator('main').boundingBox();
     const calendarBounds = await page.getByTestId('worker-week-calendar').boundingBox();

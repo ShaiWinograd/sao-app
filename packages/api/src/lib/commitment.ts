@@ -5,7 +5,7 @@ import {
   type CommitmentConflict,
   type CommitmentStatus,
 } from '@workforce/shared';
-import { isUnavailableOn } from '@workforce/shared';
+import { isUnavailableDuring, isUnavailableOn } from '@workforce/shared';
 
 // Thrown by the shared same-day commitment guard. The global Fastify error
 // handler maps it to a 409 so every flow that calls the guard inside its write
@@ -58,7 +58,7 @@ export async function assertWorkerFreeOnDate(
   tx: Prisma.TransactionClient,
   workerId: string,
   jobDate: Date,
-  opts: { ignoreShiftId?: string; ignoreSwapId?: string } = {},
+  opts: { ignoreShiftId?: string; ignoreSwapId?: string; plannedStart?: Date; plannedEnd?: Date } = {},
 ): Promise<void> {
   await lockWorker(tx, workerId);
 
@@ -80,9 +80,29 @@ export async function assertWorkerFreeOnDate(
       startDate: b.startDate ? b.startDate.toISOString() : null,
       endDate: b.endDate ? b.endDate.toISOString() : null,
       weekday: b.weekday,
+      startTime: b.startTime,
+      endTime: b.endTime,
     })),
     dateKey,
   );
+  const time = (value: Date) =>
+    `${String(value.getUTCHours()).padStart(2, '0')}:${String(value.getUTCMinutes()).padStart(2, '0')}`;
+  const unavailableForShift =
+    opts.plannedStart && opts.plannedEnd
+      ? isUnavailableDuring(
+          availability.map((b) => ({
+            type: b.type,
+            startDate: b.startDate ? b.startDate.toISOString() : null,
+            endDate: b.endDate ? b.endDate.toISOString() : null,
+            weekday: b.weekday,
+            startTime: b.startTime,
+            endTime: b.endTime,
+          })),
+          dateKey,
+          time(opts.plannedStart),
+          time(opts.plannedEnd),
+        )
+      : isUnavailable;
 
   const swaps = await tx.shiftSwap.findMany({
     where: {
@@ -97,7 +117,7 @@ export async function assertWorkerFreeOnDate(
 
   const conflict = findCommitmentConflict(dateKey, {
     shifts: shifts.map((s) => ({ id: s.id, dateKey, joinRequestStatus: s.joinRequestStatus as CommitmentStatus })),
-    isUnavailable,
+    isUnavailable: unavailableForShift,
     pendingSwapTargets: swaps.map((s) => ({ swapId: s.id, workerLandsOnDateKey: dateKey })),
     ignoreShiftId: opts.ignoreShiftId,
     ignoreSwapId: opts.ignoreSwapId,

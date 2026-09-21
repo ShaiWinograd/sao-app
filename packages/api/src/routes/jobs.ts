@@ -8,7 +8,7 @@ import { validateServiceAddition } from '@workforce/shared';
 import { evaluateJobPublishReadiness } from '@workforce/shared';
 import { requiresReapproval } from '@workforce/shared';
 import { validateCapacityReduction } from '@workforce/shared';
-import { isUnavailableOn } from '@workforce/shared';
+import { isUnavailableDuring } from '@workforce/shared';
 import { evaluateJobCompletion } from '@workforce/shared';
 import { formatJobTime } from '@workforce/shared';
 import type { AvailabilityBlock } from '@workforce/shared';
@@ -241,6 +241,8 @@ export async function jobsRoutes(app: FastifyInstance) {
         startDate: b.startDate ? b.startDate.toISOString() : null,
         endDate: b.endDate ? b.endDate.toISOString() : null,
         weekday: b.weekday,
+        startTime: b.startTime,
+        endTime: b.endTime,
       }));
     }
 
@@ -271,7 +273,10 @@ export async function jobsRoutes(app: FastifyInstance) {
       // Occupied elsewhere on this date and not on this job → cannot join (§8.1).
       const dateKey = job.date.toISOString().slice(0, 10);
       const blockedSameDay =
-        !myShift && (occupiedDates.has(dateKey) || (me ? isUnavailableOn(availabilityBlocks, dateKey) : false));
+        !myShift && (
+          occupiedDates.has(dateKey) ||
+          (me ? isUnavailableDuring(availabilityBlocks, dateKey, formatJobTime(job.plannedStart), formatJobTime(job.plannedEnd)) : false)
+        );
       return {
         jobId: job.id,
         jobType: job.jobType,
@@ -463,18 +468,22 @@ export async function jobsRoutes(app: FastifyInstance) {
         });
         const availability = await prisma.workerAvailability.findMany({
           where: { workerId },
-          select: { type: true, startDate: true, endDate: true, weekday: true },
+          select: { type: true, startDate: true, endDate: true, weekday: true, startTime: true, endTime: true },
         });
         if (
           occupied ||
-          isUnavailableOn(
+          isUnavailableDuring(
             availability.map((block) => ({
               type: block.type,
               startDate: block.startDate?.toISOString() ?? null,
               endDate: block.endDate?.toISOString() ?? null,
               weekday: block.weekday,
+              startTime: block.startTime,
+              endTime: block.endTime,
             })),
             dateKey,
+            formatJobTime(job.plannedStart),
+            formatJobTime(job.plannedEnd),
           )
         ) {
           assignmentFailures.push({ workerId, error: 'העובדת אינה זמינה בתאריך שנבחר' });
