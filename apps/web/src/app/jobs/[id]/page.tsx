@@ -577,6 +577,10 @@ export default function JobDetailPage() {
     () => (job ? deriveJobStaffing(job.shifts, { requiredWorkerCount: job.requiredWorkerCount, requiresTeamLeader }) : null),
     [job, requiresTeamLeader],
   );
+  const pendingJoinRequests = useMemo(
+    () => (job?.shifts ?? []).filter((shift) => shift.joinRequestStatus === 'PENDING'),
+    [job],
+  );
 
   // Staffing summary for §12–13 owner controls: missing team leader and whether a
   // backup can be promoted into an open regular position.
@@ -878,11 +882,51 @@ export default function JobDetailPage() {
         </div>
       )}
 
-      <div className="mb-5 flex flex-wrap items-center gap-2">
+      {pendingJoinRequests.length > 0 && (
+        <section className="mb-5 border-y border-[var(--color-calendar-sand-border)] bg-[var(--color-calendar-sand-soft)] px-5 py-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--color-calendar-sand)]">נדרשת החלטה</p>
+              <h2 className="mt-1 text-lg font-semibold text-gray-900">בקשות הצטרפות לעבודה</h2>
+            </div>
+            <span className="text-sm font-medium text-[var(--color-calendar-sand)]">{pendingJoinRequests.length} ממתינות</span>
+          </div>
+          <div className="divide-y divide-[var(--color-calendar-sand-border)] border-y border-[var(--color-calendar-sand-border)]">
+            {pendingJoinRequests.map((shift) => (
+              <div key={shift.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div>
+                  <p className="font-medium text-gray-900">{shift.workerNameSnapshot}</p>
+                  <p className="text-xs text-gray-600">מבקש/ת להצטרף למשמרת הזו</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void decideJoinRequest(shift.id, true)}
+                    disabled={busy}
+                    className="bg-[var(--color-calendar-sage)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                  >
+                    אישור ושיבוץ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void decideJoinRequest(shift.id, false)}
+                    disabled={busy}
+                    className="border border-rose-200 px-4 py-2 text-sm text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                  >
+                    דחייה
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <div className="mb-5 flex flex-wrap items-center gap-5 border-b border-[var(--color-border)]">
         {(
           [
-            { key: 'details', label: 'פרטי עבודה' },
-            { key: 'staffing', label: 'עובדים' },
+            { key: 'details', label: 'סקירה' },
+            { key: 'staffing', label: 'צוות ובקשות' },
             { key: 'attendance', label: 'נוכחות' },
             { key: 'forms', label: 'טפסים' },
             { key: 'notes', label: 'הערות' },
@@ -894,7 +938,11 @@ export default function JobDetailPage() {
             role="tab"
             aria-selected={tab === t.key}
             onClick={() => setTab(t.key)}
-            className={`px-4 py-2 text-sm rounded-lg font-medium ${tab === t.key ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+            className={`border-b-2 px-1 py-3 text-sm font-medium ${
+              tab === t.key
+                ? 'border-[var(--color-calendar-sage)] text-[var(--color-calendar-sage)]'
+                : 'border-transparent text-gray-500 hover:text-gray-900'
+            }`}
           >
             {t.label}
           </button>
