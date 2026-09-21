@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { ChevronRight, ChevronLeft, Loader2, Send, FileText, Download } from 'lucide-react';
@@ -41,6 +42,16 @@ type SummaryRow = {
   summary: ReportSummary;
   reportStatus: string;
   version: number | null;
+};
+type ExternalLaborRow = {
+  jobId: string;
+  date: string;
+  name: string;
+  customerName: string;
+  approvedHours: number | null;
+  hourlyRate: number;
+  total: number;
+  requiresHours: boolean;
 };
 
 type ReportLine = { shiftId: string; date: string; customerName: string; shiftLabel?: string; jobTypeLabel?: string; roleLabel?: string; clockIn?: string | null; clockOut?: string | null; approvedHours: number; paidHours: number | null; pay?: number; dayTotal?: number };
@@ -113,6 +124,8 @@ function OwnerWorkerReportsInner() {
   );
 
   const [rows, setRows] = useState<SummaryRow[]>([]);
+  const [externalLabor, setExternalLabor] = useState<ExternalLaborRow[]>([]);
+  const [externalLaborTotal, setExternalLaborTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<WorkerReport | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -126,8 +139,10 @@ function OwnerWorkerReportsInner() {
     setError(null);
     try {
       const auth = await authHeaders(getToken);
-      const res = await api.get<{ workers: SummaryRow[] }>(`/payroll/summary?month=${month}&year=${year}`, auth);
+      const res = await api.get<{ workers: SummaryRow[]; externalLabor?: ExternalLaborRow[]; externalLaborTotal?: number }>(`/payroll/summary?month=${month}&year=${year}`, auth);
       setRows(res.data.workers ?? []);
+      setExternalLabor(res.data.externalLabor ?? []);
+      setExternalLaborTotal(res.data.externalLaborTotal ?? 0);
     } catch {
       setError('טעינת הדוחות נכשלה.');
     } finally {
@@ -269,6 +284,31 @@ function OwnerWorkerReportsInner() {
       />
 
       {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+
+      {externalLabor.length > 0 && (
+        <section className="border-y border-[var(--color-border)] bg-amber-50/40 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-700">מתלמדות מחוץ למערכת</p>
+              <h2 className="mt-1 font-display text-xl text-gray-900">עלות חודשית נוספת</h2>
+            </div>
+            <span className="text-lg font-semibold text-gray-900">{ils(externalLaborTotal)}</span>
+          </div>
+          <div className="mt-3 divide-y divide-amber-200">
+            {externalLabor.map((line) => (
+              <Link key={line.jobId} href={`/jobs/${line.jobId}`} className="flex items-center justify-between gap-3 py-3 text-sm">
+                <div>
+                  <p className="font-medium text-gray-900">{line.name} · {line.customerName}</p>
+                  <p className="text-xs text-gray-500">{fmtDate(line.date)} · {line.requiresHours ? 'נדרשת הזנת שעות' : `${line.approvedHours} שעות × ${ils(line.hourlyRate)}`}</p>
+                </div>
+                <span className={line.requiresHours ? 'text-amber-700' : 'font-semibold text-gray-900'}>
+                  {line.requiresHours ? 'לטיפול' : ils(line.total)}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="border-y border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">

@@ -29,6 +29,7 @@ type Customer = {
   caseName: string;
   caseStatus: 'none' | 'planned' | 'in_progress' | 'completed_unpaid' | 'completed_paid' | 'cancelled';
   notes?: string;
+  updatedAt?: string;
 };
 
 type CustomerCaseFilter = 'all' | Customer['caseStatus'] | 'not_executed';
@@ -69,6 +70,7 @@ type ApiCustomer = {
   lastName: string;
   phone: string;
   email: string | null;
+  updatedAt?: string;
   cases?: ApiCase[];
   addresses?: ApiAddress[];
 };
@@ -111,9 +113,15 @@ function mapApiJobTypeToUi(jobType: ApiJob['jobType']): RelatedWork['jobType'] {
   return 'סידור';
 }
 
-function mapApiJobStatus(status: ApiJob['status']): RelatedWork['status'] {
+function mapApiJobStatus(status: ApiJob['status'], date: string): RelatedWork['status'] {
   if (status === 'COMPLETED' || status === 'ARCHIVED') return 'בוצע';
-  if (status === 'APPROVED') return 'בביצוע';
+  if (status === 'APPROVED') {
+    const jobDate = new Date(date);
+    const today = new Date();
+    jobDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    return jobDate.getTime() > today.getTime() ? 'מתוכנן' : 'בביצוע';
+  }
   return 'מתוכנן';
 }
 
@@ -138,6 +146,7 @@ function mapApiCustomer(apiCustomer: ApiCustomer): Customer {
     })),
     caseName: representativeCase?.name ?? `${apiCustomer.firstName} ${apiCustomer.lastName} - פרוייקט`,
     caseStatus: representativeCase ? mapApiCaseStatus(representativeCase.status) : 'none',
+    updatedAt: apiCustomer.updatedAt,
   };
 }
 
@@ -227,7 +236,6 @@ export default function CustomersPage() {
   const [notExecutedCustomers, setNotExecutedCustomers] = useState<Set<string>>(new Set());
   const [openedCustomerId, setOpenedCustomerId] = useState<string | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
-  const [cardTab, setCardTab] = useState<'details' | 'works' | 'communication' | 'notes' | 'reports'>('details');
   const [cardMessage, setCardMessage] = useState('');
   const [cardNotes, setCardNotes] = useState('');
   const [customerReports, setCustomerReports] = useState<{
@@ -257,15 +265,15 @@ export default function CustomersPage() {
   }, []);
 
   useEffect(() => {
-    if (cardTab === 'reports' && openedCustomerId) void loadCustomerReports(openedCustomerId);
-  }, [cardTab, openedCustomerId]);
+    if (openedCustomerId) void loadCustomerReports(openedCustomerId);
+  }, [openedCustomerId]);
 
   // Load the customer's jobs when the עבודות tab opens. Jobs are queried directly
   // by the customer relationship (GET /jobs?customerId=), not through legacy
   // project/case UI — so a job created via Quick Create appears immediately.
   useEffect(() => {
-    if (cardTab === 'works' && openedCustomerId) void loadRelatedWorks(openedCustomerId);
-  }, [cardTab, openedCustomerId]);
+    if (openedCustomerId) void loadRelatedWorks(openedCustomerId);
+  }, [openedCustomerId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -306,7 +314,7 @@ export default function CustomersPage() {
           date: new Date(job.date).toLocaleDateString('he-IL'),
           jobType: mapApiJobTypeToUi(job.jobType),
           address: job.address?.fullAddress ?? '',
-          status: mapApiJobStatus(job.status),
+          status: mapApiJobStatus(job.status, job.date),
           rawStatus: job.status,
         })),
       );
@@ -368,7 +376,9 @@ export default function CustomersPage() {
       return (
         fullName.includes(term) ||
         normalizePhone(customer.phone).includes(normalizePhone(term)) ||
-        customer.email.toLowerCase().includes(term)
+        customer.email.toLowerCase().includes(term) ||
+        customer.caseName.toLowerCase().includes(term) ||
+        customer.addresses.some((address) => address.fullAddress.toLowerCase().includes(term))
       );
     });
   }, [customers, notExecutedCustomers, searchTerm, statusFilter]);
@@ -376,7 +386,6 @@ export default function CustomersPage() {
   const openCustomerCard = (customer: Customer) => {
     setOpenedCustomerId(customer.id);
     setIsCreatingNew(false);
-    setCardTab('details');
     setCardMessage('');
     setCardFirstName(customer.firstName);
     setCardLastName(customer.lastName);
@@ -395,10 +404,18 @@ export default function CustomersPage() {
     setMessageBody(quote.body);
   };
 
+  useEffect(() => {
+    const customerId = new URLSearchParams(window.location.search).get('customerId');
+    if (!customerId) return;
+    const customer = customers.find((candidate) => candidate.id === customerId);
+    if (!customer) return;
+    openCustomerCard(customer);
+    window.history.replaceState({}, '', window.location.pathname);
+  }, [customers]);
+
   const openCreateCustomerCard = () => {
     setOpenedCustomerId(null);
     setIsCreatingNew(true);
-    setCardTab('details');
     setCardMessage('');
     setCardFirstName('');
     setCardLastName('');
@@ -598,6 +615,11 @@ export default function CustomersPage() {
                     <p className="text-sm text-gray-600 mt-1">{customer.phone}{customer.email ? ` • ${customer.email}` : ''}</p>
                     <p className="text-xs text-gray-500 mt-1">{customer.addresses.length} כתובות שמורות</p>
                     <p className="text-xs text-gray-600 mt-1">פרוייקט: {customer.caseName}</p>
+                    {customer.updatedAt && (
+                      <p className="mt-1 text-xs text-gray-500">
+                        עודכן לאחרונה: {new Date(customer.updatedAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })}
+                      </p>
+                    )}
                     <p className="text-xs text-gray-500 mt-1">{statusMeta.helper}</p>
                   </div>
                   <StatusBadge
@@ -624,63 +646,8 @@ export default function CustomersPage() {
         title={isCreatingNew ? 'יצירת לקוח חדש' : 'כרטיס לקוח'}
         hasUnsavedChanges={detailsDirty}
       >
-            <div className="px-6 pt-4 pb-2 border-b border-gray-100 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setCardTab('details');
-                  setCardMessage('');
-                }}
-                className={`px-3 py-1.5 text-xs rounded-md border ${cardTab === 'details' ? 'bg-primary-50 border-primary-300 text-primary-700' : 'border-gray-300 text-gray-700'}`}
-              >
-                פרטים
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setCardTab('works');
-                  setCardMessage('');
-                }}
-                disabled={isCreatingNew}
-                className={`px-3 py-1.5 text-xs rounded-md border ${cardTab === 'works' ? 'bg-primary-50 border-primary-300 text-primary-700' : 'border-gray-300 text-gray-700'} disabled:opacity-50`}
-              >
-                עבודות
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setCardTab('communication');
-                  setCardMessage('');
-                }}
-                className={`px-3 py-1.5 text-xs rounded-md border ${cardTab === 'communication' ? 'bg-primary-50 border-primary-300 text-primary-700' : 'border-gray-300 text-gray-700'}`}
-              >
-                הודעות
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setCardTab('notes');
-                  setCardMessage('');
-                }}
-                className={`px-3 py-1.5 text-xs rounded-md border ${cardTab === 'notes' ? 'bg-primary-50 border-primary-300 text-primary-700' : 'border-gray-300 text-gray-700'}`}
-              >
-                הערות
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setCardTab('reports');
-                  setCardMessage('');
-                }}
-                disabled={isCreatingNew}
-                className={`px-3 py-1.5 text-xs rounded-md border ${cardTab === 'reports' ? 'bg-primary-50 border-primary-300 text-primary-700' : 'border-gray-300 text-gray-700'} disabled:opacity-50`}
-              >
-                דוחות
-              </button>
-            </div>
-
             <div className="p-6 space-y-4 text-right">
-              {cardTab === 'details' && (
+              {(
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <input value={cardFirstName} onChange={(e) => setCardFirstName(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right" placeholder="שם פרטי" />
@@ -760,7 +727,7 @@ export default function CustomersPage() {
                 </>
               )}
 
-              {cardTab === 'works' && openedCustomer && (
+              {openedCustomer && (
                 <div className="space-y-4">
                   {isLoadingWorks ? (
                     <p className="text-sm text-gray-500">טוען עבודות…</p>
@@ -795,7 +762,7 @@ export default function CustomersPage() {
                 </div>
               )}
 
-              {cardTab === 'communication' && (
+              {!isCreatingNew && (
                 <div className="space-y-3">
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -851,7 +818,7 @@ export default function CustomersPage() {
                 </div>
               )}
 
-              {cardTab === 'notes' && (
+              {!isCreatingNew && (
                 <div className="space-y-2">
                   <div className="rounded-lg border border-primary-100 bg-primary-50 px-3 py-2">
                     <p className="text-xs text-primary-700">
@@ -868,7 +835,7 @@ export default function CustomersPage() {
                 </div>
               )}
 
-              {cardTab === 'reports' && (
+              {openedCustomer && (
                 <div className="space-y-4">
                   {isLoadingReports ? (
                     <p className="text-sm text-gray-500">טוען דוחות…</p>

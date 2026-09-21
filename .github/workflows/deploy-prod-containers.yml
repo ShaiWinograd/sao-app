@@ -86,8 +86,10 @@ jobs:
       - name: Capture release metadata
         run: |
           set -euo pipefail
+          deploy_sha="$(git rev-parse HEAD)"
           echo "DEPLOY_START_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
-          echo "RELEASE_TAG=containers-prod-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "DEPLOY_SHA=$deploy_sha" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=containers-prod-${GITHUB_RUN_NUMBER}-${deploy_sha::7}" >> "$GITHUB_ENV"
 
       - name: Azure login
         uses: azure/login@v2
@@ -97,7 +99,7 @@ jobs:
       - name: Set image metadata
         run: |
           set -euo pipefail
-          echo "IMAGE_TAG=sha-${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+          echo "IMAGE_TAG=sha-${DEPLOY_SHA::12}" >> "$GITHUB_ENV"
 
       - name: Resolve registry credentials from Azure
         run: |
@@ -186,7 +188,7 @@ jobs:
           # Ensure both commits are available for the diff (checkout is shallow).
           git fetch --no-tags --depth=1 origin "$prev_sha" >/dev/null 2>&1 || git fetch --unshallow >/dev/null 2>&1 || true
 
-          if git diff --quiet "$prev_sha" "$GITHUB_SHA" -- packages/database/prisma/schema.prisma 2>/dev/null; then
+          if git diff --quiet "$prev_sha" "$DEPLOY_SHA" -- packages/database/prisma/schema.prisma 2>/dev/null; then
             echo "run=false" >> "$GITHUB_OUTPUT"
             echo "No prisma schema change since $prev_tag ($prev_sha); skipping DB migration."
           else
@@ -371,7 +373,7 @@ jobs:
         run: |
           set -euo pipefail
           gh release create "$RELEASE_TAG" \
-            --target "$GITHUB_SHA" \
+            --target "$DEPLOY_SHA" \
             --title "Production containers ${RELEASE_TAG}" \
             --notes "Automated production container deployment.\n\nWeb image: ${DEPLOYED_WEB_IMAGE:-n/a}\nAPI image: ${DEPLOYED_API_IMAGE:-n/a}\nTriggered by: ${{ github.actor }}\nRun: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 

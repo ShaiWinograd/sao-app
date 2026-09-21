@@ -8,6 +8,8 @@ import { formatJobTime } from '@workforce/shared';
 import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Repeat } from 'lucide-react';
 import { api, authHeaders } from '../../lib/api';
 import { PageHeader } from '../../components/ui/PageHeader';
+import { SidePanel } from '../../components/ui/SidePanel';
+import { OwnerJobDetail } from '../../components/jobs/OwnerJobDetail';
 
 type ApiJob = {
   id: string;
@@ -58,6 +60,7 @@ export default function JobsPage() {
   const router = useRouter();
   const { getToken } = useAuth();
   const [jobs, setJobs] = useState<ApiJob[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [monthAnchor, setMonthAnchor] = useState(() => {
@@ -209,11 +212,14 @@ export default function JobsPage() {
                         const open = Math.max(0, job.requiredWorkerCount - filled);
                         const type = JOB_TYPE[job.jobType];
                         return (
-                          <Link
+                          <button
                             key={job.id}
-                            href={`/jobs/${job.id}`}
-                            onClick={(event) => event.stopPropagation()}
-                            className={`block border-r-2 bg-transparent px-1.5 py-1 text-[11px] leading-tight hover:bg-[var(--color-surface)] ${type.cls}`}
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSelectedJobId(job.id);
+                            }}
+                            className={`block w-full border-r-2 bg-transparent px-1.5 py-1 text-right text-[11px] leading-tight hover:bg-[var(--color-surface)] ${type.cls}`}
                           >
                             <div className="flex items-center gap-1 font-medium">
                               <span className={`h-1.5 w-1.5 rounded-full ${type.dot}`} />
@@ -225,7 +231,7 @@ export default function JobsPage() {
                             <div className="mt-0.5 text-[10px] font-medium">
                               {open > 0 ? `${open} מקומות פנויים` : 'מאויש'}
                             </div>
-                          </Link>
+                          </button>
                         );
                       })}
                     </div>
@@ -239,8 +245,11 @@ export default function JobsPage() {
 
       {/* Owner shift board: jobs grouped by status with quick filters (spec §18) */}
       {!isLoading && !error && (
-        <OwnerShiftBoard jobs={jobs} />
+        <OwnerShiftBoard jobs={jobs} onSelectJob={setSelectedJobId} />
       )}
+      <SidePanel open={Boolean(selectedJobId)} onClose={() => setSelectedJobId(null)} title="פרטי עבודה">
+        {selectedJobId && <OwnerJobDetail jobId={selectedJobId} embedded />}
+      </SidePanel>
     </div>
   );
 }
@@ -263,7 +272,7 @@ const BOARD_FILTERS: Array<{ key: BoardFilter; label: string }> = [
   { key: 'attention', label: 'דורש טיפול' },
 ];
 
-function OwnerShiftBoard({ jobs }: { jobs: ApiJob[] }) {
+function OwnerShiftBoard({ jobs, onSelectJob }: { jobs: ApiJob[]; onSelectJob: (jobId: string) => void }) {
   const [filter, setFilter] = useState<BoardFilter>('all');
 
   const missingWorkers = (job: ApiJob) => Math.max(0, job.requiredWorkerCount - job.shifts.length) > 0;
@@ -331,10 +340,11 @@ function OwnerShiftBoard({ jobs }: { jobs: ApiJob[] }) {
                     const open = Math.max(0, job.requiredWorkerCount - job.shifts.length);
                     const type = JOB_TYPE[job.jobType];
                     return (
-                      <Link
+                      <button
                         key={job.id}
-                        href={`/jobs/${job.id}`}
-                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 px-2 py-4 hover:bg-primary-50/40"
+                        type="button"
+                        onClick={() => onSelectJob(job.id)}
+                        className="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-4 px-2 py-4 text-right hover:bg-primary-50/40"
                       >
                         <div>
                           <div className="flex items-center gap-1.5 text-sm font-semibold">
@@ -356,7 +366,7 @@ function OwnerShiftBoard({ jobs }: { jobs: ApiJob[] }) {
                             </span>
                           )}
                         </div>
-                      </Link>
+                      </button>
                     );
                   })}
                 </div>

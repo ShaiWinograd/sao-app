@@ -2,7 +2,6 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useUser, useAuth } from '@clerk/nextjs';
 import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone, workerRowBadge, fillsRequiredSlot, workerRowAssignments, getStaffingIssueBreakdown, formatBusinessDate } from '@workforce/shared';
 import { AlertTriangle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Plus, XCircle } from 'lucide-react';
@@ -12,6 +11,7 @@ import { JoinRequestsPanel } from '../../components/owner/JoinRequestsPanel';
 import { SidePanel } from '../../components/ui/SidePanel';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { api, authHeaders } from '../../lib/api';
+import { OwnerJobDetail } from '../../components/jobs/OwnerJobDetail';
 
 type JobType = 'אריזה' | 'פריקה' | 'סידור';
 type StaffingMode = 'auto' | 'approval';
@@ -194,7 +194,6 @@ function caseBadge(status: CaseStatusValue): { label: string; className: string 
 export default function DashboardPage() {
   const { user } = useUser();
   const { getToken } = useAuth();
-  const router = useRouter();
   // Gate time/user-dependent text so SSR and first client render match (React #418).
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -351,6 +350,7 @@ export default function DashboardPage() {
   const [quickCreateDate, setQuickCreateDate] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [joinPanelOpen, setJoinPanelOpen] = useState(false);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [dashboardAvailability, setDashboardAvailability] = useState<Array<{ workerId: string; dateKey: string; reason: string }>>([]);
   const [assignmentTarget, setAssignmentTarget] = useState<{
     workerId: string;
@@ -1062,11 +1062,14 @@ export default function DashboardPage() {
               {openAttentionKey === group.key && (
                 <div className="absolute right-0 z-30 mt-1 max-h-64 w-64 overflow-auto border border-[var(--color-border)] bg-[var(--color-surface)] p-1 shadow-lg">
                   {group.jobs.map((job) => (
-                    <Link
+                    <button
                       key={job.jobId}
-                      href={`/jobs/${job.jobId}`}
-                      onClick={() => setOpenAttentionKey(null)}
-                      className="block px-2.5 py-1.5 text-right text-[11px] text-gray-700 hover:bg-[var(--color-calendar-sand-soft)]"
+                      type="button"
+                      onClick={() => {
+                        setOpenAttentionKey(null);
+                        setSelectedJobId(job.jobId);
+                      }}
+                      className="block w-full px-2.5 py-1.5 text-right text-[11px] text-gray-700 hover:bg-[var(--color-calendar-sand-soft)]"
                     >
                       <span className="font-medium text-gray-900">
                         {/* §22.1: render the job's service date in the business timezone. */}
@@ -1076,7 +1079,7 @@ export default function DashboardPage() {
                       {job.customerName || 'שריון כללי'}
                       {' · '}
                       <span className="text-gray-500">{job.status === 'APPROVED' ? 'אושר' : 'שריון'}</span>
-                    </Link>
+                    </button>
                   ))}
                 </div>
               )}
@@ -1312,7 +1315,7 @@ export default function DashboardPage() {
                             <button
                               key={`unassigned-${work.id}`}
                               type="button"
-                              onClick={() => work.jobId && router.push(`/jobs/${work.jobId}`)}
+                              onClick={() => work.jobId && setSelectedJobId(work.jobId)}
                               className={`w-full rounded-md border px-2 py-1 text-right ${getShiftTypeCardClasses(work.jobType)}`}
                             >
                               <div className="flex items-center justify-between gap-1.5">
@@ -1397,7 +1400,7 @@ export default function DashboardPage() {
                                 <button
                                   key={`${worker.id}-${shift.id}`}
                                   type="button"
-                                  onClick={() => shift.jobId && router.push(`/jobs/${shift.jobId}`)}
+                                  onClick={() => shift.jobId && setSelectedJobId(shift.jobId)}
                                   className={`w-full rounded-md border px-2 py-1 text-right ${getShiftTypeCardClasses(shift.jobType)}`}
                                 >
                                   <p className="text-[11px] font-semibold text-gray-900">09:00-{addHoursToTime('09:00', shift.hours)}</p>
@@ -1469,6 +1472,14 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      <SidePanel
+        open={Boolean(selectedJobId)}
+        onClose={() => setSelectedJobId(null)}
+        title="פרטי עבודה"
+      >
+        {selectedJobId && <OwnerJobDetail jobId={selectedJobId} embedded />}
+      </SidePanel>
 
       <SidePanel
         open={exceptionsPanelOpen}
