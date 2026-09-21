@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, MapPin, Users, Star, Repeat, Check, X } from 'lucide-react';
 import { api, authHeaders } from '../../lib/api';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -297,7 +296,6 @@ export default function WorkerShiftsPage() {
         eyebrow="YOUR WORK, BEAUTIFULLY ARRANGED"
         title="המשמרות שלי"
         description="כל מה שצריך לדעת ולעשות לקראת העבודה הבאה."
-        icon={<CalendarDays className="h-6 w-6" />}
       />
 
       <div className="grid grid-cols-2 border-b border-[var(--color-border-strong)] text-sm">
@@ -354,41 +352,37 @@ export default function WorkerShiftsPage() {
       )}
 
       <section
-        className="border-b border-[var(--color-border)] pb-4"
+        className="pb-4"
         data-swipe-navigation="ignore"
       >
-        <div className="mb-3 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => moveWeek(-1)}
-            aria-label="השבוע הקודם"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--color-text-secondary)] hover:bg-primary-50"
-          >
-            <ChevronRight className="h-5 w-5" />
-          </button>
-          <div className="text-center">
-            <p className="text-sm font-semibold text-[#292724]">{weekLabel}</p>
+        <div className="mx-auto mb-3 flex max-w-[900px] flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-[#292724]">השבוע שלך</p>
             <button
               type="button"
               onClick={() => {
                 setWeekOffset(0);
                 setSelectedDate(toDateKey(new Date()));
               }}
-              className="mt-0.5 text-xs font-semibold text-primary-700"
+              className="mt-1 text-[11px] font-semibold text-primary-700 underline decoration-primary-300 underline-offset-4"
             >
               חזרה להיום
             </button>
           </div>
-          <button
-            type="button"
-            onClick={() => moveWeek(1)}
-            aria-label="השבוע הבא"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--color-text-secondary)] hover:bg-primary-50"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-4 text-xs">
+            <button type="button" onClick={() => moveWeek(-1)} className="text-[var(--color-text-secondary)] hover:text-primary-700">
+              שבוע קודם
+            </button>
+            <span className="min-w-32 text-center font-semibold text-[#292724]">{weekLabel}</span>
+            <button type="button" onClick={() => moveWeek(1)} className="text-[var(--color-text-secondary)] hover:text-primary-700">
+              שבוע הבא
+            </button>
+          </div>
         </div>
-        <div className="grid grid-cols-7 gap-1">
+        <div
+          className="mx-auto grid max-w-[900px] grid-cols-7 gap-1 border-y border-[var(--color-border)] py-3"
+          data-testid="worker-week-calendar"
+        >
           {weekDays.map((date) => {
             const key = toDateKey(date);
             const active = key === selectedDate;
@@ -398,14 +392,14 @@ export default function WorkerShiftsPage() {
                 key={key}
                 type="button"
                 onClick={() => setSelectedDate(key)}
-                className={`flex min-h-14 flex-col items-center justify-center rounded-lg px-1 transition-colors ${
+                className={`flex min-h-[76px] flex-col items-center justify-center px-1 transition-colors ${
                   active ? 'bg-primary-700 text-white' : 'text-[var(--color-text-secondary)] hover:bg-primary-50'
                 }`}
               >
                 <span className={`text-[11px] ${active ? 'text-white/75' : 'text-gray-400'}`}>
-                  {date.toLocaleDateString('he-IL', { weekday: 'short' })}
+                  {date.toLocaleDateString('he-IL', { weekday: 'long' })}
                 </span>
-                <span className="mt-1 text-base font-bold">{date.getDate()}</span>
+                <span className="font-display mt-1 text-2xl font-semibold leading-none">{date.getDate()}</span>
                 <span className={`mt-1 h-1 w-1 rounded-full ${hasShift ? (active ? 'bg-white' : 'bg-primary-500') : 'bg-transparent'}`} />
               </button>
             );
@@ -419,10 +413,7 @@ export default function WorkerShiftsPage() {
 
       {tab === 'mine' && swaps.length > 0 && (
         <section className="space-y-2">
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-            <Repeat className="w-4 h-4 text-gray-400" />
-            בקשות החלפת משמרות
-          </h2>
+          <h2 className="text-sm font-semibold text-gray-900">בקשות החלפת משמרות</h2>
           {swaps.map((s) => (
             <div key={s.id} className="rounded-xl border border-gray-200 bg-white p-3 space-y-2 text-xs">
               <p className="font-semibold text-gray-900">
@@ -450,7 +441,6 @@ export default function WorkerShiftsPage() {
 
       {visible.length === 0 ? (
         <EmptyState
-          icon={<CalendarDays className="h-7 w-7" />}
           title={tab === 'all' ? 'אין משמרות מתוזמנות כרגע' : 'אין לך משמרות משובצות'}
           description="עבודות חדשות ושינויים בשיבוץ יופיעו כאן ברגע שיפורסמו."
         />
@@ -485,10 +475,7 @@ export default function WorkerShiftsPage() {
 
       {tab === 'all' && replacements.length > 0 && (
         <section className="space-y-2">
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-            <Repeat className="w-4 h-4 text-gray-400" />
-            משמרות הדורשות החלפה
-          </h2>
+          <h2 className="text-sm font-semibold text-gray-900">משמרות הדורשות החלפה</h2>
           {replacements.map((r) => (
             <div key={r.requestId} className="relative overflow-hidden rounded-xl border border-gray-200 bg-white p-4 pr-5">
               <span className={`absolute inset-y-0 right-0 w-1.5 ${jobTypeStripColor(r.jobType)}`} />
@@ -497,15 +484,9 @@ export default function WorkerShiftsPage() {
                 <span className="text-xs font-medium text-gray-600">{shortDate(r.date)}</span>
               </div>
               <p className="mt-1 text-sm font-semibold text-gray-900">{r.customerName}</p>
-              <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-600">
-                <Clock className="w-3.5 h-3.5" />
-                {formatTime(r.plannedStart)}–{formatTime(r.plannedEnd)}
-              </p>
+              <p className="mt-0.5 text-xs text-gray-600">{formatTime(r.plannedStart)}–{formatTime(r.plannedEnd)}</p>
               {r.suggestedForYou && (
-                <span className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-primary-200 bg-primary-50 px-2 py-0.5 text-[11px] font-medium text-primary-700">
-                  <Star className="w-3 h-3" />
-                  הוצעת להחלפה זו
-                </span>
+                <span className="mt-1.5 inline-flex border-b border-primary-300 pb-0.5 text-[11px] font-medium text-primary-700">הוצעת להחלפה זו</span>
               )}
               <div className="mt-2">
                 <button
@@ -541,16 +522,8 @@ export default function WorkerShiftsPage() {
 function AssignedNames({ workers }: { workers: BoardShift['assignedWorkers'] }) {
   if (workers.length === 0) return <span className="text-gray-400">טרם שובצו עובדים</span>;
   return (
-    <span className="inline-flex flex-wrap gap-1.5">
-      {workers.map((w, i) => (
-        <span
-          key={i}
-          className="inline-flex items-center gap-0.5 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700"
-        >
-          {w.isTeamLeader && <Star className="w-3 h-3" />}
-          {w.name}
-        </span>
-      ))}
+    <span className="text-[11px] text-gray-600">
+      {workers.map((worker) => `${worker.name}${worker.isTeamLeader ? ' · ראש צוות' : ''}`).join('  |  ')}
     </span>
   );
 }
@@ -568,15 +541,9 @@ function CardMeta({ shift }: { shift: BoardShift }) {
   return (
     <>
       <p className="mt-1 text-sm font-semibold text-gray-900">{shift.customerName}</p>
-      <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-600">
-        <Clock className="w-3.5 h-3.5" />
-        {formatTime(shift.plannedStart)}–{formatTime(shift.plannedEnd)}
-      </p>
+      <p className="mt-0.5 text-xs text-gray-600">{formatTime(shift.plannedStart)}–{formatTime(shift.plannedEnd)}</p>
       {shift.address && (
-        <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-600">
-          <MapPin className="w-3.5 h-3.5 shrink-0" />
-          {shift.address}
-        </p>
+        <p className="mt-0.5 text-xs text-gray-600">{shift.address}</p>
       )}
     </>
   );
@@ -601,8 +568,7 @@ function ShiftCard({
       <div className="relative px-1">
         <CardHeader shift={shift} />
         <CardMeta shift={shift} />
-        <div className="mt-2 flex items-center gap-1.5">
-          <Users className="w-3.5 h-3.5 text-gray-400" />
+        <div className="mt-2">
           <AssignedNames workers={shift.assignedWorkers} />
         </div>
         <p className="mt-3 inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600">העבודה מלאה</p>
@@ -659,18 +625,16 @@ function ShiftCard({
             type="button"
             onClick={() => onRespond(true)}
             disabled={busy}
-            className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+            className="inline-flex items-center rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
           >
-            <Check className="w-3.5 h-3.5" />
             אישור
           </button>
           <button
             type="button"
             onClick={() => onRespond(false)}
             disabled={busy}
-            className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            className="inline-flex items-center rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
           >
-            <X className="w-3.5 h-3.5" />
             דחייה
           </button>
         </div>
@@ -689,16 +653,14 @@ function ShiftCard({
           </span>
         </div>
         <CardMeta shift={shift} />
-        <div className="mt-2 flex items-center gap-1.5">
-          <Users className="w-3.5 h-3.5 text-gray-400" />
+        <div className="mt-2">
           <AssignedNames workers={shift.assignedWorkers} />
         </div>
         <div className="mt-2 flex gap-2">
           <Link
             href={`/worker/shifts/${shift.myShiftId}`}
-            className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+            className="inline-flex items-center rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
           >
-            <Repeat className="w-3.5 h-3.5" />
             החלפה
           </Link>
           <Link
@@ -727,9 +689,8 @@ function ShiftCard({
           type="button"
           onClick={onCancelRequest}
           disabled={busy}
-          className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className="inline-flex items-center rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
         >
-          <X className="w-3.5 h-3.5" />
           ביטול בקשה
         </button>
       </div>

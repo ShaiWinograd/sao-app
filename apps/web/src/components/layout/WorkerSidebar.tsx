@@ -3,21 +3,18 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
-import {
-  CalendarDays, CalendarCheck, BarChart3, User, Bell, History, Bug,
-} from 'lucide-react';
 import RoleSwitcher from './RoleSwitcher';
 import { BrandLockup } from './BrandLockup';
 
 // Worker navigation (worker_web_spec §1). "משמרות" is the consolidated board
 // (general + my shifts as tabs).
 const navItems = [
-  { href: '/worker', label: 'משמרות', icon: CalendarDays, exact: true },
-  { href: '/worker/history', label: 'היסטוריית עבודות', icon: History },
-  { href: '/worker/availability', label: 'הזמינות שלי', icon: CalendarCheck },
-  { href: '/worker/reports', label: 'הדוחות שלי', icon: BarChart3 },
-  { href: '/worker/notifications', label: 'התראות', icon: Bell },
-  { href: '/worker/profile', label: 'הפרופיל שלי', icon: User },
+  { href: '/worker', label: 'משמרות', exact: true },
+  { href: '/worker/history', label: 'היסטוריית עבודות' },
+  { href: '/worker/availability', label: 'הזמינות שלי' },
+  { href: '/worker/reports', label: 'הדוחות שלי' },
+  { href: '/worker/notifications', label: 'התראות' },
+  { href: '/worker/profile', label: 'הפרופיל שלי' },
 ];
 
 export default function WorkerSidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
@@ -33,7 +30,7 @@ export default function WorkerSidebar({ onNavigate }: { onNavigate?: () => void 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-5 py-5">
         <p className="mb-3 text-[10px] font-semibold tracking-[0.16em] text-[var(--color-text-muted)]">ניווט</p>
-        {navItems.map(({ href, label, icon: Icon, exact }) => {
+        {navItems.map(({ href, label, exact }, index) => {
           const isActive = exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link
@@ -41,13 +38,15 @@ export default function WorkerSidebar({ onNavigate }: { onNavigate?: () => void 
               href={href}
               onClick={onNavigate}
               aria-current={isActive ? 'page' : undefined}
-              className={`flex min-h-12 items-center gap-3 border-b border-[var(--color-border)] border-r-2 px-2 py-3 text-sm transition-colors ${
+              className={`grid min-h-12 grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-3 border-b border-[var(--color-border)] border-r-2 px-2 py-3 text-sm transition-colors ${
                 isActive
                   ? 'border-r-primary-600 font-semibold text-primary-800'
                   : 'border-r-transparent font-medium text-gray-600 hover:text-primary-700'
               }`}
             >
-              <Icon className={`h-5 w-5 flex-shrink-0 ${isActive ? 'text-primary-600' : 'text-gray-400'}`} />
+              <span dir="ltr" className={`text-[10px] tracking-[0.08em] ${isActive ? 'text-primary-700' : 'text-[var(--color-text-muted)]'}`}>
+                {String(index + 1).padStart(2, '0')}
+              </span>
               <span className="truncate">{label}</span>
             </Link>
           );
@@ -60,9 +59,8 @@ export default function WorkerSidebar({ onNavigate }: { onNavigate?: () => void 
           href={`mailto:shaiwinograd@gmail.com?subject=${encodeURIComponent('Space & Order - משוב מהאפליקציה')}&body=${encodeURIComponent(
             'מה לחצתי:\n\nמה ציפיתי שיקרה:\n\nמה קרה בפועל:\n\nצילום מסך (אם אפשר):\n',
           )}`}
-          className="flex min-h-11 items-center gap-3 px-2 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:text-primary-700"
+          className="flex min-h-11 items-center px-2 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:text-primary-700"
         >
-          <Bug className="w-4 h-4 flex-shrink-0 text-gray-400" />
           <span className="truncate">דיווח באג או בקשה</span>
         </a>
       </div>
