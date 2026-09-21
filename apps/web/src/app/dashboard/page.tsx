@@ -12,7 +12,7 @@ import { SidePanel } from '../../components/ui/SidePanel';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { api, authHeaders } from '../../lib/api';
 import { OwnerJobDetail } from '../../components/jobs/OwnerJobDetail';
-import { StaffingStateSummary } from '../../components/jobs/StaffingStateSummary';
+import { StaffingGapSummary } from '../../components/jobs/StaffingStateSummary';
 
 type JobType = 'אריזה' | 'פריקה' | 'סידור';
 type StaffingMode = 'auto' | 'approval';
@@ -1316,28 +1316,21 @@ export default function DashboardPage() {
                     >
                       {isNonWorkingDay || openWorks.length === 0 ? null : (
                         <div className="space-y-1">
-                          {openWorks.slice(0, 2).map(({ work, open }) => (
+                          {openWorks.slice(0, 2).map(({ work }) => (
                             <div
                               key={`unassigned-${work.id}`}
-                              className={`w-full rounded-md border px-2 py-1 text-right ${getShiftTypeCardClasses(work.jobType)}`}
+                              className={`group/staffing relative w-full rounded-md border px-2 py-1 text-right ${getShiftTypeCardClasses(work.jobType)}`}
                             >
                               <button
                                 type="button"
                                 onClick={() => work.jobId && setSelectedJobId(work.jobId)}
-                                className="flex w-full items-center justify-between gap-1.5 text-right"
+                                className="block w-full pr-0 text-right"
                               >
                                 <span className="truncate text-[11px] font-semibold text-gray-900">{work.customerName}</span>
-                                <span
-                                  title={`${work.approvedWorkers}/${work.requiredWorkers} משובצים; ${open} מקומות פתוחים`}
-                                  className="shrink-0 text-[10px] font-semibold text-[var(--color-calendar-sand)]"
-                                >
-                                  {work.approvedWorkers}/{work.requiredWorkers} · {open} פתוחים
-                                </span>
                               </button>
-                              <StaffingStateSummary
+                              <StaffingGapSummary
                                 shifts={work.assignedWorkers}
                                 requiredWorkerCount={work.requiredWorkers}
-                                className="mt-1"
                               />
                             </div>
                           ))}
@@ -1426,11 +1419,6 @@ export default function DashboardPage() {
                                     </span>
                                   )}
                                   </button>
-                                  <StaffingStateSummary
-                                    shifts={shift.assignedWorkers}
-                                    requiredWorkerCount={shift.requiredWorkers}
-                                    className="mt-1"
-                                  />
                                   {isUrgentCase && (
                                     <p className="text-[10px] text-rose-700 mt-0.5">דחוף: העבודה ממתינה לאישור לקוח</p>
                                   )}
