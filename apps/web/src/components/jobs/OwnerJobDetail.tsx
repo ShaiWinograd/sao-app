@@ -8,6 +8,7 @@ import { evaluateJobPublishReadiness, MANAGER_SKILL, deriveJobStatusBadge, forma
 import { api, authHeaders } from '../../lib/api';
 import { StatusBadge } from '../ui/StatusBadge';
 import AddressGeocodeState from '../geocode/AddressGeocodeState';
+import { StaffingStateSummary } from './StaffingStateSummary';
 
 type ApiJobSlot = {
   id: string;
@@ -545,6 +546,26 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
     [jobId, getToken, load],
   );
 
+  const updateTeamLeaderRequirement = useCallback(
+    async (required: boolean) => {
+      if (!jobId) return;
+      setBusy(true);
+      setError(null);
+      try {
+        const auth = await authHeaders(getToken);
+        await api.patch(`/jobs/${jobId}`, { requiresTeamLeader: required }, auth);
+        setNotice(required ? 'נוספה דרישת ראש צוות.' : 'דרישת ראש הצוות הוסרה.');
+        await load();
+      } catch (err) {
+        const data = (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
+        setError(data?.message ?? data?.error ?? 'עדכון דרישת ראש הצוות נכשל');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [jobId, getToken, load],
+  );
+
   const changeRole = useCallback(
     async (shiftId: string, role: string) => {
       setBusy(true);
@@ -907,7 +928,8 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
             {job.address?.fullAddress ?? 'כתובת לא זמינה'}
           </p>
         </div>
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="mt-4 grid gap-3 border-t border-[var(--color-border)] pt-4 sm:grid-cols-[1fr_auto] sm:items-center">
+          <div className="flex flex-wrap items-center gap-2">
           {job.customer.isSystem && job.status !== 'COMPLETED' && job.status !== 'ARCHIVED' && (
             <button
               onClick={() => setAssignCustomerOpen(true)}
@@ -946,9 +968,10 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
               שליחה שוב לעובדים
             </button>
           )}
+          </div>
           <button
             onClick={() => void load()}
-            className="px-2 py-2 text-xs font-medium text-gray-500 underline decoration-gray-300 underline-offset-4 hover:text-gray-800"
+            className="justify-self-start px-2 py-2 text-xs font-medium text-gray-500 underline decoration-gray-300 underline-offset-4 hover:text-gray-800 sm:justify-self-end"
           >
             רענון
           </button>
@@ -1084,6 +1107,21 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
                   )}
                 </dd>
               </div>
+              <div>
+                <dt className="text-gray-500">דרישת ראש צוות</dt>
+                <dd className="mt-1">
+                  <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-900">
+                    <input
+                      type="checkbox"
+                      checked={requiresTeamLeader}
+                      onChange={(event) => void updateTeamLeaderRequirement(event.target.checked)}
+                      disabled={busy || job.status === 'COMPLETED' || job.status === 'ARCHIVED'}
+                      className="h-4 w-4 accent-[var(--color-calendar-sage)]"
+                    />
+                    {requiresTeamLeader ? 'נדרש ראש צוות' : 'ללא דרישת ראש צוות'}
+                  </label>
+                </dd>
+              </div>
               <div><dt className="text-gray-500">סטטוס</dt><dd className="text-gray-900">{JOB_STATUS_LABELS[job.status] ?? job.status}</dd></div>
             </dl>
           </section>
@@ -1134,6 +1172,22 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
 
       {jobStaffing && (
         <div className="space-y-5">
+          <section className="border-y border-[var(--color-border)] py-4">
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-calendar-sage)]">איוש העבודה</p>
+                <h2 className="mt-1 font-display text-2xl font-medium text-gray-900">
+                  {jobStaffing.assignedWorkers}/{job.requiredWorkerCount} משובצים
+                </h2>
+              </div>
+              <p className={`text-sm font-medium ${jobStaffing.breakdown.workerShortageSlots > 0 ? 'text-[var(--color-calendar-sand)]' : 'text-[var(--color-calendar-sage)]'}`}>
+                {jobStaffing.breakdown.workerShortageSlots > 0
+                  ? `${jobStaffing.breakdown.workerShortageSlots} מקומות עדיין פתוחים`
+                  : 'כל המקומות מאוישים'}
+              </p>
+            </div>
+            <StaffingStateSummary shifts={job.shifts} requiredWorkerCount={job.requiredWorkerCount} />
+          </section>
           {(staffing.missingLeader || staffing.canPromoteBackup) && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -1171,7 +1225,7 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
           </div>
 
           {/* Team leader — driven by the shared shift-based derivation, not slots. */}
-          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <section className="border-y border-[var(--color-border)] py-5">
             <h2 className="text-sm font-semibold text-gray-900 mb-3">ראש צוות</h2>
             {!requiresTeamLeader ? (
               <p className="text-sm text-gray-400">לא הוגדרה עמדת ראש צוות</p>
@@ -1257,7 +1311,7 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
 
           {/* Workers — approved workers (incl. slotId=null), awaiting/pending, and
               empty positions computed as required − approved (never negative). */}
-          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <section className="border-b border-[var(--color-border)] pb-5">
             <h2 className="text-sm font-semibold text-gray-900 mb-3">עובדים</h2>
             {jobStaffing.regulars.length === 0 &&
             jobStaffing.awaitingRegulars.length === 0 &&
@@ -1340,7 +1394,7 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
 
           {/* Backups — assigned but never fill required capacity. */}
           {jobStaffing.backups.length > 0 && (
-            <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <section className="border-b border-[var(--color-border)] pb-5">
               <h2 className="text-sm font-semibold text-gray-900 mb-3">גיבוי</h2>
               <ul className="space-y-2">
                 {jobStaffing.backups.map((shift) => (
@@ -1372,7 +1426,7 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
         </div>
       )}
 
-      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section className="border-y border-[var(--color-border)] py-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-gray-900">נוכחות</h2>
             {job.status !== 'COMPLETED' && job.status !== 'ARCHIVED' && (
@@ -1440,7 +1494,7 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
           )}
       </section>
 
-      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section className="border-b border-[var(--color-border)] pb-5">
           <h2 className="text-sm font-semibold text-gray-900 mb-3">טפסי עובדים</h2>
           {job.shifts.length === 0 ? (
             <p className="text-sm text-gray-400">אין טפסים משויכים</p>
@@ -1509,7 +1563,7 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
         </section>
       )}
 
-      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section className="border-y border-[var(--color-border)] py-5">
           <h2 className="text-sm font-semibold text-gray-900 mb-3">יומן פעילות</h2>
           {activity.length === 0 ? (
             <p className="text-sm text-gray-400">אין פעילות מתועדת עדיין</p>

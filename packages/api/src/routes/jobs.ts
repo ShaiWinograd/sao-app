@@ -19,6 +19,7 @@ import { createQuickJob } from '../domain/quickCreateJob.js';
 import { AppError } from '../lib/errors.js';
 import { lockJob } from '../lib/commitment.js';
 import { assignRealCustomerToJob } from '../domain/assignCustomer.js';
+import { syncJobSlots } from '../domain/jobSlots.js';
 import { getCaseReadiness } from '../domain/customerReport.js';
 import { z } from 'zod';
 
@@ -586,6 +587,7 @@ export async function jobsRoutes(app: FastifyInstance) {
   app.patch('/:id', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = UpdateJobSchema.parse(req.body);
+    const { requiresTeamLeader, workerSlots: _workerSlots, ...jobUpdates } = body;
     // Owner's chosen shifts to demote to backup when capacity is reduced (§13).
     const demoteToBackupIds: string[] = Array.isArray((req.body as any)?.demoteToBackupIds)
       ? ((req.body as any).demoteToBackupIds as string[])
@@ -593,7 +595,18 @@ export async function jobsRoutes(app: FastifyInstance) {
 
     const existingJob = await prisma.job.findUnique({
       where: { id },
-      select: { id: true, caseId: true, jobType: true, date: true, plannedStart: true, plannedEnd: true, addressId: true, status: true, requiredWorkerCount: true },
+      select: {
+        id: true,
+        caseId: true,
+        jobType: true,
+        date: true,
+        plannedStart: true,
+        plannedEnd: true,
+        addressId: true,
+        status: true,
+        requiredWorkerCount: true,
+        slots: { select: { requiredSkill: true } },
+      },
     });
     if (!existingJob) {
       return reply.status(404).send({ error: 'Job not found' });
@@ -622,12 +635,20 @@ export async function jobsRoutes(app: FastifyInstance) {
     // demoted) rolls the whole change back. When the count increases, active
     // workers are told that more positions opened.
     const newCount = body.requiredWorkerCount;
+    const nextRequiresTeamLeader =
+      requiresTeamLeader ??
+      existingJob.slots.some((slot) => slot.requiredSkill === MANAGER_SKILL);
     let demotedUserIds: string[] = [];
     let capacityIncreased = false;
 
     const updated = await prisma.$transaction(async (tx) => {
-      if (typeof newCount === 'number' && newCount !== existingJob.requiredWorkerCount) {
+      if (
+        (typeof newCount === 'number' && newCount !== existingJob.requiredWorkerCount) ||
+        typeof requiresTeamLeader === 'boolean'
+      ) {
         await lockJob(tx, id);
+      }
+      if (typeof newCount === 'number' && newCount !== existingJob.requiredWorkerCount) {
         const regulars = await tx.shift.findMany({
           where: { jobId: id, joinRequestStatus: 'APPROVED', assignmentRole: { in: ['REGULAR', 'TEAM_LEADER'] } },
           select: { id: true, assignmentRole: true, worker: { select: { userId: true } } },
@@ -642,10 +663,9 @@ export async function jobsRoutes(app: FastifyInstance) {
           }
           // The team-leader requirement must remain valid: the only leader may not
           // be demoted while the job still requires a leader slot.
-          const requiresLeader = (await tx.jobSlot.count({ where: { jobId: id, requiredSkill: MANAGER_SKILL } })) > 0;
           const demotedSet = new Set(demoteToBackupIds);
           const leaderRemains = regulars.some((r) => r.assignmentRole === 'TEAM_LEADER' && !demotedSet.has(r.id));
-          if (requiresLeader && !leaderRemains) {
+          if (nextRequiresTeamLeader && !leaderRemains) {
             throw new AppError(409, 'LEADER_REQUIRED', 'לא ניתן להעביר את ראש הצוות לגיבוי — העבודה דורשת ראש צוות.', { regularShiftIds });
           }
           await tx.shift.updateMany({ where: { id: { in: demoteToBackupIds }, jobId: id }, data: { assignmentRole: 'BACKUP' } });
@@ -657,7 +677,23 @@ export async function jobsRoutes(app: FastifyInstance) {
           capacityIncreased = true;
         }
       }
-      return tx.job.update({ where: { id }, data: body as any });
+      if (
+        (typeof newCount === 'number' && newCount !== existingJob.requiredWorkerCount) ||
+        typeof requiresTeamLeader === 'boolean'
+      ) {
+        await syncJobSlots(tx, {
+          jobId: id,
+          requiredWorkerCount: newCount ?? existingJob.requiredWorkerCount,
+          requiresTeamLeader: nextRequiresTeamLeader,
+        });
+      }
+      if (requiresTeamLeader === false) {
+        await tx.shift.updateMany({
+          where: { jobId: id, assignmentRole: 'TEAM_LEADER' },
+          data: { assignmentRole: 'REGULAR' },
+        });
+      }
+      return tx.job.update({ where: { id }, data: jobUpdates as any });
     });
 
     const capDateKey = heDate(nextDate);
@@ -726,7 +762,20 @@ export async function jobsRoutes(app: FastifyInstance) {
         await notifyAssignedWorkers(id, 'עדכון בפרטי העבודה', `בוצע עדכון בפרטי העבודה בתאריך ${heDate(nextDate)}.`, 'JOB_CHANGED');
       }
     }
-    await logAudit((req as any).user, 'UPDATE', 'Job', id, { date: existingJob.date, plannedStart: existingJob.plannedStart, addressId: existingJob.addressId }, body, needsReapproval ? 'material-change' : 'update');
+    await logAudit(
+      (req as any).user,
+      'UPDATE',
+      'Job',
+      id,
+      {
+        date: existingJob.date,
+        plannedStart: existingJob.plannedStart,
+        addressId: existingJob.addressId,
+        requiresTeamLeader: existingJob.slots.some((slot) => slot.requiredSkill === MANAGER_SKILL),
+      },
+      body,
+      needsReapproval ? 'material-change' : 'update',
+    );
 
     return updated;
   });

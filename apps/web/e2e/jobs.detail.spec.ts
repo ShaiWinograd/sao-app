@@ -16,7 +16,7 @@ const jobSlotlessApproved = {
   jobNotes: null,
   workerVisibleNotes: null,
   address: { fullAddress: 'תל אביב 1' },
-  customer: { firstName: 'יעל', lastName: 'כהן', phone: '0501111111' },
+  customer: { id: 'customer-1', firstName: 'יעל', lastName: 'כהן', phone: '0501111111', isSystem: false },
   slots: [{ id: 'slot-x', requiredSkill: null, label: null, filledByShiftId: null }],
   shifts: [
     {
@@ -114,6 +114,49 @@ test.describe('Job detail page', () => {
     await expect(page.getByRole('button', { name: 'שליחה שוב לעובדים' })).toBeVisible();
     // The owner approval action is present for a real-customer reservation.
     await expect(page.getByRole('button', { name: 'אישור העבודה' })).toBeVisible();
+  });
+
+  test('enables a team-leader requirement after creation and shows the full staffing breakdown', async ({ page }) => {
+    let requiresLeader = false;
+    let patchBody: unknown = null;
+    await page.route('**/api/v1/jobs/job-pending', async (route) => {
+      if (route.request().method() === 'PATCH') {
+        patchBody = route.request().postDataJSON();
+        requiresLeader = true;
+        await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...jobPending,
+          slots: requiresLeader
+            ? [
+                { id: 'slot-leader', requiredSkill: 'SHIFT_LEADER', label: null, filledByShiftId: null },
+                { id: 'slot-regular', requiredSkill: null, label: null, filledByShiftId: null },
+              ]
+            : [
+                { id: 'slot-a', requiredSkill: null, label: null, filledByShiftId: null },
+                { id: 'slot-b', requiredSkill: null, label: null, filledByShiftId: null },
+              ],
+        }),
+      });
+    });
+
+    await page.goto('/jobs/job-pending');
+    await expect(page.getByText('0/2 משובצים')).toBeVisible();
+    await expect(page.getByText('2 מקומות עדיין פתוחים')).toBeVisible();
+    await expect(page.getByTestId('staffing-state-summary').getByText('1', { exact: true })).toBeVisible();
+    const pendingCounter = page.locator('[aria-label^="ממתין לבעלים: 1"]');
+    await pendingCounter.focus();
+    await expect(page.getByText('ממתין לבעלים · 1')).toBeVisible();
+    await expect(page.getByText('רון כהן').last()).toBeVisible();
+
+    await page.getByRole('checkbox').check();
+    await expect.poll(() => patchBody).toEqual({ requiresTeamLeader: true });
+    await expect(page.getByText('נדרש ראש צוות')).toBeVisible();
+    await expect(page.getByText('חסר ראש צוות').first()).toBeVisible();
   });
 });
 

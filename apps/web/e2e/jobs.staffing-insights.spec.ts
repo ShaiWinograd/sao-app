@@ -69,7 +69,11 @@ test.describe('Jobs staffing insights', () => {
             case: { id: 'case-1', name: 'פרויקט נועה' },
             address: { fullAddress: 'תל אביב 1' },
             slots: [{ requiredSkill: 'SHIFT_LEADER' }],
-            shifts: [{ workerId: 'worker-1' }, { workerId: 'worker-2' }, { workerId: 'worker-3' }],
+            shifts: [
+              { workerId: 'worker-1', workerNameSnapshot: 'דנה לוי', joinRequestStatus: 'APPROVED', assignmentRole: 'TEAM_LEADER' },
+              { workerId: 'worker-2', workerNameSnapshot: 'נועה כהן', joinRequestStatus: 'PENDING', assignmentRole: 'REGULAR' },
+              { workerId: 'worker-3', workerNameSnapshot: 'מיה גל', joinRequestStatus: 'AWAITING_WORKER', assignmentRole: 'REGULAR' },
+            ],
           },
           {
             id: 'job-2',
@@ -87,25 +91,27 @@ test.describe('Jobs staffing insights', () => {
             case: { id: 'case-1', name: 'פרויקט נועה' },
             address: { fullAddress: 'תל אביב 1' },
             slots: [{ requiredSkill: null }],
-            shifts: [{ workerId: 'worker-4' }, { workerId: 'worker-5' }],
+            shifts: [
+              { workerId: 'worker-4', workerNameSnapshot: 'רות בר', joinRequestStatus: 'APPROVED', assignmentRole: 'REGULAR' },
+              { workerId: 'worker-5', workerNameSnapshot: 'עדי כץ', joinRequestStatus: 'APPROVED', assignmentRole: 'REGULAR' },
+            ],
           },
         ]),
       });
     });
   });
 
-  test('shows agreed/scheduled/actual summary and separate shortage chips', async ({ page }) => {
+  test('shows assigned/total, open slots, and focusable staffing-state names without tabs', async ({ page }) => {
     await page.goto('/jobs');
-    await page.getByRole('button', { name: 'תצוגת עבודות' }).click();
+    await expect(page.getByText('1/4 משובצים · 3 פתוחים').first()).toBeVisible();
+    await expect(page.getByRole('tab')).toHaveCount(0);
 
-    const insightsPanel = page.getByTestId('staffing-insights-panel');
-    await expect(insightsPanel).toBeVisible();
-    await expect(insightsPanel.getByText('מה סוכם מול לקוח / מה שובץ / מה בוצע בפועל')).toBeVisible();
-    await expect(insightsPanel.getByText('סוכם', { exact: true })).toBeVisible();
-    await expect(insightsPanel.getByText('שובץ', { exact: true })).toBeVisible();
-    await expect(insightsPanel.getByText('בוצע בפועל', { exact: true })).toBeVisible();
+    const pendingOwner = page.locator('[aria-label^="ממתין לבעלים: 1"]').first();
+    await pendingOwner.focus();
+    await expect(page.getByText('נועה כהן').last()).toBeVisible();
 
-    await expect(page.getByText('חוסר עובדים: 1')).toBeVisible();
-    await expect(page.getByText('חוסר מנהל: 1')).toBeVisible();
+    const awaitingWorker = page.locator('[aria-label^="ממתין לעובד/ת: 1"]').first();
+    await awaitingWorker.focus();
+    await expect(page.getByText('מיה גל').last()).toBeVisible();
   });
 });
