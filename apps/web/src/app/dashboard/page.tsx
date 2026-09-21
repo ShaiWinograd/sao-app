@@ -12,6 +12,7 @@ import { SidePanel } from '../../components/ui/SidePanel';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { api, authHeaders } from '../../lib/api';
 import { OwnerJobDetail } from '../../components/jobs/OwnerJobDetail';
+import { StaffingStateSummary } from '../../components/jobs/StaffingStateSummary';
 
 type JobType = 'אריזה' | 'פריקה' | 'סידור';
 type StaffingMode = 'auto' | 'approval';
@@ -475,7 +476,11 @@ export default function DashboardPage() {
               assignmentRole: shift.assignmentRole ?? null,
             }));
           const approvedWorkers = assignedWorkers.filter(fillsRequiredSlot).length;
-          const actualTeamLeadName = assignedWorkers.find((worker: AssignedWorker) => worker.name === 'אורית')?.name ?? null;
+          const actualTeamLeadName =
+            assignedWorkers.find(
+              (worker: AssignedWorker) =>
+                worker.isTeamLead && worker.joinRequestStatus === 'APPROVED',
+            )?.name ?? null;
           const status: WorkStatus =
             job.status === 'COMPLETED' || job.status === 'ARCHIVED'
               ? 'done'
@@ -647,9 +652,9 @@ export default function DashboardPage() {
     // `assignedWorkers.length` basis (assigned/required, open, completion %), so
     // all three stay internally consistent. The staffing-shortage surfaces (grid
     // badge, attention cards, daily counter) use `workStaffing` instead.
-    const totalAssigned = displayedWorks.reduce((sum, work) => sum + work.assignedWorkers.length, 0);
+    const totalAssigned = displayedWorks.reduce((sum, work) => sum + work.approvedWorkers, 0);
     const openSlots = displayedWorks.reduce(
-      (sum, work) => sum + Math.max(work.requiredWorkers - work.assignedWorkers.length, 0),
+      (sum, work) => sum + Math.max(work.requiredWorkers - work.approvedWorkers, 0),
       0,
     );
     const completionRate = totalRequired > 0 ? Math.round((totalAssigned / totalRequired) * 100) : 0;
@@ -1312,22 +1317,29 @@ export default function DashboardPage() {
                       {isNonWorkingDay || openWorks.length === 0 ? null : (
                         <div className="space-y-1">
                           {openWorks.slice(0, 2).map(({ work, open }) => (
-                            <button
+                            <div
                               key={`unassigned-${work.id}`}
-                              type="button"
-                              onClick={() => work.jobId && setSelectedJobId(work.jobId)}
                               className={`w-full rounded-md border px-2 py-1 text-right ${getShiftTypeCardClasses(work.jobType)}`}
                             >
-                              <div className="flex items-center justify-between gap-1.5">
-                                <p className="text-[11px] font-semibold text-gray-900 truncate">{work.customerName}</p>
+                              <button
+                                type="button"
+                                onClick={() => work.jobId && setSelectedJobId(work.jobId)}
+                                className="flex w-full items-center justify-between gap-1.5 text-right"
+                              >
+                                <span className="truncate text-[11px] font-semibold text-gray-900">{work.customerName}</span>
                                 <span
-                                  title={`חסרים ${open} עובדים`}
-                                  className="inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-[var(--color-calendar-sand-border)] px-1 text-[11px] font-semibold text-[var(--color-calendar-sand)]"
+                                  title={`${work.approvedWorkers}/${work.requiredWorkers} משובצים; ${open} מקומות פתוחים`}
+                                  className="shrink-0 text-[10px] font-semibold text-[var(--color-calendar-sand)]"
                                 >
-                                  {open}
+                                  {work.approvedWorkers}/{work.requiredWorkers} · {open} פתוחים
                                 </span>
-                              </div>
-                            </button>
+                              </button>
+                              <StaffingStateSummary
+                                shifts={work.assignedWorkers}
+                                requiredWorkerCount={work.requiredWorkers}
+                                className="mt-1"
+                              />
+                            </div>
                           ))}
                           {openWorks.length > 2 && (
                             <p className="text-center text-[11px] text-gray-500">+{openWorks.length - 2} נוספות</p>
@@ -1397,23 +1409,32 @@ export default function DashboardPage() {
                               const myAssignment = shift.assignedWorkers.find((w) => w.name === worker.name);
                               const badge = workerRowBadge(myAssignment ?? {});
                               return (
-                                <button
+                                <div
                                   key={`${worker.id}-${shift.id}`}
-                                  type="button"
-                                  onClick={() => shift.jobId && setSelectedJobId(shift.jobId)}
                                   className={`w-full rounded-md border px-2 py-1 text-right ${getShiftTypeCardClasses(shift.jobType)}`}
                                 >
-                                  <p className="text-[11px] font-semibold text-gray-900">09:00-{addHoursToTime('09:00', shift.hours)}</p>
-                                  <p className="text-[11px] text-gray-600">{shift.customerName}</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => shift.jobId && setSelectedJobId(shift.jobId)}
+                                    className="block w-full text-right"
+                                  >
+                                  <span className="block text-[11px] font-semibold text-gray-900">09:00-{addHoursToTime('09:00', shift.hours)}</span>
+                                  <span className="block text-[11px] text-gray-600">{shift.customerName}</span>
                                   {badge && (
-                                    <p className={`mt-0.5 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}>
+                                    <span className={`mt-0.5 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}>
                                       {badge.label}
-                                    </p>
+                                    </span>
                                   )}
+                                  </button>
+                                  <StaffingStateSummary
+                                    shifts={shift.assignedWorkers}
+                                    requiredWorkerCount={shift.requiredWorkers}
+                                    className="mt-1"
+                                  />
                                   {isUrgentCase && (
                                     <p className="text-[10px] text-rose-700 mt-0.5">דחוף: העבודה ממתינה לאישור לקוח</p>
                                   )}
-                                </button>
+                                </div>
                               );
                             })}
                             {shifts.length > 2 && <p className="text-[11px] text-gray-500 text-center">+{shifts.length - 2} נוספות</p>}

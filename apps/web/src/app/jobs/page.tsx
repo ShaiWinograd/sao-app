@@ -10,6 +10,7 @@ import { api, authHeaders } from '../../lib/api';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { SidePanel } from '../../components/ui/SidePanel';
 import { OwnerJobDetail } from '../../components/jobs/OwnerJobDetail';
+import { StaffingStateSummary, getStaffingStateSummary } from '../../components/jobs/StaffingStateSummary';
 
 type ApiJob = {
   id: string;
@@ -21,7 +22,13 @@ type ApiJob = {
   status: 'RESERVATION' | 'APPROVED' | 'COMPLETED' | 'ARCHIVED';
   customer: { firstName: string; lastName: string };
   case: { id: string; name: string } | null;
-  shifts: Array<{ workerId: string }>;
+  shifts: Array<{
+    workerId: string;
+    workerNameSnapshot?: string | null;
+    joinRequestStatus?: string | null;
+    assignmentRole?: string | null;
+    worker?: { firstName?: string | null; lastName?: string | null } | null;
+  }>;
 };
 
 const JOB_TYPE: Record<ApiJob['jobType'], { label: string; cls: string; dot: string }> = {
@@ -208,30 +215,46 @@ export default function JobsPage() {
                     <div className="mb-1 text-[11px] font-medium text-gray-400">{cell.day}</div>
                     <div className="space-y-1">
                       {(jobsByDate.get(cell.key) ?? []).map((job) => {
-                        const filled = job.shifts.length;
-                        const open = Math.max(0, job.requiredWorkerCount - filled);
+                        const summaryShifts = job.shifts.map((shift) => ({
+                          ...shift,
+                          workerNameSnapshot:
+                            shift.workerNameSnapshot ??
+                            `${shift.worker?.firstName ?? ''} ${shift.worker?.lastName ?? ''}`.trim(),
+                        }));
+                        const staffing = getStaffingStateSummary(summaryShifts, job.requiredWorkerCount);
                         const type = JOB_TYPE[job.jobType];
                         return (
-                          <button
+                          <div
                             key={job.id}
-                            type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              setSelectedJobId(job.id);
                             }}
-                            className={`block w-full border-r-2 bg-transparent px-1.5 py-1 text-right text-[11px] leading-tight hover:bg-[var(--color-surface)] ${type.cls}`}
+                            className={`w-full border-r-2 bg-transparent px-1.5 py-1 text-right text-[11px] leading-tight ${type.cls}`}
                           >
-                            <div className="flex items-center gap-1 font-medium">
-                              <span className={`h-1.5 w-1.5 rounded-full ${type.dot}`} />
-                              {type.label} · {formatTime(job.plannedStart)}
-                            </div>
-                            <div className="truncate opacity-90">
-                              {job.customer.firstName} {job.customer.lastName}
-                            </div>
-                            <div className="mt-0.5 text-[10px] font-medium">
-                              {open > 0 ? `${open} מקומות פנויים` : 'מאויש'}
-                            </div>
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedJobId(job.id)}
+                              className="block w-full text-right hover:bg-[var(--color-surface)]"
+                            >
+                              <span className="flex items-center gap-1 font-medium">
+                                <span className={`h-1.5 w-1.5 rounded-full ${type.dot}`} />
+                                {type.label} · {formatTime(job.plannedStart)}
+                              </span>
+                              <span className="block truncate opacity-90">
+                                {job.customer.firstName} {job.customer.lastName}
+                              </span>
+                              <span className="mt-0.5 block text-[10px] font-medium">
+                                {staffing.approvedNames.length}/{job.requiredWorkerCount} משובצים
+                                {' · '}
+                                {staffing.openSlots > 0 ? `${staffing.openSlots} פתוחים` : 'מאויש'}
+                              </span>
+                            </button>
+                            <StaffingStateSummary
+                              shifts={summaryShifts}
+                              requiredWorkerCount={job.requiredWorkerCount}
+                              className="mt-1"
+                            />
+                          </div>
                         );
                       })}
                     </div>
@@ -280,7 +303,17 @@ const BOARD_FILTERS: Array<{ key: BoardFilter; label: string }> = [
 function OwnerShiftBoard({ jobs, onSelectJob }: { jobs: ApiJob[]; onSelectJob: (jobId: string) => void }) {
   const [filter, setFilter] = useState<BoardFilter>('all');
 
-  const missingWorkers = (job: ApiJob) => Math.max(0, job.requiredWorkerCount - job.shifts.length) > 0;
+  const staffingFor = (job: ApiJob) =>
+    getStaffingStateSummary(
+      job.shifts.map((shift) => ({
+        ...shift,
+        workerNameSnapshot:
+          shift.workerNameSnapshot ??
+          `${shift.worker?.firstName ?? ''} ${shift.worker?.lastName ?? ''}`.trim(),
+      })),
+      job.requiredWorkerCount,
+    );
+  const missingWorkers = (job: ApiJob) => staffingFor(job).openSlots > 0;
 
   const filtered = useMemo(
     () =>
@@ -342,16 +375,20 @@ function OwnerShiftBoard({ jobs, onSelectJob }: { jobs: ApiJob[]; onSelectJob: (
                 </h3>
                 <div className="divide-y divide-[var(--color-border)]">
                   {groups[status].map((job) => {
-                    const open = Math.max(0, job.requiredWorkerCount - job.shifts.length);
+                    const summaryShifts = job.shifts.map((shift) => ({
+                      ...shift,
+                      workerNameSnapshot:
+                        shift.workerNameSnapshot ??
+                        `${shift.worker?.firstName ?? ''} ${shift.worker?.lastName ?? ''}`.trim(),
+                    }));
+                    const staffing = getStaffingStateSummary(summaryShifts, job.requiredWorkerCount);
                     const type = JOB_TYPE[job.jobType];
                     return (
-                      <button
+                      <div
                         key={job.id}
-                        type="button"
-                        onClick={() => onSelectJob(job.id)}
                         className="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-4 px-2 py-4 text-right hover:bg-primary-50/40"
                       >
-                        <div>
+                        <button type="button" onClick={() => onSelectJob(job.id)} className="text-right">
                           <div className="flex items-center gap-1.5 text-sm font-semibold">
                             <span className={`h-2 w-2 rounded-full ${type.dot}`} />
                             {type.label}
@@ -359,19 +396,22 @@ function OwnerShiftBoard({ jobs, onSelectJob }: { jobs: ApiJob[]; onSelectJob: (
                           <div className="mt-1 text-sm text-gray-800">
                             {job.customer.firstName} {job.customer.lastName}
                           </div>
-                        </div>
+                        </button>
                         <div className="text-left">
                           <div className="text-xs text-gray-500">
                             {new Date(job.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'long' })} ·{' '}
                             {formatTime(job.plannedStart)}
                           </div>
-                          {open > 0 && (
-                            <span className="mt-1 inline-block text-[10px] font-medium text-amber-700">
-                              חסרים {open}
-                            </span>
-                          )}
+                          <span className="mt-1 inline-block text-[10px] font-medium text-amber-700">
+                            {staffing.approvedNames.length}/{job.requiredWorkerCount} משובצים · {staffing.openSlots} פתוחים
+                          </span>
                         </div>
-                      </button>
+                        <StaffingStateSummary
+                          shifts={summaryShifts}
+                          requiredWorkerCount={job.requiredWorkerCount}
+                          className="col-span-2"
+                        />
+                      </div>
                     );
                   })}
                 </div>

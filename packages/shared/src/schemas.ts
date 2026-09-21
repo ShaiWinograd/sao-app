@@ -113,7 +113,9 @@ export const JobSchema = z.object({
 });
 
 export const CreateJobSchema = JobSchema;
-export const UpdateJobSchema = JobSchema.partial().omit({ caseId: true, customerId: true });
+export const UpdateJobSchema = JobSchema.partial()
+  .omit({ caseId: true, customerId: true })
+  .extend({ requiresTeamLeader: z.boolean().optional() });
 
 // ─── Shift / Join Request ─────────────────────────────────────────────────────
 
