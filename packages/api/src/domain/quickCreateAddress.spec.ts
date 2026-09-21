@@ -48,10 +48,17 @@ describe('resolveQuickCreateAddress — selected', () => {
     ).rejects.toMatchObject({ statusCode: 422, code: 'ADDRESS_NOT_RESOLVABLE' });
   });
 
-  it('rejects an ambiguous selection (no RESOLVED, no write)', async () => {
-    await expect(
-      resolveQuickCreateAddress({ address: { mode: 'selected', token: token({ ambiguous: true }) } }, deps),
-    ).rejects.toMatchObject({ statusCode: 422, code: 'ADDRESS_NOT_RESOLVABLE' });
+  it('automatically verifies an explicitly selected complete address even when provider results were ambiguous', async () => {
+    const res = await resolveQuickCreateAddress(
+      { address: { mode: 'selected', token: token({ ambiguous: true, confidence: 0.42 }) } },
+      deps,
+    );
+    expect(res.apply).toMatchObject({
+      geocodeStatus: 'RESOLVED',
+      latitude: 32.084,
+      longitude: 34.81,
+      geocodeReason: 'RESOLVED_EXACT',
+    });
   });
 
   it('rejects a HOUSE token missing a house number (defense-in-depth)', async () => {
@@ -67,6 +74,13 @@ describe('resolveQuickCreateAddress — selected', () => {
   it('independently rechecks country — a signed HOUSE token with a non-IL country does not RESOLVE', async () => {
     const bad = token({ precision: 'HOUSE', city: 'NYC', display: 'Main 5, NYC', components: { streetName: 'Main', streetNumber: '5', municipality: 'NYC', postalCode: null, countryCode: 'US' } });
     await expect(resolveQuickCreateAddress({ address: { mode: 'selected', token: bad } }, deps)).rejects.toMatchObject({ code: 'ADDRESS_NOT_RESOLVABLE' });
+  });
+
+  it('rejects a signed payload with invalid coordinates', async () => {
+    const bad = token({ lat: 91 });
+    await expect(resolveQuickCreateAddress({ address: { mode: 'selected', token: bad } }, deps)).rejects.toMatchObject({
+      code: 'ADDRESS_SELECTION_INVALID',
+    });
   });
 
   it('rejects a tampered token', async () => {
