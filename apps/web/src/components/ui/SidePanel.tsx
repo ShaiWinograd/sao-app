@@ -50,7 +50,7 @@ export function SidePanel({
     // Using onMouseDown + target check so a drag that starts inside the panel and
     // ends on the backdrop does not count as a backdrop click.
     <div
-      className="fixed inset-0 z-50 flex justify-end bg-gray-950/35 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex justify-end bg-[#292724]/35 backdrop-blur-[1px]"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) requestClose();
       }}
@@ -59,18 +59,18 @@ export function SidePanel({
         role="dialog"
         aria-modal="true"
         dir="rtl"
-        className={`flex h-full w-full ${widthClassName} flex-col overflow-y-auto bg-[#fbfaf7] shadow-[0_20px_60px_rgba(38,38,38,0.2)] sm:rounded-l-3xl`}
+        className={`flex h-full w-full ${widthClassName} flex-col overflow-y-auto border-r border-[var(--color-border-strong)] bg-[var(--color-background)] shadow-[0_18px_45px_rgba(41,39,36,0.16)]`}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-[#e7e3dc] bg-[#fbfaf7]/95 px-5 py-4 backdrop-blur">
+        <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-background)]/95 px-6 py-5 backdrop-blur">
           <button
             type="button"
             onClick={requestClose}
-            className="min-h-11 rounded-xl border border-[#d8d3ca] bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="min-h-10 border border-[var(--color-border-strong)] bg-transparent px-4 py-2 text-sm font-medium text-gray-700 hover:bg-[var(--color-surface-muted)]"
           >
             סגירה
           </button>
-          {title ? <h3 className="text-lg font-semibold text-gray-900">{title}</h3> : <span />}
+          {title ? <h3 className="font-display text-xl font-medium text-gray-900">{title}</h3> : <span />}
         </div>
         <div className="flex-1">{children}</div>
       </div>
