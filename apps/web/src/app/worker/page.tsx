@@ -11,7 +11,6 @@ import {
   jobTypeLabel,
   jobTypeBorderColor,
   jobTypeStripColor,
-  jobTypeTintClasses,
   formatTime,
 } from '../../lib/worker';
 
@@ -68,13 +67,20 @@ function toDateKey(date: Date | string): string {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
 }
 
+function shiftDateTime(date: string, time: string): number {
+  const value = new Date(date);
+  const match = time.match(/(\d{1,2}):(\d{2})/);
+  if (match) value.setHours(Number(match[1]), Number(match[2]), 0, 0);
+  return value.getTime();
+}
+
 export default function WorkerShiftsPage() {
   const { getToken } = useAuth();
   const [board, setBoard] = useState<BoardShift[]>([]);
   const [swaps, setSwaps] = useState<SwapMine[]>([]);
   const [replacements, setReplacements] = useState<OpenReplacement[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'all' | 'mine'>('all');
+  const [tab, setTab] = useState<'all' | 'mine'>('mine');
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [joinTarget, setJoinTarget] = useState<BoardShift | null>(null);
@@ -250,6 +256,16 @@ export default function WorkerShiftsPage() {
   );
 
   const myShifts = useMemo(() => board.filter((s) => s.myStatus !== 'NONE'), [board]);
+  const nextMyShift = useMemo(() => {
+    const now = new Date();
+    return [...myShifts]
+      .filter((shift) => shift.myStatus === 'APPROVED' && shiftDateTime(shift.date, shift.plannedEnd) >= now.getTime())
+      .sort((a, b) => {
+        const aTime = shiftDateTime(a.date, a.plannedStart);
+        const bTime = shiftDateTime(b.date, b.plannedStart);
+        return aTime - bTime;
+      })[0] ?? null;
+  }, [myShifts]);
   const visible = tab === 'all' ? board : myShifts;
   const weekDays = useMemo(() => {
     const start = new Date();
@@ -278,14 +294,14 @@ export default function WorkerShiftsPage() {
   return (
     <div className="mx-auto w-full max-w-[1120px] space-y-6">
       <PageHeader
-        eyebrow="מרכז העבודה שלי"
-        title="המשמרות"
+        eyebrow="YOUR WORK, BEAUTIFULLY ARRANGED"
+        title="המשמרות שלי"
         description="כל מה שצריך לדעת ולעשות לקראת העבודה הבאה."
         icon={<CalendarDays className="h-6 w-6" />}
       />
 
       <div className="grid grid-cols-2 border-b border-[var(--color-border-strong)] text-sm">
-        {([['all', 'כל המשמרות'], ['mine', 'היומן שלי']] as [typeof tab, string][]).map(([v, label]) => (
+        {([['mine', 'היומן שלי'], ['all', 'משמרות פתוחות']] as [typeof tab, string][]).map(([v, label]) => (
           <button
             key={v}
             type="button"
@@ -302,8 +318,43 @@ export default function WorkerShiftsPage() {
         ))}
       </div>
 
+      {tab === 'mine' && nextMyShift && (
+        <section className="grid gap-5 border-t-2 border-primary-700 bg-primary-100/70 p-5 sm:grid-cols-[minmax(0,1fr)_8rem] sm:p-7">
+          <div>
+            <p className="text-[11px] font-semibold tracking-[0.12em] text-primary-700">המשמרת הבאה</p>
+            <h2 className="font-display mt-2 text-2xl font-medium leading-tight text-[#292724] sm:text-3xl">
+              {jobTypeLabel(nextMyShift.jobType)}
+            </h2>
+            <p className="mt-2 text-sm font-semibold text-[#292724]">{nextMyShift.customerName}</p>
+            <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+              {nextMyShift.address ? `${nextMyShift.address} · ` : ''}
+              <bdi>{formatTime(nextMyShift.plannedStart)}–{formatTime(nextMyShift.plannedEnd)}</bdi>
+            </p>
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+              <span className="text-xs font-semibold text-[#53644b]">● השיבוץ שלך מאושר</span>
+              {nextMyShift.myShiftId && (
+                <Link
+                  href={`/worker/shifts/${nextMyShift.myShiftId}`}
+                  className="border border-primary-700 px-4 py-2 text-xs font-semibold text-primary-800 transition-colors hover:bg-primary-700 hover:text-white"
+                >
+                  כל פרטי המשמרת ←
+                </Link>
+              )}
+            </div>
+          </div>
+          <div className="hidden border-r border-[var(--color-border-strong)] pr-5 text-center sm:block">
+            <span className="font-display block text-6xl leading-none text-primary-700">
+              {new Date(nextMyShift.date).getDate()}
+            </span>
+            <span className="mt-2 block text-xs text-[var(--color-text-secondary)]">
+              {new Date(nextMyShift.date).toLocaleDateString('he-IL', { month: 'long', weekday: 'long' })}
+            </span>
+          </div>
+        </section>
+      )}
+
       <section
-        className="border-b border-[var(--color-border)] pb-4 md:hidden"
+        className="border-b border-[var(--color-border)] pb-4"
         data-swipe-navigation="ignore"
       >
         <div className="mb-3 flex items-center justify-between">
@@ -405,7 +456,7 @@ export default function WorkerShiftsPage() {
         />
       ) : (
         <>
-          <div className="space-y-3 md:hidden">
+          <div className="space-y-0">
             {selectedShifts.length === 0 ? (
               <div className="border-y border-dashed border-[var(--color-border-strong)] px-5 py-7 text-center">
                 <p className="text-sm font-semibold text-gray-800">אין משמרות ביום שנבחר</p>
@@ -413,10 +464,10 @@ export default function WorkerShiftsPage() {
               </div>
             ) : (
               selectedShifts.map((s) => (
-                <div key={s.jobId} className="grid grid-cols-[3.75rem_minmax(0,1fr)] items-start gap-3">
-                  <div className="pt-4 text-left" dir="ltr">
-                    <p className="text-sm font-bold text-gray-900">{formatTime(s.plannedStart)}</p>
-                    <div className="mx-auto mt-2 h-10 w-px bg-[#ded9d0]" />
+                <div key={s.jobId} className="grid grid-cols-[3.75rem_minmax(0,1fr)] items-start gap-4 border-b border-[var(--color-border)] py-4 sm:grid-cols-[5rem_minmax(0,1fr)]">
+                  <div className="border-l border-[var(--color-border)] pl-3 text-center" dir="ltr">
+                    <p className="font-display text-2xl leading-none text-[#292724]">{formatTime(s.plannedStart)}</p>
+                    <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">{formatTime(s.plannedEnd)}</p>
                   </div>
                   <ShiftCard
                     shift={s}
@@ -428,18 +479,6 @@ export default function WorkerShiftsPage() {
                 </div>
               ))
             )}
-          </div>
-          <div className="hidden gap-4 md:grid lg:grid-cols-2">
-            {visible.map((s) => (
-              <ShiftCard
-                key={s.jobId}
-                shift={s}
-                busy={busy === s.jobId || (s.myShiftId ? busy === s.myShiftId : false)}
-                onAskToJoin={() => setJoinTarget(s)}
-                onRespond={(accepted) => s.myShiftId && void respondAssignment(s.myShiftId, accepted)}
-                onCancelRequest={() => s.myShiftId && void cancelRequest(s.myShiftId)}
-              />
-            ))}
           </div>
         </>
       )}
@@ -559,8 +598,7 @@ function ShiftCard({
   // 1) Fully assigned (not mine).
   if (shift.myStatus === 'NONE' && shift.openSpots === 0) {
     return (
-      <div className="relative overflow-hidden rounded-2xl border border-[#e7e3dc] bg-white p-5 pr-6 shadow-[0_2px_10px_rgba(38,38,38,0.04)]">
-        <span className={`absolute inset-y-0 right-0 w-1.5 ${jobTypeStripColor(shift.jobType)}`} />
+      <div className="relative px-1">
         <CardHeader shift={shift} />
         <CardMeta shift={shift} />
         <div className="mt-2 flex items-center gap-1.5">
@@ -577,8 +615,7 @@ function ShiftCard({
   if (shift.myStatus === 'NONE' && shift.openSpots > 0) {
     if (shift.blockedSameDay) {
       return (
-        <div className="relative w-full overflow-hidden rounded-xl border border-gray-200 bg-gray-50 p-4 pr-5 text-right opacity-70">
-          <span className={`absolute inset-y-0 right-0 w-1.5 ${jobTypeStripColor(shift.jobType)}`} />
+        <div className="relative w-full px-1 text-right opacity-70">
           <CardHeader shift={shift} />
           <CardMeta shift={shift} />
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -595,9 +632,8 @@ function ShiftCard({
       <button
         type="button"
         onClick={onAskToJoin}
-        className="relative w-full overflow-hidden rounded-2xl border border-[#e7e3dc] bg-white p-5 pr-6 text-right shadow-[0_2px_10px_rgba(38,38,38,0.04)] transition-all hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-[0_8px_24px_rgba(38,38,38,0.07)]"
+        className="relative w-full px-1 text-right transition-colors hover:text-primary-800"
       >
-        <span className={`absolute inset-y-0 right-0 w-1.5 ${jobTypeStripColor(shift.jobType)}`} />
         <CardHeader shift={shift} />
         <CardMeta shift={shift} />
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -614,7 +650,7 @@ function ShiftCard({
   // 3) Assigned by the owner, awaiting my acceptance: white card + full type border + actions.
   if (shift.myStatus === 'AWAITING_WORKER') {
     return (
-      <div className={`rounded-xl border-2 ${jobTypeBorderColor(shift.jobType)} bg-white p-4`}>
+      <div className={`border-r-2 pr-4 ${jobTypeBorderColor(shift.jobType)}`}>
         <CardHeader shift={shift} />
         <CardMeta shift={shift} />
         <p className="mt-2 text-xs font-medium text-amber-800">שובצת למשמרת זו – יש לאשר או לדחות.</p>
@@ -645,7 +681,7 @@ function ShiftCard({
   // 4) My confirmed shift: tinted card + full type border + swap/drop.
   if (shift.myStatus === 'APPROVED') {
     return (
-      <div className={`rounded-xl border-2 ${jobTypeBorderColor(shift.jobType)} ${jobTypeTintClasses(shift.jobType)} p-4`}>
+      <div className={`border-r-2 pr-4 ${jobTypeBorderColor(shift.jobType)}`}>
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-bold text-gray-900">{jobTypeLabel(shift.jobType)}</span>
           <span className="inline-flex items-center rounded-full border border-primary-300 bg-primary-100 px-2 py-0.5 text-[11px] font-semibold text-primary-800">
@@ -678,8 +714,7 @@ function ShiftCard({
 
   // 5) My pending join request.
   return (
-    <div className="relative block overflow-hidden rounded-xl border border-gray-200 bg-white p-4 pr-5">
-      <span className={`absolute inset-y-0 right-0 w-1.5 ${jobTypeStripColor(shift.jobType)}`} />
+    <div className="relative block border-r-2 border-amber-300 pr-4">
       <Link href={shift.myShiftId ? `/worker/shifts/${shift.myShiftId}` : '#'} className="block hover:opacity-90">
         <CardHeader shift={shift} />
         <CardMeta shift={shift} />

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
-import { History, MapPin, Clock, LogIn, LogOut, FileText, ChevronLeft } from 'lucide-react';
+import { History, MapPin, Clock, FileText, ChevronLeft } from 'lucide-react';
 import { api, authHeaders } from '../../../lib/api';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { PageHeader } from '../../../components/ui/PageHeader';
@@ -92,9 +92,9 @@ export default function WorkerHistoryPage() {
   return (
     <div className="mx-auto w-full max-w-[1120px] space-y-6" data-testid="worker-history-page">
       <PageHeader
-        eyebrow="מעקב אישי"
-        title="היסטוריית עבודות"
-        description="כל המשמרות שביצעת, כולל שעות הנוכחות המאושרות."
+        eyebrow="A RECORD OF GOOD WORK"
+        title="העבודה שעשית"
+        description="המשמרות שהושלמו ושעות הנוכחות המאושרות שלך."
         icon={<History className="h-6 w-6" />}
       />
 
@@ -143,17 +143,24 @@ export default function WorkerHistoryPage() {
               description="כאשר עבודות יושלמו, שעות הנוכחות והטפסים שלהן יופיעו כאן באופן מסודר."
             />
           ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="divide-y divide-[var(--color-border)] border-y border-[var(--color-border)]">
               {past.map((s) => {
                 const att = attendanceBadge(s.attendanceStatus);
                 const address = s.job.address?.fullAddress ?? '';
+                const shiftDate = new Date(s.scheduledStart);
                 return (
                   <Link
                     key={s.id}
                     href={`/worker/shifts/${s.id}`}
-                    className="block rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 transition-colors hover:border-primary-300"
+                    className="grid gap-4 py-5 transition-colors hover:bg-primary-50/50 sm:grid-cols-[4.75rem_minmax(0,1fr)_auto]"
                   >
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="border-l border-[var(--color-border)] text-center">
+                      <span className="font-display block text-3xl leading-none text-[#292724]">{shiftDate.getDate()}</span>
+                      <span className="mt-1 block text-[10px] text-[var(--color-text-muted)]">
+                        {shiftDate.toLocaleDateString('he-IL', { weekday: 'long' })}
+                      </span>
+                    </div>
+                    <div className="min-w-0">
                       <span className="flex items-center gap-1.5">
                         <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${jobTypeClasses(s.job.jobType)}`}>
                           {jobTypeLabel(s.job.jobType)}
@@ -164,41 +171,31 @@ export default function WorkerHistoryPage() {
                           </span>
                         )}
                       </span>
-                      <span className="text-xs font-semibold text-gray-900">{formatFullDate(s.scheduledStart)}</span>
+
+                      <p className="mt-2 text-sm font-semibold text-gray-900">{customerName(s.job.customer)}</p>
+                      {address && (
+                        <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-600">
+                          <MapPin className="w-3.5 h-3.5 shrink-0" />
+                          {address}
+                        </p>
+                      )}
+
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-gray-400" />
+                          {formatTime(s.scheduledStart)}–{formatTime(s.scheduledEnd)}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <FileText className="w-3.5 h-3.5 text-gray-400" />
+                          {formStatusLabel(s.formStatus)}
+                        </span>
+                        {s.actualStart && <span>כניסה {formatTime(s.actualStart)}</span>}
+                        {s.actualEnd && <span>יציאה {formatTime(s.actualEnd)}</span>}
+                      </div>
                     </div>
 
-                    <p className="mt-2 text-sm font-semibold text-gray-900">{customerName(s.job.customer)}</p>
-                    {address && (
-                      <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-600">
-                        <MapPin className="w-3.5 h-3.5 shrink-0" />
-                        {address}
-                      </p>
-                    )}
-
-                    <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-gray-600">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5 text-gray-400" />
-                        מתוכנן: {formatTime(s.scheduledStart)}–{formatTime(s.scheduledEnd)}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <FileText className="w-3.5 h-3.5 text-gray-400" />
-                        טופס: {formStatusLabel(s.formStatus)}
-                      </span>
-                      {s.actualStart && (
-                        <span className="flex items-center gap-1">
-                          <LogIn className="w-3.5 h-3.5 text-gray-400" />
-                          כניסה: {formatTime(s.actualStart)}
-                        </span>
-                      )}
-                      {s.actualEnd && (
-                        <span className="flex items-center gap-1">
-                          <LogOut className="w-3.5 h-3.5 text-gray-400" />
-                          יציאה: {formatTime(s.actualEnd)}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="mt-2 flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end sm:justify-center">
+                      <span className="text-xs font-medium text-[var(--color-text-secondary)]">{formatFullDate(s.scheduledStart)}</span>
                       <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${att.className}`}>{att.label}</span>
                       <span className="flex items-center gap-1 text-xs text-gray-500">
                         {s.approvedHours != null && <span className="font-medium text-gray-700">{formatDuration(s.approvedHours)}</span>}

@@ -119,9 +119,9 @@ export default function WorkerAvailabilityPage() {
   return (
     <div className="mx-auto w-full max-w-[1120px] space-y-6">
       <PageHeader
-        eyebrow="תכנון מראש"
-        title="הזמינות שלי"
-        description="סמני תאריכים או ימים קבועים שבהם אינך זמינה לעבודה."
+        eyebrow="MAKE ROOM FOR YOUR PLANS"
+        title="זמן לעבוד. זמן לעצמך"
+        description="סמני מתי אינך פנויה, כדי שנוכל לתכנן יחד."
         icon={<CalendarOff className="h-6 w-6" />}
       />
 
@@ -130,15 +130,17 @@ export default function WorkerAvailabilityPage() {
       ) : (
         <>
           {/* Add block */}
-          <div className="space-y-4 rounded-[24px] border border-[#e7e3dc] bg-white p-5 shadow-[0_2px_12px_rgba(38,38,38,0.04)] sm:p-6">
-            <h2 className="text-sm font-semibold text-gray-900">הוספת חסימה</h2>
-            <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 text-xs">
+          <div className="space-y-5 border-t border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-6 sm:px-7">
+            <h2 className="font-display text-2xl font-medium text-gray-900">מתי לא תהיי זמינה?</h2>
+            <div className="flex max-w-full overflow-x-auto border-b border-[var(--color-border)] text-xs" data-swipe-navigation="ignore">
               {([['DATE', 'תאריך בודד'], ['RANGE', 'טווח תאריכים'], ['WEEKLY', 'יום קבוע בשבוע']] as [BlockType, string][]).map(([v, label]) => (
                 <button
                   key={v}
                   type="button"
                   onClick={() => setType(v)}
-                  className={`rounded-md px-3 py-1 font-medium ${type === v ? 'bg-primary-600 text-white' : 'text-gray-600'}`}
+                  className={`min-h-10 shrink-0 border-b-2 px-4 py-2 font-medium ${
+                    type === v ? 'border-primary-700 text-primary-800' : 'border-transparent text-gray-600'
+                  }`}
                 >
                   {label}
                 </button>
@@ -191,16 +193,19 @@ export default function WorkerAvailabilityPage() {
 
           {/* Existing blocks */}
           <section>
-            <h2 className="text-sm font-semibold text-gray-900 mb-2">חסימות פעילות</h2>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-display text-2xl font-medium text-gray-900">אי-הזמינות שלך</h2>
+              <span className="text-xs text-[var(--color-text-muted)]">{blocks.length} חסימות</span>
+            </div>
             {blocks.length === 0 ? (
-              <div className="rounded-xl border border-gray-200 bg-white p-6 text-center">
+              <div className="border-y border-[var(--color-border)] p-8 text-center">
                 <CalendarOff className="mx-auto w-6 h-6 text-gray-300" />
                 <p className="mt-1.5 text-sm text-gray-500">לא הוגדרו חסימות. את זמינה לכל העבודות.</p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="divide-y divide-[var(--color-border)] border-y border-[var(--color-border)]">
                 {blocks.map((b) => (
-                  <div key={b.id} className="flex items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+                  <div key={b.id} className="flex items-center justify-between gap-2 px-2 py-4">
                     <div>
                       <p className="text-sm font-medium text-gray-900">{describe(b)}</p>
                       {b.reason && <p className="text-xs text-gray-500 mt-0.5">{b.reason}</p>}

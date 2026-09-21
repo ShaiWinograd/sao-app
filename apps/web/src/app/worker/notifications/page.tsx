@@ -68,9 +68,9 @@ export default function WorkerNotificationsPage() {
   return (
     <div className="mx-auto w-full max-w-[960px] space-y-6">
       <PageHeader
-        eyebrow="מרכז העדכונים"
-        title="התראות"
-        description="עדכונים על עבודות, שיבוצים ומשמרות."
+        eyebrow="STAY IN THE LOOP"
+        title="מה חדש"
+        description="עדכונים על עבודות, שיבוצים ושינויים שחשוב להכיר."
         icon={<Bell className="h-6 w-6" />}
         action={hasUnread ? (
           <button
@@ -91,22 +91,22 @@ export default function WorkerNotificationsPage() {
           description="התראות חדשות על עבודות, שיבוצים ושינויים יופיעו כאן."
         />
       ) : (
-        <div className="space-y-3">
+        <div className="divide-y divide-[var(--color-border)] border-y border-[var(--color-border)]">
           {items.map((n) => (
             <button
               key={n.id}
               type="button"
               onClick={() => !n.isRead && void markRead(n.id)}
-              className={`block w-full rounded-2xl border px-5 py-4 text-right shadow-[0_2px_10px_rgba(38,38,38,0.035)] transition-all hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(38,38,38,0.06)] ${
-                n.isRead ? 'border-[#e7e3dc] bg-white' : 'border-primary-200 bg-primary-50'
+              className={`grid w-full grid-cols-[0.75rem_minmax(0,1fr)_auto] items-start gap-4 px-2 py-5 text-right transition-colors hover:bg-primary-50/50 ${
+                n.isRead ? '' : 'bg-primary-50/40'
               }`}
             >
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-xs font-semibold text-gray-900">{n.title}</p>
-                {!n.isRead && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary-500" />}
+              <span className={`mt-2 h-2 w-2 rounded-full ${n.isRead ? 'bg-[var(--color-border-strong)]' : 'bg-primary-600'}`} />
+              <div>
+                <p className="text-sm font-semibold text-gray-900">{n.title}</p>
+                <p className="mt-1 text-sm leading-6 text-[var(--color-text-secondary)]">{n.body}</p>
               </div>
-              <p className="text-xs text-gray-600 mt-0.5">{n.body}</p>
-              <p className="text-[11px] text-gray-400 mt-1">{formatWhen(n.sentAt)}</p>
+              <p className="text-[11px] text-[var(--color-text-muted)]">{formatWhen(n.sentAt)}</p>
             </button>
           ))}
         </div>

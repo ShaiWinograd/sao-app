@@ -25,6 +25,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Heebo:wght@400;500;600;700&display=swap"
             rel="stylesheet"
           />
+          <link
+            href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;600&display=swap"
+            rel="stylesheet"
+          />
           {/* Open Sans remains available for mixed Latin-heavy content */}
           <link
             href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap"

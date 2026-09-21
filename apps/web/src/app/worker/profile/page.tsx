@@ -91,9 +91,9 @@ export default function WorkerProfilePage() {
   return (
     <div className="mx-auto w-full max-w-[960px] space-y-6">
       <PageHeader
-        eyebrow="פרטים אישיים"
-        title="הפרופיל שלי"
-        description="פרטי הקשר, אזור העבודה והתפקידים שלך."
+        eyebrow="THIS IS YOUR SPACE"
+        title="נעים להכיר"
+        description="פרטי הקשר והמידע שמלווה אותך בעבודה."
         icon={<Briefcase className="h-6 w-6" />}
         action={profile && !editing ? (
           <button
@@ -112,12 +112,17 @@ export default function WorkerProfilePage() {
           לא נמצא פרופיל עובד/ת לחשבון זה.
         </p>
       ) : (
-        <div className="space-y-5 rounded-[24px] border border-[#e7e3dc] bg-white p-6 shadow-[0_2px_12px_rgba(38,38,38,0.04)]">
-          <div>
-            <p className="text-lg font-bold text-gray-900">
+        <div className="space-y-6 border-y border-[var(--color-border)] py-7">
+          <div className="grid gap-5 sm:grid-cols-[6rem_minmax(0,1fr)] sm:items-center">
+            <div className="font-display flex h-24 w-24 items-center justify-center bg-primary-100 text-4xl text-primary-700">
+              {(profile.firstName?.[0] ?? '') + (profile.lastName?.[0] ?? '') || 'S&O'}
+            </div>
+            <div>
+              <p className="font-display text-3xl font-medium text-gray-900">
               {`${profile.firstName ?? ''} ${profile.lastName ?? ''}`.trim() || 'עובד/ת'}
-            </p>
-            {!editing && profile.homeArea && <p className="text-xs text-gray-500 mt-0.5">אזור: {profile.homeArea}</p>}
+              </p>
+              {!editing && profile.homeArea && <p className="mt-1 text-sm text-[var(--color-text-secondary)]">{profile.homeArea}</p>}
+            </div>
           </div>
 
           {editing ? (
@@ -172,23 +177,23 @@ export default function WorkerProfilePage() {
               </div>
             </div>
           ) : (
-            <div className="space-y-1.5 text-sm text-gray-700">
+            <div className="divide-y divide-[var(--color-border)] border-t border-[var(--color-border)] text-sm text-gray-700">
               {profile.phone && (
-                <p className="flex items-center gap-2">
-                  <Phone className="w-4 h-4 text-gray-400" />
-                  {profile.phone}
+                <p className="flex items-center justify-between gap-4 py-4">
+                  <span className="text-[var(--color-text-secondary)]">טלפון</span>
+                  <span className="flex items-center gap-2"><Phone className="w-4 h-4 text-gray-400" />{profile.phone}</span>
                 </p>
               )}
               {profile.email && (
-                <p className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-gray-400" />
-                  {profile.email}
+                <p className="flex items-center justify-between gap-4 py-4">
+                  <span className="text-[var(--color-text-secondary)]">אימייל</span>
+                  <span className="flex items-center gap-2"><Mail className="w-4 h-4 text-gray-400" />{profile.email}</span>
                 </p>
               )}
               {profile.homeArea && (
-                <p className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-gray-400" />
-                  {profile.homeArea}
+                <p className="flex items-center justify-between gap-4 py-4">
+                  <span className="text-[var(--color-text-secondary)]">אזור עבודה</span>
+                  <span className="flex items-center gap-2"><MapPin className="w-4 h-4 text-gray-400" />{profile.homeArea}</span>
                 </p>
               )}
             </div>
