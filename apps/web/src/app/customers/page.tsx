@@ -535,9 +535,9 @@ export default function CustomersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="קשרי לקוחות"
-        title="לקוחות"
-        description="כל פרטי הלקוחות, הפרויקטים והתקשורת במקום אחד."
+        eyebrow="HOMES, STORIES, RELATIONSHIPS"
+        title="הלקוחות שלנו"
+        description="כל בית, פרויקט ושיחה — מסודרים במקום אחד ונעים לחזור אליהם."
         icon={<Contact className="h-6 w-6" />}
         action={
           <button
@@ -551,9 +551,9 @@ export default function CustomersPage() {
         }
       />
 
-      <div className="overflow-hidden rounded-[24px] border border-[#e7e3dc] bg-white shadow-[0_2px_12px_rgba(38,38,38,0.04)]">
-        <div className="px-5 py-4 border-b border-gray-100">
-          <h3 className="font-semibold text-gray-900 text-sm">ספר לקוחות</h3>
+      <div className="overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface)]">
+        <div className="border-b border-[var(--color-border)] px-5 py-5">
+          <h3 className="font-display text-2xl font-medium text-gray-900">ספר הלקוחות</h3>
           <p className="text-xs text-gray-500 mt-1">סינון לפי סטטוסים: משוריין / מאושר לביצוע / עבודה הסתיימה / עבודה שולמה / עבודה לא בוצעה</p>
           <div className="mt-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
             <div className="relative lg:col-span-2">
@@ -581,7 +581,7 @@ export default function CustomersPage() {
           </div>
         </div>
 
-        <div className="max-h-[620px] overflow-y-auto divide-y divide-gray-100">
+        <div className="max-h-[620px] divide-y divide-[var(--color-border)] overflow-y-auto">
           {filteredCustomers.map((customer) => {
             const statusMeta = caseStatusMeta[customer.caseStatus];
             const isNotExecuted = notExecutedCustomers.has(getCustomerFullName(customer));
@@ -590,11 +590,11 @@ export default function CustomersPage() {
                 key={customer.id}
                 type="button"
                 onClick={() => openCustomerCard(customer)}
-                className="w-full text-right px-5 py-4 hover:bg-primary-50 transition-colors"
+                className="w-full px-5 py-5 text-right transition-colors hover:bg-primary-50/50"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-base font-semibold text-gray-900">{customer.firstName} {customer.lastName}</p>
+                    <p className="font-display text-xl font-medium text-gray-900">{customer.firstName} {customer.lastName}</p>
                     <p className="text-sm text-gray-600 mt-1">{customer.phone}{customer.email ? ` • ${customer.email}` : ''}</p>
                     <p className="text-xs text-gray-500 mt-1">{customer.addresses.length} כתובות שמורות</p>
                     <p className="text-xs text-gray-600 mt-1">פרוייקט: {customer.caseName}</p>

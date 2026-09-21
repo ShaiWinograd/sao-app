@@ -964,8 +964,8 @@ export default function DashboardPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        eyebrow="תמונת מצב יומית"
-        title="לוח בקרה"
+        eyebrow="SPACE FOR A WELL-RUN DAY"
+        title="היום בעסק"
         description={mounted ? greetingText : '\u00A0'}
         icon={<CalendarDays className="h-6 w-6" />}
         action={
@@ -1047,50 +1047,50 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* At-a-glance stat cards */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="flex items-center gap-3 rounded-2xl border border-danger/20 bg-danger-bg p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)]">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80">
+      {/* At-a-glance operational strip */}
+      <div className="grid grid-cols-2 divide-x divide-x-reverse divide-[var(--color-border)] border-y border-[var(--color-border)] lg:grid-cols-4">
+        <div className="flex items-center gap-3 px-4 py-5">
+          <span className="flex h-9 w-9 items-center justify-center text-danger">
             <AlertTriangle className="w-5 h-5 text-danger" />
           </span>
           <div>
-            <p className="text-xl font-bold text-danger leading-none">{dashboardStats.exceptionsCount}</p>
+            <p className="font-display text-3xl font-medium leading-none text-danger">{dashboardStats.exceptionsCount}</p>
             <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
               חריגות
               <InfoHint text="עבודות או משמרות הדורשות התייחסות דחופה — חוסר עובדים, חוסר ראש צוות או חריגות נוכחות." />
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3 rounded-2xl border border-warning/20 bg-warning-bg p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)]">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80">
+        <div className="flex items-center gap-3 px-4 py-5">
+          <span className="flex h-9 w-9 items-center justify-center text-warning">
             <Clock className="w-5 h-5 text-warning" />
           </span>
           <div>
-            <p className="text-xl font-bold text-warning leading-none">{dashboardStats.awaitingApprovalCount}</p>
+            <p className="font-display text-3xl font-medium leading-none text-warning">{dashboardStats.awaitingApprovalCount}</p>
             <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
               מחכות לאישור
               <InfoHint text="בקשות הצטרפות של עובדים לעבודות הממתינות לאישור שלך." />
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3 rounded-2xl border border-success/20 bg-success-bg p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)]">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80">
+        <div className="flex items-center gap-3 px-4 py-5">
+          <span className="flex h-9 w-9 items-center justify-center text-success">
             <CalendarCheck className="w-5 h-5 text-success" />
           </span>
           <div>
-            <p className="text-xl font-bold text-success leading-none">{dashboardStats.todayJobsCount}</p>
+            <p className="font-display text-3xl font-medium leading-none text-success">{dashboardStats.todayJobsCount}</p>
             <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
               עבודות היום
               <InfoHint text="מספר העבודות המתוזמנות להיום." />
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3 rounded-2xl border border-info/20 bg-info-bg p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)]">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80">
+        <div className="flex items-center gap-3 px-4 py-5">
+          <span className="flex h-9 w-9 items-center justify-center text-info">
             <CalendarDays className="w-5 h-5 text-info" />
           </span>
           <div>
-            <p className="text-xl font-bold text-info leading-none">{dashboardStats.workersTodayCount}</p>
+            <p className="font-display text-3xl font-medium leading-none text-info">{dashboardStats.workersTodayCount}</p>
             <p className="text-xs text-gray-700 mt-1 flex items-center gap-1">
               עובדים היום
               <InfoHint text="מספר העובדים המשובצים לעבודות של היום." />
@@ -1100,14 +1100,14 @@ export default function DashboardPage() {
       </div>
 
       {/* Owner KPI Bar */}
-      <div className="space-y-2 rounded-2xl border border-[#e7e3dc] bg-white p-3 shadow-[0_2px_8px_rgba(38,38,38,0.04)]">
+      <div className="space-y-3 border-b border-[var(--color-border)] pb-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <span className="inline-flex mt-1.5 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-semibold">
               תצוגה פעילה: {selectedRangeLabel}
             </span>
           </div>
-          <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+          <div className="inline-flex gap-4 border-b border-[var(--color-border)]">
             {rangeOptions.map((option) => {
               const isActive = option.key === selectedRange;
               return (
@@ -1121,10 +1121,10 @@ export default function DashboardPage() {
                     }
                     setSelectedRange(option.key);
                   }}
-                  className={`px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                  className={`border-b-2 px-1 py-2 text-[11px] font-medium transition-colors ${
                     isActive
-                      ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-white'
+                      ? 'border-primary-700 text-primary-800'
+                      : 'border-transparent text-gray-600 hover:text-gray-900'
                   }`}
                 >
                   {option.label}
