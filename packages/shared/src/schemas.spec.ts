@@ -1,11 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import { JoinRequestSchema, CustomerSchema, CreateJobSchema, CreateWorkerSchema } from './schemas';
+import { JoinRequestSchema, CustomerSchema, CreateJobSchema, CreateWorkerSchema, CreateWorkerAvailabilitySchema } from './schemas';
 
 describe('JoinRequestSchema (§ join-request 500 fix)', () => {
   it('accepts a body WITHOUT workerId (worker is derived from the session)', () => {
     const parsed = JoinRequestSchema.parse({ jobId: 'job-1' });
     expect(parsed.jobId).toBe('job-1');
     expect(parsed.workerId).toBeUndefined();
+  });
+
+  describe('CreateWorkerAvailabilitySchema', () => {
+    it('accepts all-day and partial-day availability blocks', () => {
+      expect(CreateWorkerAvailabilitySchema.parse({ type: 'DATE', startDate: '2026-10-01' })).toMatchObject({
+        type: 'DATE',
+      });
+      expect(CreateWorkerAvailabilitySchema.parse({
+        type: 'DATE',
+        startDate: '2026-10-01',
+        startTime: '09:30',
+        endTime: '13:00',
+      })).toMatchObject({ startTime: '09:30', endTime: '13:00' });
+    });
+
+    it('rejects incomplete or reversed partial-day hours', () => {
+      expect(() => CreateWorkerAvailabilitySchema.parse({ type: 'DATE', startDate: '2026-10-01', startTime: '09:00' })).toThrow();
+      expect(() => CreateWorkerAvailabilitySchema.parse({
+        type: 'DATE',
+        startDate: '2026-10-01',
+        startTime: '17:00',
+        endTime: '09:00',
+      })).toThrow();
+    });
   });
 
   it('still accepts an optional workerId (backward compatible) and slotId', () => {

@@ -8,6 +8,8 @@ export type AvailabilityBlock = {
   startDate?: string | null;
   endDate?: string | null;
   weekday?: number | null;
+  startTime?: string | null;
+  endTime?: string | null;
 };
 
 function toDateKey(iso: string | null | undefined): string {
@@ -28,5 +30,23 @@ export function isUnavailableOn(blocks: readonly AvailabilityBlock[], dateKey: s
       return Boolean(start && end && dateKey >= start && dateKey <= end);
     }
     return false;
+  });
+}
+
+function minutes(value: string): number {
+  const [hours, mins] = value.split(':').map(Number);
+  return hours * 60 + mins;
+}
+
+export function isUnavailableDuring(
+  blocks: readonly AvailabilityBlock[],
+  dateKey: string,
+  startTime: string,
+  endTime: string,
+): boolean {
+  return blocks.some((block) => {
+    if (!isUnavailableOn([block], dateKey)) return false;
+    if (!block.startTime || !block.endTime) return true;
+    return minutes(startTime) < minutes(block.endTime) && minutes(endTime) > minutes(block.startTime);
   });
 }

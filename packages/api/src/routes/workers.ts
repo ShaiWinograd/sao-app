@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createClerkClient } from '@clerk/clerk-sdk-node';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
-import { CreateWorkerSchema, UpdateWorkerSchema, CreateWorkerAvailabilitySchema, UpdateWorkerProfileSchema, UserRole, rankWorkerAvailability, findCandidateDates, isUnavailableOn } from '@workforce/shared';
+import { CreateWorkerSchema, UpdateWorkerSchema, CreateWorkerAvailabilitySchema, UpdateWorkerProfileSchema, UserRole, rankWorkerAvailability, findCandidateDates, isUnavailableOn, isUnavailableDuring } from '@workforce/shared';
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 
@@ -43,7 +43,7 @@ export async function workersRoutes(app: FastifyInstance) {
         isActive: true,
         homeArea: true,
         shifts: { select: { job: { select: { date: true } } } },
-        availability: { select: { type: true, startDate: true, endDate: true, weekday: true } },
+        availability: { select: { type: true, startDate: true, endDate: true, weekday: true, startTime: true, endTime: true } },
       },
     });
 
@@ -58,6 +58,8 @@ export async function workersRoutes(app: FastifyInstance) {
         startDate: b.startDate ? b.startDate.toISOString() : null,
         endDate: b.endDate ? b.endDate.toISOString() : null,
         weekday: b.weekday,
+        startTime: b.startTime,
+        endTime: b.endTime,
       }));
       if (isUnavailableOn(blocks, query.date!)) bookedDates.push(query.date!);
       return {
@@ -108,7 +110,7 @@ export async function workersRoutes(app: FastifyInstance) {
         firstName: true,
         lastName: true,
         availability: {
-          select: { type: true, startDate: true, endDate: true, weekday: true, reason: true },
+          select: { type: true, startDate: true, endDate: true, weekday: true, reason: true, startTime: true, endTime: true },
         },
       },
       orderBy: { firstName: 'asc' },
@@ -134,6 +136,8 @@ export async function workersRoutes(app: FastifyInstance) {
               workerName: `${worker.firstName} ${worker.lastName}`.trim(),
               dateKey,
               reason: block.reason?.trim() || 'סומנה כלא זמינה',
+              startTime: block.startTime,
+              endTime: block.endTime,
             }]
           : [];
       });
@@ -271,12 +275,24 @@ export async function workersRoutes(app: FastifyInstance) {
       const start = new Date(`${startKey}T00:00:00.000Z`);
       const endExclusive = new Date(`${endKey}T00:00:00.000Z`);
       endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
-      const conflict = await prisma.shift.findFirst({
+      const shifts = await prisma.shift.findMany({
         where: {
           workerId: worker.id,
           joinRequestStatus: 'APPROVED',
           job: { date: { gte: start, lt: endExclusive } },
         },
+        include: { job: { select: { date: true, plannedStart: true, plannedEnd: true } } },
+      });
+      const conflict = shifts.some((shift) => {
+        if (!body.startTime || !body.endTime) return true;
+        const dateKey = shift.job.date.toISOString().slice(0, 10);
+        const time = (value: Date) => `${String(value.getUTCHours()).padStart(2, '0')}:${String(value.getUTCMinutes()).padStart(2, '0')}`;
+        return isUnavailableDuring(
+          [{ type: body.type, startDate: body.startDate, endDate: body.endDate, weekday: body.weekday, startTime: body.startTime, endTime: body.endTime }],
+          dateKey,
+          time(shift.job.plannedStart),
+          time(shift.job.plannedEnd),
+        );
       });
       if (conflict) {
         return reply.status(409).send({ error: 'You are already assigned to a shift on one of these dates' });
@@ -291,10 +307,62 @@ export async function workersRoutes(app: FastifyInstance) {
         endDate: body.endDate ? new Date(body.endDate) : null,
         weekday: body.weekday ?? null,
         reason: body.reason ?? null,
+        startTime: body.startTime ?? null,
+        endTime: body.endTime ?? null,
       },
     });
     reply.status(201);
     return created;
+  });
+
+  app.patch('/me/availability/:id', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const { id } = req.params as { id: string };
+    const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
+    if (!worker) return reply.status(404).send({ error: 'Worker profile not found' });
+    const existing = await prisma.workerAvailability.findUnique({ where: { id } });
+    if (!existing || existing.workerId !== worker.id) return reply.status(404).send({ error: 'Not found' });
+    const body = CreateWorkerAvailabilitySchema.parse(req.body);
+
+    if (body.type === 'DATE' || body.type === 'RANGE') {
+      const startKey = body.startDate!.slice(0, 10);
+      const endKey = (body.type === 'RANGE' ? body.endDate! : body.startDate!).slice(0, 10);
+      const endExclusive = new Date(`${endKey}T00:00:00.000Z`);
+      endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+      const shifts = await prisma.shift.findMany({
+        where: {
+          workerId: worker.id,
+          joinRequestStatus: 'APPROVED',
+          job: { date: { gte: new Date(`${startKey}T00:00:00.000Z`), lt: endExclusive } },
+        },
+        include: { job: { select: { date: true, plannedStart: true, plannedEnd: true } } },
+      });
+      const time = (value: Date) => `${String(value.getUTCHours()).padStart(2, '0')}:${String(value.getUTCMinutes()).padStart(2, '0')}`;
+      const conflict = shifts.some((shift) =>
+        !body.startTime || !body.endTime
+          ? true
+          : isUnavailableDuring(
+              [{ type: body.type, startDate: body.startDate, endDate: body.endDate, weekday: body.weekday, startTime: body.startTime, endTime: body.endTime }],
+              shift.job.date.toISOString().slice(0, 10),
+              time(shift.job.plannedStart),
+              time(shift.job.plannedEnd),
+            ),
+      );
+      if (conflict) return reply.status(409).send({ error: 'You are already assigned to a shift on one of these dates' });
+    }
+
+    return prisma.workerAvailability.update({
+      where: { id },
+      data: {
+        type: body.type,
+        startDate: body.startDate ? new Date(body.startDate) : null,
+        endDate: body.endDate ? new Date(body.endDate) : null,
+        weekday: body.weekday ?? null,
+        reason: body.reason ?? null,
+        startTime: body.startTime ?? null,
+        endTime: body.endTime ?? null,
+      },
+    });
   });
 
   // Worker: remove one of their availability blocks

@@ -139,6 +139,8 @@ export const CreateWorkerAvailabilitySchema = z
     endDate: z.string().optional(),
     weekday: z.number().int().min(0).max(6).optional(),
     reason: z.string().max(200).optional(),
+    startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+    endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
   })
   .refine(
     (v) =>
@@ -148,6 +150,12 @@ export const CreateWorkerAvailabilitySchema = z
           ? Boolean(v.startDate && v.endDate)
           : v.weekday !== undefined,
     { message: 'Missing fields for the selected availability type' },
+  )
+  .refine(
+    (v) =>
+      (!v.startTime && !v.endTime) ||
+      Boolean(v.startTime && v.endTime && v.startTime < v.endTime),
+    { message: 'Availability hours must include a valid start and end time' },
   );
 
 // ─── Attendance ───────────────────────────────────────────────────────────────

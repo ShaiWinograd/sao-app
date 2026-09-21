@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
 import {
   JoinRequestSchema, ApproveReplacementSchema, WorkerReplacementRequestSchema, ProposeSwapSchema, SwapDecisionSchema, OwnerSwapSchema,
-  UserRole, isUnavailableOn, MANAGER_SKILL,
+  UserRole, isUnavailableDuring, MANAGER_SKILL, formatJobTime,
   decideApproval, nextBackupToPromote, hoursUntil, DROP_LOCK_HOURS, type StaffingRole,
   toWorkerJobMonitoring,
 } from '@workforce/shared';
@@ -79,7 +79,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
     // the full-job check race-safe.
     const shift = await prisma.$transaction(async (tx) => {
       await lockJob(tx, job.id);
-      await assertWorkerFreeOnDate(tx, worker.id, job.date);
+      await assertWorkerFreeOnDate(tx, worker.id, job.date, { plannedStart: job.plannedStart, plannedEnd: job.plannedEnd });
 
       // Full job (§12.3): once the required normal positions are filled with
       // approved workers, no NEW join requests may be submitted. Extra requests
@@ -147,7 +147,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
       where: { id: shiftId },
       include: {
         worker: { select: { id: true, userId: true, skills: true } },
-        job: { select: { id: true, date: true, requiredWorkerCount: true, slots: { select: { requiredSkill: true } } } },
+        job: { select: { id: true, date: true, plannedStart: true, plannedEnd: true, requiredWorkerCount: true, slots: { select: { requiredSkill: true } } } },
       },
     });
     if (!shift) return reply.status(404).send({ error: 'Shift not found' });
@@ -176,7 +176,11 @@ export async function shiftsRoutes(app: FastifyInstance) {
     const result = await prisma.$transaction(async (tx) => {
       await lockJob(tx, shift.job.id);
       // The worker must have no other commitment on this date (§12.1, guard #13).
-      await assertWorkerFreeOnDate(tx, shift.worker.id, shift.job.date, { ignoreShiftId: shiftId });
+      await assertWorkerFreeOnDate(tx, shift.worker.id, shift.job.date, {
+        ignoreShiftId: shiftId,
+        plannedStart: shift.job.plannedStart,
+        plannedEnd: shift.job.plannedEnd,
+      });
 
       const requiresLeader = shift.job.slots.some((s) => s.requiredSkill === MANAGER_SKILL);
       const approvedNormalCount = await tx.shift.count({
@@ -271,7 +275,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
 
     const shift = await prisma.$transaction(async (tx) => {
       await lockJob(tx, job.id);
-      await assertWorkerFreeOnDate(tx, worker.id, job.date);
+      await assertWorkerFreeOnDate(tx, worker.id, job.date, { plannedStart: job.plannedStart, plannedEnd: job.plannedEnd });
 
       // Role/count capacity guard (§12.4/§12.6/§12.7): counts APPROVED + AWAITING
       // shifts as reservations — including approved workers with a null slotId — so
@@ -327,7 +331,10 @@ export async function shiftsRoutes(app: FastifyInstance) {
     const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
     if (!worker) return reply.status(403).send({ error: 'Worker profile not found' });
 
-    const shift = await prisma.shift.findUnique({ where: { id }, include: { job: { select: { date: true } } } });
+    const shift = await prisma.shift.findUnique({
+      where: { id },
+      include: { job: { select: { date: true, plannedStart: true, plannedEnd: true } } },
+    });
     if (!shift || shift.workerId !== worker.id) return reply.status(404).send({ error: 'Assignment not found' });
     if (shift.joinRequestStatus !== 'AWAITING_WORKER') {
       return reply.status(409).send({ error: 'This assignment is no longer awaiting your response' });
@@ -358,7 +365,11 @@ export async function shiftsRoutes(app: FastifyInstance) {
 
     // Accept: guard the date (§12.1) inside the transaction, then confirm.
     const updated = await prisma.$transaction(async (tx) => {
-      await assertWorkerFreeOnDate(tx, worker.id, shift.job.date, { ignoreShiftId: id });
+      await assertWorkerFreeOnDate(tx, worker.id, shift.job.date, {
+        ignoreShiftId: id,
+        plannedStart: shift.job.plannedStart,
+        plannedEnd: shift.job.plannedEnd,
+      });
       const u = await tx.shift.update({ where: { id }, data: { joinRequestStatus: 'APPROVED' } });
       // Confirming this date invalidates the worker's other pending same-date requests.
       await tx.shift.updateMany({
@@ -744,12 +755,19 @@ export async function shiftsRoutes(app: FastifyInstance) {
       startDate: b.startDate ? b.startDate.toISOString() : null,
       endDate: b.endDate ? b.endDate.toISOString() : null,
       weekday: b.weekday,
+      startTime: b.startTime,
+      endTime: b.endTime,
     }));
 
     return requests
       .filter((r) => {
         const dk = r.shift.job.date.toISOString().slice(0, 10);
-        return !myApprovedDates.has(dk) && !isUnavailableOn(blocks, dk);
+        return !myApprovedDates.has(dk) && !isUnavailableDuring(
+          blocks,
+          dk,
+          formatJobTime(r.shift.job.plannedStart),
+          formatJobTime(r.shift.job.plannedEnd),
+        );
       })
       .map((r) => ({
         requestId: r.id,
@@ -790,8 +808,15 @@ export async function shiftsRoutes(app: FastifyInstance) {
       startDate: b.startDate ? b.startDate.toISOString() : null,
       endDate: b.endDate ? b.endDate.toISOString() : null,
       weekday: b.weekday,
+      startTime: b.startTime,
+      endTime: b.endTime,
     }));
-    if (isUnavailableOn(blocks, dk)) return reply.status(409).send({ error: 'You marked yourself unavailable on this date' });
+    if (isUnavailableDuring(
+      blocks,
+      dk,
+      formatJobTime(request.shift.job.plannedStart),
+      formatJobTime(request.shift.job.plannedEnd),
+    )) return reply.status(409).send({ error: 'You marked yourself unavailable during this shift' });
 
     await prisma.replacementVolunteer.upsert({
       where: { replacementRequestId_workerId: { replacementRequestId: requestId, workerId: worker.id } },
@@ -904,7 +929,11 @@ export async function shiftsRoutes(app: FastifyInstance) {
       // Reassign the shift to the chosen volunteer under the same-day guard so a
       // volunteer cannot be double-booked by a concurrent flow (§12.1, §13).
       await prisma.$transaction(async (tx) => {
-        await assertWorkerFreeOnDate(tx, chosenWorker!.id, request.shift.job.date, { ignoreShiftId: request.shiftId });
+        await assertWorkerFreeOnDate(tx, chosenWorker!.id, request.shift.job.date, {
+          ignoreShiftId: request.shiftId,
+          plannedStart: request.shift.job.plannedStart,
+          plannedEnd: request.shift.job.plannedEnd,
+        });
         await tx.shift.update({
           where: { id: request.shiftId },
           data: {
@@ -1255,8 +1284,18 @@ export async function shiftsRoutes(app: FastifyInstance) {
     // guard, so no duplicated logic here.
     try {
       await prisma.$transaction(async (tx) => {
-        await assertWorkerFreeOnDate(tx, swap.fromWorker.id, swap.toShift.job.date, { ignoreShiftId: swap.toShiftId, ignoreSwapId: id });
-        await assertWorkerFreeOnDate(tx, swap.toWorker.id, swap.fromShift.job.date, { ignoreShiftId: swap.fromShiftId, ignoreSwapId: id });
+        await assertWorkerFreeOnDate(tx, swap.fromWorker.id, swap.toShift.job.date, {
+          ignoreShiftId: swap.toShiftId,
+          ignoreSwapId: id,
+          plannedStart: swap.toShift.job.plannedStart,
+          plannedEnd: swap.toShift.job.plannedEnd,
+        });
+        await assertWorkerFreeOnDate(tx, swap.toWorker.id, swap.fromShift.job.date, {
+          ignoreShiftId: swap.fromShiftId,
+          ignoreSwapId: id,
+          plannedStart: swap.fromShift.job.plannedStart,
+          plannedEnd: swap.fromShift.job.plannedEnd,
+        });
         await tx.shift.update({
           where: { id: swap.fromShiftId },
           data: {
