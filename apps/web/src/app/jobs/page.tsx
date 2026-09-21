@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
+import { formatJobTime } from '@workforce/shared';
 import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Repeat } from 'lucide-react';
 import { api, authHeaders } from '../../lib/api';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -50,11 +51,7 @@ function dateKey(d: Date): string {
 }
 
 function formatTime(iso: string): string {
-  try {
-    return new Date(iso).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return '';
-  }
+  return formatJobTime(iso);
 }
 
 export default function JobsPage() {

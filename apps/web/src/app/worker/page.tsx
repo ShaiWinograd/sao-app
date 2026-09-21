@@ -10,7 +10,7 @@ import {
   jobTypeLabel,
   jobTypeBorderColor,
   jobTypeStripColor,
-  formatTime,
+  formatScheduledTime,
 } from '../../lib/worker';
 
 type MyStatus = 'NONE' | 'APPROVED' | 'AWAITING_WORKER' | 'PENDING';
@@ -326,7 +326,7 @@ export default function WorkerShiftsPage() {
             <p className="mt-2 text-sm font-semibold text-[#292724]">{nextMyShift.customerName}</p>
             <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
               {nextMyShift.address ? `${nextMyShift.address} · ` : ''}
-              <bdi>{formatTime(nextMyShift.plannedStart)}–{formatTime(nextMyShift.plannedEnd)}</bdi>
+              <bdi>{formatScheduledTime(nextMyShift.plannedStart)}–{formatScheduledTime(nextMyShift.plannedEnd)}</bdi>
             </p>
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
               <span className="text-xs font-semibold text-[#53644b]">● השיבוץ שלך מאושר</span>
@@ -424,7 +424,7 @@ export default function WorkerShiftsPage() {
                 </span>
               </p>
               <p className="text-gray-600">
-                המשמרת שלך: {shortDate(s.myShift.date)} {formatTime(s.myShift.plannedStart)}–{formatTime(s.myShift.plannedEnd)} · שלה/ו: {shortDate(s.theirShift.date)} {formatTime(s.theirShift.plannedStart)}–{formatTime(s.theirShift.plannedEnd)}
+                המשמרת שלך: {shortDate(s.myShift.date)} {formatScheduledTime(s.myShift.plannedStart)}–{formatScheduledTime(s.myShift.plannedEnd)} · שלה/ו: {shortDate(s.theirShift.date)} {formatScheduledTime(s.theirShift.plannedStart)}–{formatScheduledTime(s.theirShift.plannedEnd)}
               </p>
               {s.awaitingMe ? (
                 <div className="flex gap-2">
@@ -456,8 +456,8 @@ export default function WorkerShiftsPage() {
               selectedShifts.map((s) => (
                 <div key={s.jobId} className="grid grid-cols-[3.75rem_minmax(0,1fr)] items-start gap-4 border-b border-[var(--color-border)] py-4 sm:grid-cols-[5rem_minmax(0,1fr)]">
                   <div className="border-l border-[var(--color-border)] pl-3 text-center" dir="ltr">
-                    <p className="font-display text-2xl leading-none text-[#292724]">{formatTime(s.plannedStart)}</p>
-                    <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">{formatTime(s.plannedEnd)}</p>
+                    <p className="font-display text-2xl leading-none text-[#292724]">{formatScheduledTime(s.plannedStart)}</p>
+                    <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">{formatScheduledTime(s.plannedEnd)}</p>
                   </div>
                   <ShiftCard
                     shift={s}
@@ -484,7 +484,7 @@ export default function WorkerShiftsPage() {
                 <span className="text-xs font-medium text-gray-600">{shortDate(r.date)}</span>
               </div>
               <p className="mt-1 text-sm font-semibold text-gray-900">{r.customerName}</p>
-              <p className="mt-0.5 text-xs text-gray-600">{formatTime(r.plannedStart)}–{formatTime(r.plannedEnd)}</p>
+              <p className="mt-0.5 text-xs text-gray-600">{formatScheduledTime(r.plannedStart)}–{formatScheduledTime(r.plannedEnd)}</p>
               {r.suggestedForYou && (
                 <span className="mt-1.5 inline-flex border-b border-primary-300 pb-0.5 text-[11px] font-medium text-primary-700">הוצעת להחלפה זו</span>
               )}
@@ -541,7 +541,7 @@ function CardMeta({ shift }: { shift: BoardShift }) {
   return (
     <>
       <p className="mt-1 text-sm font-semibold text-gray-900">{shift.customerName}</p>
-      <p className="mt-0.5 text-xs text-gray-600">{formatTime(shift.plannedStart)}–{formatTime(shift.plannedEnd)}</p>
+      <p className="mt-0.5 text-xs text-gray-600">{formatScheduledTime(shift.plannedStart)}–{formatScheduledTime(shift.plannedEnd)}</p>
       {shift.address && (
         <p className="mt-0.5 text-xs text-gray-600">{shift.address}</p>
       )}
@@ -716,7 +716,7 @@ function JoinModal({
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
           <p className="font-semibold text-gray-900">{jobTypeLabel(shift.jobType)} · {shift.customerName}</p>
           <p className="mt-0.5 text-xs text-gray-600">
-            {shortDate(shift.date)} · {formatTime(shift.plannedStart)}–{formatTime(shift.plannedEnd)}
+            {shortDate(shift.date)} · {formatScheduledTime(shift.plannedStart)}–{formatScheduledTime(shift.plannedEnd)}
           </p>
         </div>
         <p className="text-xs text-gray-500">הבקשה תישלח לאישור בעל/ת העסק. תקבלי הודעה כשהיא תאושר.</p>

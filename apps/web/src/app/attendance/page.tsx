@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Clock3, MapPin, ShieldAlert } from 'lucide-react';
+import { formatBusinessTime, formatJobTime } from '@workforce/shared';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../components/ui/PageHeader';
 
@@ -65,13 +66,6 @@ function mapApiMethodToUi(method?: string | null): 'ידני' | 'אוטומטי'
   return 'אוטומטי';
 }
 
-function formatTimeFromIso(iso?: string | null): string {
-  if (!iso) return '—';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '—';
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-}
-
 function formatDateFromIso(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
@@ -84,8 +78,8 @@ function mapApiShiftToRecord(shift: ApiShift): AttendanceRecord {
     workerName: `${shift.worker.firstName} ${shift.worker.lastName}`.trim(),
     customerName: '—',
     date: formatDateFromIso(shift.job.date),
-    startTime: formatTimeFromIso(shift.actualStart ?? shift.scheduledStart),
-    endTime: formatTimeFromIso(shift.actualEnd ?? shift.scheduledEnd),
+    startTime: shift.actualStart ? formatBusinessTime(shift.actualStart) : formatJobTime(shift.scheduledStart),
+    endTime: shift.actualEnd ? formatBusinessTime(shift.actualEnd) : formatJobTime(shift.scheduledEnd),
     startDistanceMeters: shift.clockInDistanceMeters ?? 0,
     endDistanceMeters: shift.clockOutDistanceMeters ?? 0,
     status: mapApiStatusToUi(shift.attendanceStatus),

@@ -13,6 +13,7 @@ import {
   jobTypeClasses,
   assignmentRoleLabel,
   formatFullDate,
+  formatScheduledTime,
   formatTime,
   formatDuration,
   formStatusLabel,
@@ -183,7 +184,7 @@ export default function WorkerHistoryPage() {
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
                         <span className="flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5 text-gray-400" />
-                          {formatTime(s.scheduledStart)}–{formatTime(s.scheduledEnd)}
+                          {formatScheduledTime(s.scheduledStart)}–{formatScheduledTime(s.scheduledEnd)}
                         </span>
                         <span className="flex items-center gap-1">
                           <FileText className="w-3.5 h-3.5 text-gray-400" />

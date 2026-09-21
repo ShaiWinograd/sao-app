@@ -1,5 +1,7 @@
 // Shared types + helpers for the worker web experience (worker_web_spec).
 
+import { formatBusinessTime, formatJobTime } from '@workforce/shared';
+
 export type WorkerJob = {
   id: string;
   jobType: 'PACKING' | 'UNPACKING' | 'HOME_ORGANIZATION';
@@ -114,12 +116,11 @@ export function formatDate(iso: string | undefined | null): string {
 }
 
 export function formatTime(iso: string | undefined | null): string {
-  if (!iso) return '';
-  try {
-    return new Date(iso).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return '';
-  }
+  return formatBusinessTime(iso);
+}
+
+export function formatScheduledTime(iso: string | undefined | null): string {
+  return formatJobTime(iso);
 }
 
 export function customerName(customer?: { firstName?: string; lastName?: string } | null): string {
