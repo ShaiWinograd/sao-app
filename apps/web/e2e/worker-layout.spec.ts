@@ -35,6 +35,9 @@ test.describe('Worker desktop layout', () => {
     await page.route('**/api/v1/shifts/mine', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
     );
+    await page.route('**/api/v1/workers/me/availability', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    );
 
     await page.goto('/worker/history');
     await page.getByRole('link', { name: 'מעבר למסך המשמרות' }).click();
@@ -61,6 +64,10 @@ test.describe('Worker desktop layout', () => {
     const nextDate = new Date();
     nextDate.setDate(nextDate.getDate() + 1);
     nextDate.setHours(0, 0, 0, 0);
+    const invitedDate = new Date(nextDate);
+    invitedDate.setDate(invitedDate.getDate() + 1);
+    const openDate = new Date(invitedDate);
+    openDate.setDate(openDate.getDate() + 1);
 
     await page.route('**/api/v1/jobs/board', (route) =>
       route.fulfill({
@@ -81,6 +88,34 @@ test.describe('Worker desktop layout', () => {
             myStatus: 'APPROVED',
             myShiftId: 'shift-next',
           },
+          {
+            jobId: 'job-invited',
+            jobType: 'PACKING',
+            date: invitedDate.toISOString(),
+            plannedStart: '10:00',
+            plannedEnd: '14:00',
+            customerName: 'נועה ישראלי',
+            address: 'רמת גן 4',
+            requiredWorkerCount: 2,
+            assignedWorkers: [{ name: 'רות', isTeamLeader: true }],
+            openSpots: 1,
+            myStatus: 'AWAITING_WORKER',
+            myShiftId: 'shift-invited',
+          },
+          {
+            jobId: 'job-open',
+            jobType: 'UNPACKING',
+            date: openDate.toISOString(),
+            plannedStart: '08:30',
+            plannedEnd: '12:30',
+            customerName: 'דנה כהן',
+            address: 'גבעתיים 8',
+            requiredWorkerCount: 3,
+            assignedWorkers: [{ name: 'מיה', isTeamLeader: false }],
+            openSpots: 2,
+            myStatus: 'NONE',
+            myShiftId: null,
+          },
         ]),
       }),
     );
@@ -88,6 +123,9 @@ test.describe('Worker desktop layout', () => {
       route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
     );
     await page.route('**/api/v1/shifts/replacement-requests/open', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    );
+    await page.route('**/api/v1/workers/me/availability', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
     );
 
@@ -101,7 +139,15 @@ test.describe('Worker desktop layout', () => {
     await page.getByRole('button', { name: /תל אביב/ }).first().click();
     await expect(page.getByTitle('מפה של תל אביב')).toBeVisible();
     await expect(page.getByText('היומן של כולן')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'לא זמינה ביום שנבחר' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'לא זמינה ביום הזה' }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: 'החלפה או בקשת מחליפה' })).toBeVisible();
+    await expect(page.getByText('נועה ישראלי')).toBeVisible();
+    await expect(page.getByText('רמת גן 4')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'אישור' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'דחייה' })).toBeVisible();
+    await expect(page.getByText('דנה כהן')).toBeVisible();
+    await expect(page.getByText('גבעתיים 8')).toBeVisible();
+    await expect(page.getByText('לחצי כדי לבקש להצטרף ›')).toBeVisible();
     await expect(page.getByRole('button', { name: 'הוספה ל-Google או Apple Calendar' })).toBeVisible();
 
     const mainBounds = await page.locator('main').boundingBox();
