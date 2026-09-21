@@ -21,9 +21,21 @@ type ApiJob = {
 };
 
 const JOB_TYPE: Record<ApiJob['jobType'], { label: string; cls: string; dot: string }> = {
-  PACKING: { label: 'אריזה', cls: 'bg-red-50 border-red-200 text-red-800', dot: 'bg-red-500' },
-  UNPACKING: { label: 'פריקה', cls: 'bg-amber-50 border-amber-200 text-amber-800', dot: 'bg-amber-500' },
-  HOME_ORGANIZATION: { label: 'סידור', cls: 'bg-blue-50 border-blue-200 text-blue-800', dot: 'bg-blue-500' },
+  PACKING: {
+    label: 'אריזה',
+    cls: 'border-[var(--color-calendar-aubergine-border)] bg-[var(--color-calendar-aubergine-soft)] text-[var(--color-calendar-aubergine)]',
+    dot: 'bg-[var(--color-calendar-aubergine)]',
+  },
+  UNPACKING: {
+    label: 'פריקה',
+    cls: 'border-[var(--color-calendar-sand-border)] bg-[var(--color-calendar-sand-soft)] text-[var(--color-calendar-sand)]',
+    dot: 'bg-[var(--color-calendar-sand)]',
+  },
+  HOME_ORGANIZATION: {
+    label: 'סידור',
+    cls: 'border-[var(--color-calendar-sage-border)] bg-[var(--color-calendar-sage-soft)] text-[var(--color-calendar-sage)]',
+    dot: 'bg-[var(--color-calendar-sage)]',
+  },
 };
 
 const WEEKDAYS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
@@ -174,7 +186,9 @@ export default function JobsPage() {
                   <div
                     key={cell.key}
                     className={`min-h-[100px] border p-1.5 ${
-                      cell.key === todayKey ? 'border-primary-400 bg-primary-50/50' : 'border-[var(--color-border)]'
+                      cell.key === todayKey
+                        ? 'border-[var(--color-calendar-sage-border)] bg-[var(--color-calendar-sage-soft)] shadow-[inset_0_2px_0_var(--color-calendar-sage)]'
+                        : 'border-[var(--color-border)]'
                     }`}
                   >
                     <div className="mb-1 text-[11px] font-medium text-gray-400">{cell.day}</div>
