@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
-import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Plus, Repeat } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Repeat } from 'lucide-react';
 import { api, authHeaders } from '../../lib/api';
 import { PageHeader } from '../../components/ui/PageHeader';
 
@@ -135,9 +135,9 @@ export default function JobsPage() {
           </Link>
           <Link
             href="/jobs/new"
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(78,105,92,0.18)] hover:bg-primary-700"
+            className="inline-flex min-h-11 items-center gap-2 bg-[var(--color-calendar-sage)] px-5 py-2.5 text-sm font-medium text-[var(--color-background)] hover:bg-primary-700"
           >
-            <Plus className="h-4 w-4" />
+            <span aria-hidden="true">＋</span>
             עבודה חדשה
           </Link>
           </div>

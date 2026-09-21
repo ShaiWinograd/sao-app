@@ -179,23 +179,23 @@ export function QuickCreateForm({
   }, [generalReservation, selectedCustomerId, custFirst, custLast, custPhone, custEmail, jobType, date, startTime, endTime, cityOrAddress, addressSelection, manualAddressConfirmed, workerCount, requiresTeamLeader, initialStatus, notes, getToken, onCreated]);
 
   return (
-    <div className="space-y-5" dir="rtl">
+    <div className="quick-create-form space-y-0" dir="rtl">
       {error && (
-        <div className="flex items-center gap-2 rounded-lg bg-danger-bg border border-danger/30 text-danger text-sm px-4 py-3">
+        <div className="flex items-center gap-2 border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           {error}
         </div>
       )}
 
       {createdJobId && (
-        <div className="flex items-center justify-between gap-2 rounded-lg bg-green-50 border border-green-200 text-green-800 text-sm px-4 py-3">
+        <div className="flex items-center justify-between gap-2 border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
           <span className="inline-flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> העבודה נוצרה בהצלחה.</span>
           <Link href={`/jobs/${createdJobId}`} className="font-medium underline">מעבר לעבודה</Link>
         </div>
       )}
 
       {/* Customer (job-first: a normal customer form with live suggestions) */}
-      <section className="rounded-2xl border border-[#e7e3dc] bg-white p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)] sm:p-5">
+      <section className="border-b border-[var(--color-border)] py-6">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-900">לקוח</h2>
           <label className="inline-flex items-center gap-2 text-xs text-gray-600">
@@ -220,7 +220,7 @@ export function QuickCreateForm({
         ) : (
           <div className="space-y-3">
             {selectedCustomerId && (
-              <div className="flex items-center justify-between rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-800">
+              <div className="flex items-center justify-between border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
                 <span>לקוח קיים נבחר: {custFirst} {custLast}{custPhone ? ` · ${custPhone}` : ''}</span>
                 <button
                   type="button"
@@ -238,7 +238,7 @@ export function QuickCreateForm({
               <input value={custEmail} onChange={(e) => setCustEmail(e.target.value)} placeholder="אימייל (אופציונלי)" inputMode="email" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </div>
             {!selectedCustomerId && matches.length > 0 && (
-              <div className="max-h-44 overflow-auto rounded-lg border border-gray-100">
+              <div className="max-h-44 overflow-auto border border-[var(--color-border)]">
                 <p className="px-3 py-1.5 text-[11px] text-gray-500 bg-gray-50">לקוחות קיימים תואמים — לבחירה, או המשיכו ליצירת לקוח חדש</p>
                 {matches.map((c) => (
                   <button
@@ -257,10 +257,10 @@ export function QuickCreateForm({
       </section>
 
       {/* Job details */}
-      <section className="grid grid-cols-1 gap-3 rounded-2xl border border-[#e7e3dc] bg-white p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)] sm:grid-cols-2 sm:p-5">
+      <section className="grid grid-cols-1 gap-4 border-b border-[var(--color-border)] py-6 sm:grid-cols-2">
         <label className="text-sm">
           <span className="block text-gray-600 mb-1">סוג עבודה</span>
-          <select value={jobType} onChange={(e) => setJobType(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2 bg-white">
+          <select value={jobType} onChange={(e) => setJobType(e.target.value)} className="w-full rounded-none border border-gray-300 bg-[var(--color-surface)] px-2.5 py-2">
             {JOB_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </label>
@@ -323,13 +323,13 @@ export function QuickCreateForm({
       </section>
 
       {/* Status */}
-      <section className="rounded-2xl border border-[#e7e3dc] bg-white p-4 shadow-[0_2px_8px_rgba(38,38,38,0.04)] sm:p-5">
+      <section className="border-b border-[var(--color-border)] py-6">
         <h2 className="text-sm font-semibold text-gray-900 mb-3">סטטוס התחלתי</h2>
         <div className="flex gap-2">
           <button
             type="button"
             onClick={() => setInitialStatus('RESERVATION')}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${initialStatus === 'RESERVATION' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            className={`px-3 py-1.5 text-sm font-medium ${initialStatus === 'RESERVATION' ? 'bg-[var(--color-calendar-sage)] text-[var(--color-background)]' : 'bg-[var(--color-surface-muted)] text-gray-600 hover:bg-[var(--color-calendar-sage-soft)]'}`}
           >
             שריון
           </button>
@@ -338,21 +338,21 @@ export function QuickCreateForm({
             onClick={() => setInitialStatus('APPROVED')}
             disabled={generalReservation}
             title={generalReservation ? 'לא ניתן לאשר עבודה בשריון כללי' : ''}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-40 ${initialStatus === 'APPROVED' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            className={`px-3 py-1.5 text-sm font-medium disabled:opacity-40 ${initialStatus === 'APPROVED' ? 'bg-[var(--color-calendar-sage)] text-[var(--color-background)]' : 'bg-[var(--color-surface-muted)] text-gray-600 hover:bg-[var(--color-calendar-sage-soft)]'}`}
           >
             אושר
           </button>
         </div>
       </section>
 
-      <div className="flex justify-end gap-2">
-        <button type="button" onClick={onCancel} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
+      <div className="flex justify-end gap-3 pt-5">
+        <button type="button" onClick={onCancel} className="px-2 py-2 text-sm text-[var(--color-calendar-sage)] underline decoration-[var(--color-border-strong)] underline-offset-4 hover:decoration-[var(--color-calendar-sage)]">
           ביטול
         </button>
         <button
           onClick={() => void submit()}
           disabled={busy}
-          className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50 sm:flex-none"
+          className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 bg-[var(--color-calendar-sage)] px-5 py-2.5 text-sm font-medium text-[var(--color-background)] hover:bg-primary-700 disabled:opacity-50 sm:flex-none"
         >
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
           יצירת העבודה
