@@ -1477,6 +1477,7 @@ export default function DashboardPage() {
         open={Boolean(selectedJobId)}
         onClose={() => setSelectedJobId(null)}
         title="פרטי עבודה"
+        widthClassName="sm:max-w-2xl xl:max-w-3xl"
       >
         {selectedJobId && <OwnerJobDetail jobId={selectedJobId} embedded />}
       </SidePanel>

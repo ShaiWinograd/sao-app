@@ -247,7 +247,12 @@ export default function JobsPage() {
       {!isLoading && !error && (
         <OwnerShiftBoard jobs={jobs} onSelectJob={setSelectedJobId} />
       )}
-      <SidePanel open={Boolean(selectedJobId)} onClose={() => setSelectedJobId(null)} title="פרטי עבודה">
+      <SidePanel
+        open={Boolean(selectedJobId)}
+        onClose={() => setSelectedJobId(null)}
+        title="פרטי עבודה"
+        widthClassName="sm:max-w-2xl xl:max-w-3xl"
+      >
         {selectedJobId && <OwnerJobDetail jobId={selectedJobId} embedded />}
       </SidePanel>
     </div>
