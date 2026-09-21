@@ -126,7 +126,7 @@ export default function AppShell({ area, children }: { area: AppArea; children: 
 
   return (
     <div className={`${config.themeClass} flex h-screen overflow-x-hidden bg-[var(--color-background)]`} dir="rtl">
-      <div className="hidden h-screen w-[240px] shrink-0 md:block">{renderSidebar()}</div>
+      <div className="hidden h-screen w-[220px] shrink-0 md:block">{renderSidebar()}</div>
 
       <div
         className={`fixed inset-0 z-40 bg-black/40 transition-opacity duration-200 md:hidden ${

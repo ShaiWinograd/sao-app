@@ -26,28 +26,28 @@ export function BrandLockup({ area, compact = false, onNavigate }: BrandLockupPr
       href={details.href}
       onClick={onNavigate}
       aria-label={details.ariaLabel}
-      className={`group flex min-w-0 items-center rounded-2xl outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 ${
-        compact ? 'gap-3 py-1' : 'gap-3'
+      className={`group flex min-w-0 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 ${
+        compact ? 'items-center gap-3 py-1' : 'w-full flex-col items-center gap-2 py-1'
       }`}
     >
       <span
-        className={`flex shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[#ded9d0] bg-white shadow-[0_3px_12px_rgba(38,38,38,0.07)] transition-transform group-hover:scale-[1.02] ${
-          compact ? 'h-[52px] w-[52px] rounded-xl' : 'h-20 w-20'
+        className={`flex shrink-0 items-center justify-center transition-transform group-hover:scale-[1.02] ${
+          compact ? 'h-[52px] w-[52px]' : 'h-24 w-24'
         }`}
       >
         <Image
-          src="/so-logo-cropped.jpg"
+          src="/so-logo-transparent.png"
           alt=""
-          width={compact ? 52 : 80}
-          height={compact ? 52 : 80}
-          className="h-full w-full object-cover"
+          width={compact ? 52 : 96}
+          height={compact ? 52 : 96}
+          className="h-full w-full object-contain"
           priority
         />
       </span>
       <span
         dir="ltr"
-        className={`block whitespace-nowrap text-left font-semibold text-gray-950 ${
-          compact ? 'text-[12px] tracking-[0.13em]' : 'text-[12px] tracking-[0.11em]'
+        className={`whitespace-nowrap text-left text-[12px] font-semibold tracking-[0.13em] text-gray-950 ${
+          compact ? 'block' : 'sr-only'
         }`}
       >
         SPACE &amp; ORDER
