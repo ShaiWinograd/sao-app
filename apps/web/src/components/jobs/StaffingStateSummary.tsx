@@ -33,6 +33,69 @@ export function getStaffingStateSummary(
   };
 }
 
+function staffingStatusLabel(status?: string | null) {
+  if (status === 'APPROVED') return 'מאושרת';
+  if (status === 'PENDING') return 'ממתינה לאישור שלך';
+  if (status === 'AWAITING_WORKER') return 'ממתינה לאישור העובדת';
+  return 'בתהליך';
+}
+
+export function StaffingGapSummary({
+  shifts,
+  requiredWorkerCount,
+}: {
+  shifts: StaffingSummaryShift[];
+  requiredWorkerCount: number;
+}) {
+  const summary = getStaffingStateSummary(shifts, requiredWorkerCount);
+  const active = shifts.filter(
+    (shift) =>
+      shift.assignmentRole !== 'BACKUP' &&
+      shift.joinRequestStatus !== 'REJECTED' &&
+      shift.joinRequestStatus !== 'CANCELLED',
+  );
+  const hoverText = [
+    ...active.map(
+      (shift) =>
+        `${shift.workerNameSnapshot ?? shift.name ?? 'עובדת'} — ${staffingStatusLabel(shift.joinRequestStatus)}`,
+    ),
+    `${summary.openSlots} עדיין נדרשות`,
+  ].join('\n');
+
+  return (
+    <>
+      {summary.pendingOwnerNames.length > 0 && (
+        <span
+          className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 text-[9px] font-semibold text-[var(--color-calendar-sand)]"
+          aria-label={`${summary.pendingOwnerNames.length} בקשות הצטרפות ממתינות`}
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-calendar-sand)]" />
+          {summary.pendingOwnerNames.length}
+        </span>
+      )}
+      <div
+        className="mt-1 border-t border-current/15 pt-1 text-[10px] font-semibold text-[var(--color-calendar-sand)]"
+        data-testid="staffing-gap-bottom-line"
+        title={hoverText}
+      >
+        {summary.approvedNames.length}/{summary.required} משובצות · {summary.openSlots} עדיין נדרשות
+      </div>
+      <div className="pointer-events-none absolute left-1 top-full z-50 mt-1 hidden w-56 border border-[var(--color-border-strong)] bg-[var(--color-background)] px-3 py-2 text-right text-[11px] leading-5 text-gray-700 shadow-lg group-hover/staffing:block group-focus-within/staffing:block">
+        <p className="font-semibold text-gray-900">{summary.openSlots} עדיין נדרשות</p>
+        {active.length > 0 ? (
+          active.map((shift, index) => (
+            <p key={`${shift.workerNameSnapshot ?? shift.name ?? 'worker'}-${index}`}>
+              {shift.workerNameSnapshot ?? shift.name ?? 'עובדת'} · {staffingStatusLabel(shift.joinRequestStatus)}
+            </p>
+          ))
+        ) : (
+          <p>עדיין אין עובדות בתהליך</p>
+        )}
+      </div>
+    </>
+  );
+}
+
 function StaffingCounter({
   label,
   value,
