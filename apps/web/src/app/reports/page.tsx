@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { FileText, Users, ChevronLeft } from 'lucide-react';
 import { api, authHeaders } from '../../lib/api';
+import { PageHeader } from '../../components/ui/PageHeader';
 
 type Overview = { ready: unknown[]; closed: unknown[] };
 
@@ -39,24 +40,25 @@ export default function ReportsHubPage() {
   }, [isLoaded, isSignedIn, load]);
 
   return (
-    <div className="p-6 max-w-3xl" dir="rtl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1 flex items-center gap-2">
-        <FileText className="w-6 h-6 text-primary-600" />
-        דוחות
-      </h1>
-      <p className="text-sm text-gray-500 mb-6">בחרו את סוג הדוח.</p>
+    <div className="max-w-5xl space-y-6" dir="rtl">
+      <PageHeader
+        eyebrow="A CLEAR VIEW OF THE WORK"
+        title="דוחות"
+        description="בחירה פשוטה בין דוחות הלקוחות לבין הסיכום החודשי של הצוות."
+        icon={<FileText className="h-6 w-6" />}
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid border-y border-[var(--color-border)] sm:grid-cols-2 sm:divide-x sm:divide-x-reverse sm:divide-[var(--color-border)]">
         <Link
           href="/reports/customer"
-          className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:border-primary-300"
+          className="group border-b border-[var(--color-border)] p-6 transition-colors hover:bg-primary-50/40 sm:border-b-0"
         >
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
               <FileText className="w-5 h-5 text-primary-600" />
               דוחות לקוחות
             </h2>
-            <ChevronLeft className="w-4 h-4 text-gray-400" />
+            <ChevronLeft className="h-4 w-4 text-gray-400 transition-transform group-hover:-translate-x-1" />
           </div>
           <p className="mt-2 text-sm text-gray-500">
             פרויקטים מוכנים לדוח, דוחות שהופקו, היסטוריית גרסאות והורדת PDF.
@@ -70,14 +72,14 @@ export default function ReportsHubPage() {
 
         <Link
           href="/payroll"
-          className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:border-primary-300"
+          className="group p-6 transition-colors hover:bg-primary-50/40"
         >
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
               <Users className="w-5 h-5 text-primary-600" />
               דוחות חודשיים לעובדות
             </h2>
-            <ChevronLeft className="w-4 h-4 text-gray-400" />
+            <ChevronLeft className="h-4 w-4 text-gray-400 transition-transform group-hover:-translate-x-1" />
           </div>
           <p className="mt-2 text-sm text-gray-500">
             טיוטות חודשיות, גרסאות שפורסמו, בקשות תיקון והורדת PDF.

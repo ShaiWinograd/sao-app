@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Lock, Save, SlidersHorizontal, UserCog, UserPlus } from 'lucide-react';
 import { api } from '../../lib/api';
+import { PageHeader } from '../../components/ui/PageHeader';
 
 type AppRole = 'owner' | 'operations_admin' | 'finance_admin';
 
@@ -141,12 +142,14 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">הגדרות מערכת</h1>
-        <p className="text-sm text-gray-500">ניהול הרשאות, הגדרות נוכחות, חוקים פיננסיים, וחוקי סגירת חודש.</p>
-      </div>
+      <PageHeader
+        eyebrow="HOW THE BUSINESS WORKS"
+        title="הגדרות"
+        description="הרשאות, כללי נוכחות וסגירת חודש — מרוכזים במקום אחד וברור."
+        icon={<SlidersHorizontal className="h-6 w-6" />}
+      />
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+      <section className="border-y border-[var(--color-border)] bg-[var(--color-surface)] p-5">
         <div className="flex items-center gap-2 mb-2">
           <UserCog className="w-4 h-4 text-gray-500" />
           <h2 className="text-lg font-semibold">תצוגת הרשאות</h2>
@@ -166,7 +169,7 @@ export default function SettingsPage() {
       <TeamInviteCard />
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm space-y-3">
+        <article className="space-y-3 border-y border-[var(--color-border)] bg-[var(--color-surface)] p-5">
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="w-4 h-4 text-gray-500" />
             <h2 className="text-lg font-semibold">הגדרות תפעול</h2>
@@ -190,7 +193,7 @@ export default function SettingsPage() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm space-y-3">
+        <article className="space-y-3 border-y border-[var(--color-border)] bg-[var(--color-surface)] p-5">
           <h2 className="text-lg font-semibold">סגירת חודש והרשאות רגישות</h2>
           <label className="inline-flex items-center gap-2 text-sm text-gray-700">
             <input
@@ -224,7 +227,7 @@ export default function SettingsPage() {
           </div>
         </article>
 
-        <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm space-y-3">
+        <article className="space-y-3 border-y border-[var(--color-border)] bg-[var(--color-surface)] p-5">
           <h2 className="text-lg font-semibold">מצב שמירה</h2>
           <p className="text-sm text-gray-500">הגדרות נשמרות לשרת, והחודש הנבחר נשלט דרך דוחות ניהול.</p>
           <button

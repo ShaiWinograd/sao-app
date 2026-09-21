@@ -11,6 +11,7 @@ import {
   type EndShiftJobType,
   getCaseNameForCustomerAndDate,
 } from '../../lib/case-hub';
+import { PageHeader } from '../../components/ui/PageHeader';
 
 type QuestionType = 'yes_no' | 'multi' | 'checkbox' | 'number' | 'short_text' | 'long_text' | 'photo' | 'date';
 type Visibility = 'worker' | 'admin' | 'owner';
@@ -352,18 +353,20 @@ export default function FormsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">טפסי סיום משמרת</h1>
-          <p className="text-sm text-gray-500">ניהול תבניות ושליחה שמקושרת אוטומטית לתיק לקוח.</p>
-        </div>
-        <div className="rounded-xl border border-primary-200 bg-primary-50 px-3 py-2 text-xs text-primary-800">
+      <PageHeader
+        eyebrow="CAPTURE THE WORK"
+        title="טפסי סיום משמרת"
+        description="תיעוד מסודר של כל עבודה, עם תבניות קבועות ומעקב שמתחבר ישירות ללקוח."
+        icon={<ClipboardList className="h-6 w-6" />}
+        action={
+        <div className="border-r-2 border-primary-400 px-3 py-1 text-xs text-primary-800">
           <div>תבניות פעילות: {templates.length}</div>
           <div>טפסים עם מעקב: {followUpCount}</div>
         </div>
-      </div>
+        }
+      />
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+      <section className="border-y border-[var(--color-border)] bg-[var(--color-surface)] p-5">
         <h2 className="text-lg font-semibold mb-3">שליחת טופס סיום משמרת</h2>
         <div className="grid gap-2 md:grid-cols-4">
           <select value={selectedApiShiftId} onChange={(event) => setSelectedApiShiftId(event.target.value)} className="rounded-xl border border-gray-300 px-3 py-2 text-sm bg-white md:col-span-2">
@@ -444,7 +447,7 @@ export default function FormsPage() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-3">
-        <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm lg:col-span-2">
+        <article className="border-y border-[var(--color-border)] bg-[var(--color-surface)] p-5 lg:col-span-2">
           <div className="flex items-center gap-2 mb-3">
             <Settings2 className="w-4 h-4 text-gray-500" />
             <h2 className="text-lg font-semibold">בונה תבניות</h2>
@@ -520,14 +523,14 @@ export default function FormsPage() {
           </div>
         </article>
 
-        <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <article className="border-y border-[var(--color-border)] bg-[var(--color-surface)] p-5">
           <div className="flex items-center gap-2 mb-3">
             <ClipboardList className="w-4 h-4 text-gray-500" />
             <h2 className="text-lg font-semibold">הגשות אחרונות</h2>
           </div>
           <div className="space-y-3">
             {submissions.slice(0, 8).map((submission) => (
-              <div key={submission.id} className="rounded-xl border border-gray-200 p-3">
+              <div key={submission.id} className="border-b border-[var(--color-border)] px-1 py-3 last:border-b-0">
                 <div className="text-sm font-semibold text-gray-900">{submission.workerName}</div>
                 <div className="text-xs text-gray-600">
                   {submission.jobType} • {submission.customerName}

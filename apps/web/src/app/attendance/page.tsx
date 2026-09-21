@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Clock3, MapPin, ShieldAlert } from 'lucide-react';
 import { api } from '../../lib/api';
+import { PageHeader } from '../../components/ui/PageHeader';
 
 type AttendanceStatus = 'תקין' | 'חריגה' | 'מחכה לאישור' | 'תוקן ידנית';
 type ExceptionType =
@@ -211,23 +212,25 @@ export default function AttendancePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">ניהול נוכחות ומיקום</h1>
-          <p className="text-sm text-gray-500">בדיקות מיקום בתחילת משמרת, כל 15 דקות, ובסיום — לפי מדיניות רדיוס.</p>
-        </div>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+      <PageHeader
+        eyebrow="PRESENCE, WITH CONTEXT"
+        title="נוכחות ומיקום"
+        description="בדיקות מיקום וחריגות לאורך יום העבודה, עם תמונה ברורה של מה שדורש החלטה."
+        icon={<MapPin className="h-6 w-6" />}
+        action={
+        <div className="border-r-2 border-amber-400 px-3 py-1 text-xs text-amber-800">
           <div className="font-semibold">נדרש טיפול: {pendingExceptions.length}</div>
           <div>חריגות רדיוס: {outOfRadiusCount}</div>
         </div>
-      </div>
+        }
+      />
 
       {dataError && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{dataError}</div>
       )}
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+      <section className="grid border-y border-[var(--color-border)] md:grid-cols-3 md:divide-x md:divide-x-reverse md:divide-[var(--color-border)]">
+        <article className="p-5">
           <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
             <MapPin className="w-4 h-4" />
             רדיוס ברירת מחדל
@@ -243,7 +246,7 @@ export default function AttendancePage() {
           <p className="text-xs text-gray-500 mt-2">מטרים מהכתובת. ניתן לשנות פר-עבודה במסך עבודות.</p>
         </article>
 
-        <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <article className="border-t border-[var(--color-border)] p-5 md:border-t-0">
           <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
             <Clock3 className="w-4 h-4" />
             זמן חסד לאזהרת יציאה
@@ -259,7 +262,7 @@ export default function AttendancePage() {
           <p className="text-xs text-gray-500 mt-2">אם אין תגובה בזמן זה, מבוצע סיום משמרת אוטומטי.</p>
         </article>
 
-        <article className="rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm">
+        <article className="border-t border-[var(--color-border)] p-5 md:border-t-0">
           <div className="flex items-center gap-2 text-sm text-red-700 mb-2">
             <ShieldAlert className="w-4 h-4" />
             תזכורת פרטיות
@@ -270,7 +273,7 @@ export default function AttendancePage() {
         </article>
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm space-y-4">
+      <section className="space-y-4 border-y border-[var(--color-border)] bg-[var(--color-surface)] p-4">
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={search}
@@ -392,11 +395,11 @@ export default function AttendancePage() {
         )}
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+      <section className="border-y border-[var(--color-border)] py-5">
         <h2 className="text-lg font-semibold mb-3">בקשות חריגה ותיקוני נוכחות</h2>
         <div className="space-y-3">
           {exceptions.map((item) => (
-            <article key={item.id} className="rounded-xl border border-gray-200 p-3">
+            <article key={item.id} className="border-b border-[var(--color-border)] px-2 py-4 last:border-b-0">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                 <div className="text-sm font-semibold text-gray-900">
                   {item.workerName} • {item.jobLabel}

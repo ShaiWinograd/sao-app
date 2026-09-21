@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Filter, History, Shield } from 'lucide-react';
 import { auditReasonLabel } from '@workforce/shared';
 import { api } from '../../lib/api';
+import { PageHeader } from '../../components/ui/PageHeader';
 
 type AuditEntry = {
   id: string;
@@ -90,12 +91,14 @@ export default function AuditPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">יומן פעולות</h1>
-        <p className="text-sm text-gray-500">תיעוד מלא של פעולות רגישות במערכת: תפעול, נוכחות, פיננסים, וסגירת חודשים.</p>
-      </div>
+      <PageHeader
+        eyebrow="A TRUSTED RECORD"
+        title="יומן פעולות"
+        description="תיעוד שקוף של פעולות רגישות בתפעול, בנוכחות, בפיננסים ובסגירת חודשים."
+        icon={<History className="h-6 w-6" />}
+      />
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm space-y-3">
+      <section className="space-y-3 border-b border-[var(--color-border)] pb-5">
         <div className="flex items-center gap-2 text-sm text-gray-700">
           <Filter className="w-4 h-4" />
           סינונים
@@ -121,7 +124,7 @@ export default function AuditPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm overflow-x-auto">
+      <section className="overflow-x-auto border-y border-[var(--color-border)] bg-[var(--color-surface)] p-4">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-right text-gray-500 border-b border-gray-100">
