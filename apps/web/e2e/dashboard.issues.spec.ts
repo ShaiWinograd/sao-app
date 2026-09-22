@@ -120,6 +120,10 @@ test.describe('Dashboard urgent and workflow sections', () => {
       });
     });
 
+    await page.route('**/api/v1/daily-info*', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    });
+
     await page.route('**/api/v1/admin/tasks', async (route) => {
       await route.fulfill({
         status: 200,
@@ -141,26 +145,16 @@ test.describe('Dashboard urgent and workflow sections', () => {
     });
   });
 
-  test('shows direct operational actions and no separate urgent panel', async ({
+  test('keeps the calendar as the primary owner surface', async ({
     page,
   }) => {
     await page.goto('/dashboard');
 
-    // At-a-glance metrics are direct actions.
-    await expect(page.getByRole('button', { name: /חריגות · לטיפול/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /בקשות הצטרפות/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /עבודות היום/ })).toBeVisible();
-    await page.getByRole('button', { name: /חריגות · לטיפול/ }).click();
-    await expect(page.getByRole('heading', { name: 'חריגות שדורשות טיפול' })).toBeVisible();
-    await expect(page.getByText('אריזה דחופה').first()).toBeVisible();
-    await page.getByRole('button', { name: 'סגירה' }).click();
-
-    // Creation is available from each future date instead of a global header action.
+    await expect(page.getByText('חריגות · לטיפול', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('עבודות היום · ביומן', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'יצירת עבודה', exact: true })).toHaveCount(0);
-
-    // The separate 'must handle' urgent panel was removed.
     await expect(page.getByTestId('dashboard-urgent-panel')).toHaveCount(0);
-
+    await expect(page.getByTestId('owner-calendar-scroll')).toBeVisible();
   });
 
   test('uses the full viewport and a navigation drawer on mobile', async ({ page }) => {
@@ -202,10 +196,11 @@ test.describe('Dashboard urgent and workflow sections', () => {
     const mainBounds = await page.locator('main').boundingBox();
     expect(sidebarBounds?.width).toBe(220);
     expect(mainBounds?.width).toBeGreaterThanOrEqual(1190);
+    expect(await page.locator('main').evaluate((element) => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
     await page.getByRole('button', { name: 'סגירת תפריט צד' }).click();
     await expect(page.getByRole('button', { name: 'פתיחת תפריט צד' })).toBeVisible();
-    const expandedMainBounds = await page.locator('main').boundingBox();
-    expect(expandedMainBounds?.width).toBeGreaterThan(mainBounds?.width ?? 0);
+    await expect.poll(async () => (await page.locator('main').boundingBox())?.width ?? 0)
+      .toBeGreaterThan(mainBounds?.width ?? 0);
     await page.getByRole('button', { name: 'פתיחת תפריט צד' }).click();
     const brand = page.getByRole('link', { name: 'מעבר ללוח הבקרה' });
     await expect(brand).not.toContainText('ניהול עסק');
@@ -240,13 +235,11 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await expect(page.getByText('10:00–13:30', { exact: true })).toBeVisible();
     const calendarScroll = page.getByTestId('owner-calendar-scroll');
     expect(await calendarScroll.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
-    const createForDate = page.getByRole('button', { name: `יצירת עבודה בתאריך ${tomorrow}` });
-    await expect(createForDate).toBeVisible();
-    await expect(
-      page.locator('button[aria-label^="יצירת עבודה בתאריך"]').filter({ hasText: 'יצירת עבודה' }),
-    ).toHaveCount(0);
+    const dateActions = page.getByRole('button', { name: `פעולות לתאריך ${tomorrow}` });
+    await expect(dateActions).toBeVisible();
     await expect(page.getByRole('link', { name: 'החלפות משמרות' })).toBeVisible();
-    await createForDate.click();
+    await dateActions.click();
+    await page.getByRole('button', { name: 'יצירת עבודה', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'יצירת עבודה' })).toBeVisible();
     await page.getByRole('button', { name: 'סגירה' }).click();
     await expect(page.getByText('סיכום שיבוץ לעבודות')).toHaveCount(0);
@@ -256,6 +249,46 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await page.getByRole('button', { name: /שיבוץ לעבודה/ }).click();
 
     await expect.poll(() => assignment).toEqual({ jobId: 'job-1', workerId: 'worker-michal', role: 'REGULAR' });
+  });
+
+  test('keeps date and staffing rows sticky and saves daily info for every worker', async ({ page }) => {
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString('en-CA');
+    let saved: Record<string, unknown> | null = null;
+    await page.unroute('**/api/v1/daily-info*');
+    await page.route((url) => url.pathname.endsWith(`/api/v1/daily-info/${tomorrow}`), async (route) => {
+      const payload = route.request().postDataJSON() as Record<string, unknown>;
+      saved = payload;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'daily-1',
+          dateKey: tomorrow,
+          title: payload.title,
+          body: payload.body,
+          updatedAt: new Date().toISOString(),
+        }),
+      });
+    });
+    await page.route((url) => url.pathname.endsWith('/api/v1/daily-info'), async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    });
+
+    await page.goto('/dashboard');
+    const calendarRows = page.getByTestId('owner-calendar-scroll').locator(':scope > div');
+    expect(await calendarRows.nth(0).evaluate((element) => getComputedStyle(element).position)).toBe('sticky');
+    expect(await calendarRows.nth(2).evaluate((element) => getComputedStyle(element).position)).toBe('sticky');
+    await page.getByRole('button', { name: `הוספת מידע יומי לתאריך ${tomorrow}` }).click();
+    await expect(page.getByRole('heading', { name: /מידע יומי/ })).toBeVisible();
+    await page.getByPlaceholder('למשל: דגשים ליום העבודה').fill('ציוד ליום העבודה');
+    await page.getByPlaceholder('פרטים והנחיות שחשוב שכל העובדות יראו').fill('נא להגיע עם חולצה לבנה.');
+    await page.getByRole('button', { name: 'שמירה', exact: true }).click();
+
+    await expect.poll(() => saved).toEqual({
+      title: 'ציוד ליום העבודה',
+      body: 'נא להגיע עם חולצה לבנה.',
+    });
+    await expect(page.getByText('ציוד ליום העבודה', { exact: true })).toBeVisible();
   });
 
   test('keeps staffing details compact in the staffing-gap row', async ({ page }) => {

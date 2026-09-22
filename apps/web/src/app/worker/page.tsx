@@ -81,6 +81,14 @@ type AvailabilityConflict = {
   replacementStatus?: string;
 };
 
+type DailyInfo = {
+  id: string;
+  dateKey: string;
+  title: string;
+  body: string;
+  updatedAt: string;
+};
+
 const AVAILABILITY_REASONS = ['חופש', 'חו״ל', 'חולה', 'אחר'] as const;
 
 function shortDate(iso: string): string {
@@ -121,6 +129,7 @@ export default function WorkerShiftsPage() {
   const [swaps, setSwaps] = useState<SwapMine[]>([]);
   const [replacements, setReplacements] = useState<OpenReplacement[]>([]);
   const [availability, setAvailability] = useState<AvailabilityBlock[]>([]);
+  const [dailyInfo, setDailyInfo] = useState<DailyInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -177,12 +186,29 @@ export default function WorkerShiftsPage() {
     }
   }, [getToken]);
 
+  const loadDailyInfo = useCallback(async () => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + 2);
+    try {
+      const auth = await authHeaders(getToken);
+      const res = await api.get<DailyInfo[]>(
+        `/daily-info?start=${toDateKey(start)}&end=${toDateKey(end)}`,
+        auth,
+      );
+      setDailyInfo(res.data ?? []);
+    } catch {
+      setDailyInfo([]);
+    }
+  }, [getToken]);
+
   useEffect(() => {
     void (async () => {
-      await Promise.all([loadBoard(), loadSwaps(), loadReplacements(), loadAvailability()]);
+      await Promise.all([loadBoard(), loadSwaps(), loadReplacements(), loadAvailability(), loadDailyInfo()]);
       setLoading(false);
     })();
-  }, [loadAvailability, loadBoard, loadSwaps, loadReplacements]);
+  }, [loadAvailability, loadBoard, loadDailyInfo, loadSwaps, loadReplacements]);
 
   const volunteer = useCallback(
     async (requestId: string, has: boolean) => {
@@ -397,6 +423,10 @@ export default function WorkerShiftsPage() {
         return groups;
       }, new Map<string, BoardShift[]>()),
     [visible],
+  );
+  const dailyInfoByDate = useMemo(
+    () => new Map(dailyInfo.map((entry) => [entry.dateKey, entry])),
+    [dailyInfo],
   );
 
   useEffect(() => {
@@ -731,6 +761,7 @@ export default function WorkerShiftsPage() {
           const dateKey = toDateKey(date);
           const shifts = shiftsByDate.get(dateKey) ?? [];
           const availabilityBlock = availabilityForDate(availability, dateKey);
+          const dayInfo = dailyInfoByDate.get(dateKey);
           const nonWorkingDay = israeliNonWorkingDayName(date);
           return (
               <section
@@ -772,6 +803,12 @@ export default function WorkerShiftsPage() {
                     </>
                   )}
                 </div>
+                {dayInfo && (
+                  <div className="mb-2 border-r-2 border-primary-500 bg-primary-50 px-3 py-2 text-sm text-gray-700">
+                    <p className="font-semibold text-gray-900">{dayInfo.title || 'מידע יומי'}</p>
+                    {dayInfo.body && <p className="mt-0.5 whitespace-pre-wrap text-xs leading-5">{dayInfo.body}</p>}
+                  </div>
+                )}
                 {shifts.length === 0 ? (
                   <div className="flex min-h-10 items-center px-1 py-1.5">
                     <span className="text-xs text-[var(--color-text-muted)]">{nonWorkingDay ? 'יום מנוחה' : 'אין עבודות'}</span>

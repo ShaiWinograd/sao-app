@@ -57,6 +57,19 @@ test.describe('Worker desktop layout', () => {
         }]),
       }),
     );
+    await page.route('**/api/v1/daily-info*', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([{
+          id: 'daily-next',
+          dateKey: endDateKey,
+          title: 'ציוד ליום העבודה',
+          body: 'נא להגיע עם חולצה לבנה.',
+          updatedAt: new Date().toISOString(),
+        }]),
+      }),
+    );
     await page.route('**/api/v1/shifts/swaps/mine', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
     );
@@ -68,6 +81,7 @@ test.describe('Worker desktop layout', () => {
     );
 
     await page.goto('/worker');
+    await expect(page.locator(`#worker-day-${endDateKey}`).getByText('ציוד ליום העבודה')).toBeVisible();
     await page.locator(`#worker-day-${dateKey}`).getByRole('button', { name: 'זמינות' }).click();
     const availabilityDialog = page.getByRole('dialog', { name: 'עדכון זמינות' });
     await availabilityDialog.getByLabel('התחלה').fill(dateKey);

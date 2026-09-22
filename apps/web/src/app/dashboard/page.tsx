@@ -4,7 +4,20 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useUser, useAuth } from '@clerk/nextjs';
 import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone, workerRowBadge, fillsRequiredSlot, workerRowAssignments, getStaffingIssueBreakdown, formatBusinessDate } from '@workforce/shared';
-import { AlertTriangle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Plus, Repeat2, XCircle } from 'lucide-react';
+import {
+  AlertTriangle,
+  BriefcaseBusiness,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  FileText,
+  MoreHorizontal,
+  Plus,
+  Repeat2,
+  UsersRound,
+  WandSparkles,
+} from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
 import { QuickCreateForm } from '../../components/jobs/QuickCreateForm';
 import { JoinRequestsPanel } from '../../components/owner/JoinRequestsPanel';
@@ -46,6 +59,14 @@ type DashboardWorker = {
   name: string;
   role: DashboardWorkerRole;
   hourlyWage: number;
+};
+
+type DailyInfo = {
+  id: string;
+  dateKey: string;
+  title: string;
+  body: string;
+  updatedAt: string;
 };
 
 // Actionable owner items (spec §7) — all backed by implemented domain logic
@@ -93,15 +114,6 @@ function toSundayWeekKey(dateKey: string) {
   const sunday = new Date(date);
   sunday.setDate(date.getDate() - date.getDay());
   return toDateKeyFromDate(sunday);
-}
-
-function addHoursToTime(start: string, hours: number) {
-  const [h, m] = start.split(':').map(Number);
-  const totalMinutes = h * 60 + m + Math.round(hours * 60);
-  const safeMinutes = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
-  const outH = Math.floor(safeMinutes / 60);
-  const outM = safeMinutes % 60;
-  return `${String(outH).padStart(2, '0')}:${String(outM).padStart(2, '0')}`;
 }
 
 function isValidIsraeliPhone(value: string) {
@@ -299,6 +311,8 @@ export default function DashboardPage() {
     dateKey: string;
     date: string;
     hours: number;
+    startTime: string;
+    endTime: string;
     requiredWorkers: number;
     requiredTeamLeads: number;
     assignedWorkers: AssignedWorker[];
@@ -360,6 +374,13 @@ export default function DashboardPage() {
     startTime: string | null;
     endTime: string | null;
   }>>([]);
+  const [dailyInfo, setDailyInfo] = useState<DailyInfo[]>([]);
+  const [dailyInfoTargetDate, setDailyInfoTargetDate] = useState<string | null>(null);
+  const [dailyInfoTitle, setDailyInfoTitle] = useState('');
+  const [dailyInfoBody, setDailyInfoBody] = useState('');
+  const [dailyInfoBusy, setDailyInfoBusy] = useState(false);
+  const [dailyInfoError, setDailyInfoError] = useState<string | null>(null);
+  const [dateMenuKey, setDateMenuKey] = useState<string | null>(null);
   const [assignmentTarget, setAssignmentTarget] = useState<{
     workerId: string;
     workerName: string;
@@ -398,7 +419,6 @@ export default function DashboardPage() {
   const [workerVisibleNotes, setWorkerVisibleNotes] = useState('');
   const [customerMode, setCustomerMode] = useState<'existing' | 'new'>('new');
   const [dayJobsPickerDateKey, setDayJobsPickerDateKey] = useState<string | null>(null);
-  const [exceptionsPanelOpen, setExceptionsPanelOpen] = useState(false);
 
   useEffect(() => {
     if (redirectedCreateHandled.current) return;
@@ -477,6 +497,9 @@ export default function DashboardPage() {
           .map((job: any, index: number) => {
           const customerName = `${job.customer?.firstName ?? ''} ${job.customer?.lastName ?? ''}`.trim();
           const date = new Date(job.date);
+          const plannedStart = job.plannedStart ? new Date(job.plannedStart) : new Date(date);
+          if (!job.plannedStart) plannedStart.setHours(9, 0, 0, 0);
+          const plannedEnd = job.plannedEnd ? new Date(job.plannedEnd) : new Date(plannedStart.getTime() + 5 * 3_600_000);
           const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
           const day = String(date.getDate()).padStart(2, '0');
           const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -520,7 +543,9 @@ export default function DashboardPage() {
             jobType,
             dateKey,
             date: `${day}.${month}`,
-            hours: 5,
+            hours: Math.max(0, (plannedEnd.getTime() - plannedStart.getTime()) / 3_600_000),
+            startTime: plannedStart.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false }),
+            endTime: plannedEnd.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false }),
             requiredWorkers: job.requiredWorkerCount ?? 0,
             requiredTeamLeads: (job.slots ?? []).some((slot: any) => slot.requiredSkill === 'SHIFT_LEADER') ? 1 : 0,
             assignedWorkers,
@@ -807,37 +832,6 @@ export default function DashboardPage() {
     }));
   }, [cases, futureWorks, todayDateKey]);
 
-  const dashboardStats = useMemo(() => {
-    const allItems = workflowSections.flatMap((section) => section.items);
-    const exceptionsCount = allItems.filter((item) => item.severity === 'high').length;
-    const awaitingApprovalCount = attention?.joinRequests ?? 0;
-    const todayJobsCount = dashboardWorks.filter((work) => work.dateKey === todayDateKey).length;
-    const workersTodayCount = new Set(
-      dashboardWorks
-        .filter((work) => work.dateKey === todayDateKey)
-        .flatMap((work) => work.assignedWorkers.map((worker) => worker.name)),
-    ).size;
-    return { exceptionsCount, awaitingApprovalCount, todayJobsCount, workersTodayCount };
-  }, [workflowSections, dashboardWorks, todayDateKey, attention]);
-
-  const exceptionSections = useMemo(
-    () =>
-      workflowSections
-        .map((section) => ({
-          ...section,
-          items: section.items.filter((item) => item.severity === 'high'),
-        }))
-        .filter((section) => section.items.length > 0),
-    [workflowSections],
-  );
-
-  const focusTodaySchedule = () => {
-    activateTodayView();
-    window.requestAnimationFrame(() => {
-      document.getElementById('owner-shift-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  };
-
   const visibleShiftDates = useMemo(() => {
     if (selectedRange === 'today') {
       return [new Date(anchorDate.getFullYear(), anchorDate.getMonth(), anchorDate.getDate())];
@@ -884,6 +878,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!visibleAvailabilityRange) {
       setDashboardAvailability([]);
+      setDailyInfo([]);
       return;
     }
     void (async () => {
@@ -906,6 +901,31 @@ export default function DashboardPage() {
     })();
   }, [getToken, reloadKey, visibleAvailabilityRange]);
 
+  useEffect(() => {
+    if (!visibleAvailabilityRange) return;
+    void (async () => {
+      try {
+        const auth = await authHeaders(getToken);
+        const res = await api.get<DailyInfo[]>(
+          `/daily-info?start=${visibleAvailabilityRange.start}&end=${visibleAvailabilityRange.end}`,
+          auth,
+        );
+        setDailyInfo(res.data ?? []);
+      } catch {
+        setDailyInfo([]);
+      }
+    })();
+  }, [getToken, reloadKey, visibleAvailabilityRange]);
+
+  useEffect(() => {
+    if (!dateMenuKey) return;
+    const close = (event: MouseEvent) => {
+      if (!(event.target as HTMLElement).closest('[data-date-menu]')) setDateMenuKey(null);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [dateMenuKey]);
+
   const shiftsByWorkerDate = useMemo(() => {
     const map = new Map<string, ActiveWork[]>();
     displayedWorks.forEach((work) => {
@@ -926,6 +946,24 @@ export default function DashboardPage() {
       if (open > 0) {
         map.set(work.dateKey, [...(map.get(work.dateKey) ?? []), { work, open }]);
       }
+    });
+    return map;
+  }, [displayedWorks]);
+
+  const dailyInfoByDate = useMemo(
+    () => new Map(dailyInfo.map((entry) => [entry.dateKey, entry])),
+    [dailyInfo],
+  );
+
+  const dateSummaryByDate = useMemo(() => {
+    const map = new Map<string, { hours: number; jobs: number; assigned: number; required: number }>();
+    displayedWorks.forEach((work) => {
+      const current = map.get(work.dateKey) ?? { hours: 0, jobs: 0, assigned: 0, required: 0 };
+      current.hours += work.hours;
+      current.jobs += 1;
+      current.assigned += work.approvedWorkers;
+      current.required += work.requiredWorkers;
+      map.set(work.dateKey, current);
     });
     return map;
   }, [displayedWorks]);
@@ -961,6 +999,59 @@ export default function DashboardPage() {
     }
   };
 
+  const openDailyInfo = (dateKey: string) => {
+    const existing = dailyInfoByDate.get(dateKey);
+    setDailyInfoTargetDate(dateKey);
+    setDailyInfoTitle(existing?.title ?? '');
+    setDailyInfoBody(existing?.body ?? '');
+    setDailyInfoError(null);
+  };
+
+  const saveDailyInfo = async () => {
+    if (!dailyInfoTargetDate) return;
+    if (!dailyInfoTitle.trim() && !dailyInfoBody.trim()) {
+      setDailyInfoError('יש להזין כותרת או הודעה.');
+      return;
+    }
+    setDailyInfoBusy(true);
+    setDailyInfoError(null);
+    try {
+      const auth = await authHeaders(getToken);
+      const res = await api.put<DailyInfo>(
+        `/daily-info/${dailyInfoTargetDate}`,
+        { title: dailyInfoTitle.trim(), body: dailyInfoBody.trim() },
+        auth,
+      );
+      setDailyInfo((entries) => [
+        ...entries.filter((entry) => entry.dateKey !== res.data.dateKey),
+        res.data,
+      ]);
+      setDailyInfoTargetDate(null);
+    } catch (error) {
+      const data = (error as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
+      setDailyInfoError(data?.message ?? data?.error ?? 'שמירת המידע היומי נכשלה.');
+    } finally {
+      setDailyInfoBusy(false);
+    }
+  };
+
+  const deleteDailyInfo = async () => {
+    if (!dailyInfoTargetDate) return;
+    setDailyInfoBusy(true);
+    setDailyInfoError(null);
+    try {
+      const auth = await authHeaders(getToken);
+      await api.delete(`/daily-info/${dailyInfoTargetDate}`, auth);
+      setDailyInfo((entries) => entries.filter((entry) => entry.dateKey !== dailyInfoTargetDate));
+      setDailyInfoTargetDate(null);
+    } catch (error) {
+      const data = (error as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
+      setDailyInfoError(data?.message ?? data?.error ?? 'מחיקת המידע היומי נכשלה.');
+    } finally {
+      setDailyInfoBusy(false);
+    }
+  };
+
   const editingWork = useMemo(
     () => (editingWorkId ? dashboardWorks.find((work) => work.id === editingWorkId) ?? null : null),
     [dashboardWorks, editingWorkId],
@@ -986,7 +1077,7 @@ export default function DashboardPage() {
   const shiftGridStyle = { gridTemplateColumns: shiftGridTemplate, minWidth: `${shiftGridMinWidth}px` };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 lg:flex lg:h-[calc(100vh-4rem)] lg:flex-col lg:gap-3 lg:space-y-0 lg:overflow-hidden">
       <PageHeader
         eyebrow="SPACE FOR A WELL-RUN DAY"
         title="היום בעסק"
@@ -1065,42 +1156,6 @@ export default function DashboardPage() {
           )}
         </div>
       )}
-
-      {/* Clickable operational summary, matching the editorial owner concept. */}
-      <div className="grid grid-cols-2 border-b border-[var(--color-border)] lg:grid-cols-4">
-        <button
-          type="button"
-          onClick={() => setExceptionsPanelOpen(true)}
-          className="border-l border-[var(--color-border)] px-4 py-4 text-right hover:bg-[var(--color-calendar-sage-soft)]"
-        >
-          <strong className="font-display block text-3xl font-medium leading-none text-[var(--color-calendar-sage)]">{dashboardStats.exceptionsCount}</strong>
-          <span className="mt-1 block text-xs text-[var(--color-text-secondary)]">חריגות · לטיפול</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setJoinPanelOpen(true)}
-          className="border-l border-[var(--color-border)] px-4 py-4 text-right hover:bg-[var(--color-calendar-sage-soft)]"
-        >
-          <strong className="font-display block text-3xl font-medium leading-none text-[var(--color-calendar-sage)]">{dashboardStats.awaitingApprovalCount}</strong>
-          <span className="mt-1 block text-xs text-[var(--color-text-secondary)]">בקשות הצטרפות · לאישור</span>
-        </button>
-        <button
-          type="button"
-          onClick={focusTodaySchedule}
-          className="border-l border-[var(--color-border)] px-4 py-4 text-right hover:bg-[var(--color-calendar-sage-soft)]"
-        >
-          <strong className="font-display block text-3xl font-medium leading-none text-[var(--color-calendar-sage)]">{dashboardStats.todayJobsCount}</strong>
-          <span className="mt-1 block text-xs text-[var(--color-text-secondary)]">עבודות היום · ביומן</span>
-        </button>
-        <button
-          type="button"
-          onClick={focusTodaySchedule}
-          className="px-4 py-4 text-right hover:bg-[var(--color-calendar-sage-soft)]"
-        >
-          <strong className="font-display block text-3xl font-medium leading-none text-[var(--color-calendar-sage)]">{dashboardStats.workersTodayCount}</strong>
-          <span className="mt-1 block text-xs text-[var(--color-text-secondary)]">עובדות היום · בשיבוץ</span>
-        </button>
-      </div>
 
       {/* Owner KPI Bar */}
       <div className="space-y-3 border-b border-[var(--color-border)] pb-4">
@@ -1201,8 +1256,8 @@ export default function DashboardPage() {
 
       </div>
 
-      <div id="owner-shift-grid" className="flex min-h-0 flex-col gap-2.5 scroll-mt-4 lg:h-[calc(100vh-180px)] lg:max-h-[calc(100vh-180px)]">
-        <div className="flex min-h-[430px] flex-1 flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]">
+      <div id="owner-shift-grid" className="flex min-h-0 flex-col gap-2.5 scroll-mt-4 lg:flex-1">
+        <div className="flex min-h-[430px] flex-1 flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] lg:min-h-0">
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
               <h2 className="font-semibold text-gray-900">
                 תצוגת משמרות {selectedRangeContextLabel} ({displayedWorks.length})
@@ -1217,48 +1272,114 @@ export default function DashboardPage() {
               </Link>
             </div>
 
-            <div data-testid="owner-calendar-scroll" className="min-h-0 flex-1 overflow-auto">
-              <div className="grid border-b border-[var(--color-border)] bg-[var(--color-background)]" style={shiftGridStyle}>
-                <div className="p-2.5 text-xs font-semibold text-gray-700 border-l border-gray-200">עובדת</div>
+            <div data-testid="owner-calendar-scroll" className="calendar-scroll min-h-0 flex-1 overflow-auto">
+              <div className="sticky top-0 z-30 grid border-b border-[var(--color-border)] bg-[var(--color-background)] shadow-sm" style={shiftGridStyle}>
+                <div className="sticky right-0 z-40 flex min-h-[88px] items-center border-l border-gray-200 bg-[var(--color-background)] p-2.5 text-xs font-semibold text-gray-700">
+                  עובדת
+                </div>
                 {visibleShiftDates.map((date) => {
                   const dateKey = toDateKeyFromDate(date);
                   const nonWorkingLabel = getNonWorkingDayLabel(dateKey);
                   const isNonWorkingDay = isWorkCreationBlockedDay(dateKey);
                   const isToday = dateKey === todayDateKey;
                   const isPast = dateKey < todayDateKey;
-                  return isNonWorkingDay || isPast ? (
-                    <div key={`head-${dateKey}`} className={`min-w-0 border-l border-[var(--color-border)] p-2.5 text-center text-gray-500 ${isToday ? 'bg-[var(--color-calendar-sage-soft)] shadow-[inset_0_2px_0_var(--color-calendar-sage)]' : 'bg-[var(--color-background)]'}`}>
-                      <div className="text-xs">{date.toLocaleDateString('he-IL', { weekday: 'short' })}</div>
-                      <div className="text-xs font-semibold">{date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}</div>
-                      {isToday && <div className="text-[10px] font-semibold leading-3 text-[var(--color-calendar-sage)]">היום</div>}
-                      <div className="mt-0.5 text-[10px]">{nonWorkingLabel}</div>
-                    </div>
-                  ) : (
+                  const summary = dateSummaryByDate.get(dateKey) ?? { hours: 0, jobs: 0, assigned: 0, required: 0 };
+                  const staffedPercent = summary.required > 0
+                    ? Math.min(100, Math.round((summary.assigned / summary.required) * 100))
+                    : 0;
+                  return (
                     <div
                       key={`head-${dateKey}`}
-                      className={`group/date relative min-w-0 border-l border-[var(--color-border)] p-2.5 text-center text-gray-700 ${isToday ? 'bg-[var(--color-calendar-sage-soft)] text-[var(--color-calendar-sage)] shadow-[inset_0_2px_0_var(--color-calendar-sage)]' : ''}`}
+                      className={`group/date relative min-h-[88px] min-w-0 border-l border-[var(--color-border)] p-2 text-center ${
+                        isNonWorkingDay || isPast
+                          ? 'bg-[var(--color-background)] text-gray-500'
+                          : isToday
+                            ? 'bg-[var(--color-calendar-sage-soft)] text-[var(--color-calendar-sage)] shadow-[inset_0_2px_0_var(--color-calendar-sage)]'
+                            : 'bg-[var(--color-background)] text-gray-700'
+                      }`}
                     >
                       <div className="text-xs">{date.toLocaleDateString('he-IL', { weekday: 'short' })}</div>
                       <div className="text-xs font-semibold">{date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}</div>
-                      {isToday && <div className="text-[10px] font-semibold leading-3 text-[var(--color-calendar-sage)]">היום</div>}
-                      {nonWorkingLabel && <div className="text-[10px] text-[var(--color-calendar-sand)]">{nonWorkingLabel}</div>}
-                      <button
-                        type="button"
-                        onClick={() => setQuickCreateDate(dateKey)}
-                        aria-label={`יצירת עבודה בתאריך ${dateKey}`}
-                        title="יצירת עבודה"
-                        className="absolute left-1 top-1 inline-flex h-6 w-6 items-center justify-center bg-[var(--color-calendar-sage)] text-white opacity-0 transition-opacity hover:bg-primary-700 focus:opacity-100 group-hover/date:opacity-100"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                      </button>
+                      <div className="mt-1 flex items-center justify-center gap-2 text-[9px] text-[var(--color-text-muted)]">
+                        <span className="inline-flex items-center gap-0.5"><Clock3 className="h-2.5 w-2.5" />{summary.hours.toFixed(summary.hours % 1 ? 1 : 0)}</span>
+                        <span className="inline-flex items-center gap-0.5"><BriefcaseBusiness className="h-2.5 w-2.5" />{summary.jobs}</span>
+                        <span className="inline-flex items-center gap-0.5"><UsersRound className="h-2.5 w-2.5" />{summary.assigned}</span>
+                      </div>
+                      <div className={`mt-1.5 h-1 overflow-hidden rounded-full ${summary.required > 0 ? 'bg-rose-200' : 'bg-gray-200'}`}>
+                        <div className="h-full bg-emerald-500" style={{ width: `${staffedPercent}%` }} />
+                      </div>
+                      {isToday && <div className="mt-0.5 text-[9px] font-semibold leading-3 text-[var(--color-calendar-sage)]">היום</div>}
+                      {nonWorkingLabel && <div className="mt-0.5 text-[9px] text-[var(--color-calendar-sand)]">{nonWorkingLabel}</div>}
+                      {!isNonWorkingDay && !isPast && (
+                        <div data-date-menu className="absolute left-1 top-1">
+                          <button
+                            type="button"
+                            onClick={() => setDateMenuKey((current) => current === dateKey ? null : dateKey)}
+                            aria-label={`פעולות לתאריך ${dateKey}`}
+                            aria-expanded={dateMenuKey === dateKey}
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-gray-600 opacity-0 shadow-sm transition-opacity hover:text-primary-700 focus:opacity-100 group-hover/date:opacity-100"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </button>
+                          {dateMenuKey === dateKey && (
+                            <div className="absolute left-0 top-7 z-50 w-36 border border-[var(--color-border-strong)] bg-[var(--color-background)] p-1 text-right shadow-lg">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDateMenuKey(null);
+                                  setQuickCreateDate(dateKey);
+                                }}
+                                className="flex w-full items-center gap-2 px-2 py-2 text-xs font-medium text-gray-700 hover:bg-[var(--color-calendar-sage-soft)]"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                                יצירת עבודה
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
 
-              <div className="grid border-b border-[var(--color-border)] bg-[var(--color-calendar-sand-soft)]" style={shiftGridStyle}>
-                <div className="p-2.5 border-l border-gray-200 flex items-center gap-1.5 text-xs font-semibold text-gray-700">
-                  <AlertTriangle className="h-3.5 w-3.5 text-[var(--color-calendar-sand)]" />
+              <div className="grid border-b border-[var(--color-border)] bg-[var(--color-surface)]" style={shiftGridStyle}>
+                <div className="sticky right-0 z-20 flex items-center gap-1.5 border-l border-gray-200 bg-[var(--color-surface)] p-2.5 text-xs font-semibold text-gray-700">
+                  <FileText className="h-3.5 w-3.5 text-[var(--color-calendar-sage)]" />
+                  מידע יומי
+                </div>
+                {visibleShiftDates.map((date) => {
+                  const dateKey = toDateKeyFromDate(date);
+                  const entry = dailyInfoByDate.get(dateKey);
+                  const isNonWorkingDay = isWorkCreationBlockedDay(dateKey);
+                  return (
+                    <div key={`daily-info-${dateKey}`} className="group/daily min-h-11 border-l border-[var(--color-border)] p-1.5">
+                      {!isNonWorkingDay && (
+                        <button
+                          type="button"
+                          onClick={() => openDailyInfo(dateKey)}
+                          aria-label={`${entry ? 'עריכת' : 'הוספת'} מידע יומי לתאריך ${dateKey}`}
+                          className={`flex h-full min-h-8 w-full items-center justify-center gap-1.5 rounded-md px-2 text-[10px] transition-colors ${
+                            entry
+                              ? 'bg-[var(--color-calendar-sage-soft)] font-medium text-[var(--color-calendar-sage)]'
+                              : 'text-gray-300 hover:bg-primary-50 hover:text-primary-600'
+                          }`}
+                        >
+                          {entry ? (
+                            <span className="line-clamp-2">{entry.title || entry.body}</span>
+                          ) : (
+                            <Plus className="h-4 w-4 opacity-0 transition-opacity group-hover/daily:opacity-100" />
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="sticky top-[88px] z-20 grid border-b border-[var(--color-border)] bg-[var(--color-calendar-sand-soft)] shadow-sm" style={shiftGridStyle}>
+                <div className="sticky right-0 z-30 flex items-center gap-1.5 border-l border-gray-200 bg-[var(--color-calendar-sand-soft)] p-2.5 text-xs font-semibold text-gray-700">
+                  <WandSparkles className="h-3.5 w-3.5 text-[var(--color-calendar-sand)]" />
                   פערי איוש
                 </div>
                 {visibleShiftDates.map((date) => {
@@ -1276,14 +1397,18 @@ export default function DashboardPage() {
                           {openWorks.slice(0, 2).map(({ work }) => (
                             <div
                               key={`unassigned-${work.id}`}
-                              className={`group/staffing relative w-full rounded-md border px-2 py-1 text-right ${getShiftTypeCardClasses(work.jobType)}`}
+                              className={`group/staffing relative w-full rounded-md border px-2 py-1 text-right shadow-sm ${getShiftTypeCardClasses(work.jobType)}`}
                             >
+                              <span className="absolute -right-1.5 -top-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-600 px-1 text-[10px] font-bold text-white shadow-sm">
+                                {Math.max(work.requiredWorkers - work.approvedWorkers, 0)}
+                              </span>
                               <button
                                 type="button"
                                 onClick={() => work.jobId && setSelectedJobId(work.jobId)}
-                                className="block w-full pr-0 text-right"
+                                className="block w-full pr-2 text-right"
                               >
-                                <span className="truncate text-[11px] font-semibold text-gray-900">{work.customerName}</span>
+                                <span className="block text-[10px] font-semibold text-gray-700">{work.startTime}–{work.endTime}</span>
+                                <span className="block truncate text-[11px] font-semibold text-gray-900">{work.customerName}</span>
                               </button>
                               <StaffingGapSummary
                                 shifts={work.assignedWorkers}
@@ -1307,7 +1432,7 @@ export default function DashboardPage() {
                   className="grid border-b border-gray-100"
                   style={shiftGridStyle}
                 >
-                 <div className="p-2.5 border-l border-gray-100">
+                 <div className="sticky right-0 z-10 border-l border-gray-100 bg-[var(--color-background)] p-2.5">
                    <p className="text-xs font-semibold text-gray-900">{worker.name}</p>
                     <p className="text-xs text-gray-500">
                       {worker.role}
@@ -1371,7 +1496,7 @@ export default function DashboardPage() {
                                     onClick={() => shift.jobId && setSelectedJobId(shift.jobId)}
                                     className="block w-full text-right"
                                   >
-                                  <span className="block text-[11px] font-semibold text-gray-900">09:00-{addHoursToTime('09:00', shift.hours)}</span>
+                                  <span className="block text-[11px] font-semibold text-gray-900">{shift.startTime}–{shift.endTime}</span>
                                   <span className="block text-[11px] text-gray-600">{shift.customerName}</span>
                                   {badge && (
                                     <span className={`mt-0.5 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}>
@@ -1400,10 +1525,10 @@ export default function DashboardPage() {
                               });
                             }}
                             aria-label={`שיבוץ ${worker.name} בתאריך ${dateKey}`}
-                            className="group flex h-full min-h-[54px] w-full flex-col items-center justify-center rounded-md text-[11px] text-gray-300 transition-colors hover:bg-primary-50 hover:text-primary-600"
+                            className="group flex h-full min-h-[54px] w-full items-center justify-center rounded-md text-gray-300 transition-colors hover:bg-primary-50 hover:text-primary-600"
                           >
-                            <span className="inline-flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                              <Plus className="h-3 w-3" /> שיבוץ
+                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-current opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100">
+                              <Plus className="h-4 w-4" />
                             </span>
                           </button>
                         ) : (
@@ -1419,50 +1544,85 @@ export default function DashboardPage() {
       </div>
 
       <SidePanel
+        open={dailyInfoTargetDate !== null}
+        onClose={() => setDailyInfoTargetDate(null)}
+        title={
+          dailyInfoTargetDate
+            ? `מידע יומי · ${parseDateKey(dailyInfoTargetDate).toLocaleDateString('he-IL', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+              })}`
+            : 'מידע יומי'
+        }
+      >
+        <div className="space-y-5 p-6" dir="rtl">
+          <div>
+            <h4 className="font-semibold text-gray-900">הודעה יומית</h4>
+            <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+              ההודעה תוצג לכל העובדות ביום הזה, גם אם הן לא משובצות או סימנו שאינן זמינות.
+            </p>
+          </div>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-gray-700">כותרת</span>
+            <input
+              value={dailyInfoTitle}
+              onChange={(event) => setDailyInfoTitle(event.target.value)}
+              maxLength={100}
+              placeholder="למשל: דגשים ליום העבודה"
+              className="w-full border border-[var(--color-border-strong)] px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-gray-700">הודעה</span>
+            <textarea
+              value={dailyInfoBody}
+              onChange={(event) => setDailyInfoBody(event.target.value)}
+              maxLength={1000}
+              rows={7}
+              placeholder="פרטים והנחיות שחשוב שכל העובדות יראו"
+              className="w-full resize-y border border-[var(--color-border-strong)] px-3 py-2"
+            />
+            <span className="mt-1 block text-left text-[10px] text-[var(--color-text-muted)]">
+              {dailyInfoBody.length}/1000
+            </span>
+          </label>
+          <div className="border-y border-[var(--color-border)] py-3 text-sm text-gray-600">
+            <span className="font-medium text-gray-800">מי רואה:</span> כל העובדות
+          </div>
+          {dailyInfoError && (
+            <p className="border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{dailyInfoError}</p>
+          )}
+          <div className="flex items-center justify-between gap-3">
+            {dailyInfoTargetDate && dailyInfoByDate.has(dailyInfoTargetDate) ? (
+              <button
+                type="button"
+                onClick={() => void deleteDailyInfo()}
+                disabled={dailyInfoBusy}
+                className="px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+              >
+                מחיקת ההודעה
+              </button>
+            ) : <span />}
+            <button
+              type="button"
+              onClick={() => void saveDailyInfo()}
+              disabled={dailyInfoBusy}
+              className="bg-[var(--color-calendar-sage)] px-5 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {dailyInfoBusy ? 'שומרת…' : 'שמירה'}
+            </button>
+          </div>
+        </div>
+      </SidePanel>
+
+      <SidePanel
         open={Boolean(selectedJobId)}
         onClose={() => setSelectedJobId(null)}
         title="פרטי עבודה"
         widthClassName="sm:max-w-2xl xl:max-w-3xl"
       >
         {selectedJobId && <OwnerJobDetail jobId={selectedJobId} embedded />}
-      </SidePanel>
-
-      <SidePanel
-        open={exceptionsPanelOpen}
-        onClose={() => setExceptionsPanelOpen(false)}
-        title="חריגות שדורשות טיפול"
-      >
-        <div className="space-y-5 p-6" dir="rtl">
-          {exceptionSections.length === 0 ? (
-            <p className="border-y border-[var(--color-border)] py-6 text-sm text-[var(--color-text-secondary)]">
-              אין כרגע חריגות פתוחות.
-            </p>
-          ) : (
-            exceptionSections.map((section) => (
-              <section key={section.key}>
-                <h3 className="border-b border-[var(--color-border)] pb-2 text-xs font-semibold text-[var(--color-text-secondary)]">
-                  {section.title}
-                </h3>
-                <div className="divide-y divide-[var(--color-border)]">
-                  {section.items.map((item) => (
-                    <Link
-                      key={item.id}
-                      href={item.href}
-                      onClick={() => setExceptionsPanelOpen(false)}
-                      className="grid gap-1 py-3 hover:text-[var(--color-calendar-sage)]"
-                    >
-                      <span className="text-sm font-semibold">{item.projectName}</span>
-                      <span className="text-xs text-[var(--color-text-secondary)]">
-                        {item.issue}{item.dateLabel ? ` · ${item.dateLabel}` : ''}
-                      </span>
-                      <span className="text-xs font-semibold text-[var(--color-calendar-sage)]">{item.actionLabel} ←</span>
-                    </Link>
-                  ))}
-                </div>
-              </section>
-            ))
-          )}
-        </div>
       </SidePanel>
 
       <SidePanel

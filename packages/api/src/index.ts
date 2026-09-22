@@ -25,6 +25,7 @@ import { expensesRoutes } from './routes/expenses.js';
 import { reportsRoutes } from './routes/reports.js';
 import { settingsRoutes } from './routes/settings.js';
 import { notificationsRoutes } from './routes/notifications.js';
+import { dailyInfoRoutes } from './routes/dailyInfo.js';
 import { auditRoutes } from './routes/audit.js';
 import { webhooksRoutes } from './routes/webhooks.js';
 import { schedulerRoutes } from './routes/scheduler.js';
@@ -175,6 +176,7 @@ async function build() {
   await app.register(reportsRoutes,        { prefix: `${prefix}/reports` });
   await app.register(settingsRoutes,       { prefix: `${prefix}/settings` });
   await app.register(notificationsRoutes,  { prefix: `${prefix}/notifications` });
+  await app.register(dailyInfoRoutes,      { prefix: `${prefix}/daily-info` });
   await app.register(adminRoutes,          { prefix: `${prefix}/admin` });
   await app.register(auditRoutes,          { prefix: `${prefix}/audit` });
   await app.register(schedulerRoutes,      { prefix: `${prefix}/scheduler` });
