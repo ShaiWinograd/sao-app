@@ -1,10 +1,10 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useUser, useAuth } from '@clerk/nextjs';
 import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone, workerRowBadge, fillsRequiredSlot, workerRowAssignments, getStaffingIssueBreakdown, formatBusinessDate } from '@workforce/shared';
-import { AlertTriangle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Plus, XCircle } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Plus, Repeat2, XCircle } from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
 import { QuickCreateForm } from '../../components/jobs/QuickCreateForm';
 import { JoinRequestsPanel } from '../../components/owner/JoinRequestsPanel';
@@ -349,6 +349,7 @@ export default function DashboardPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   // Job-first Quick Create is opened from a date-level action.
   const [quickCreateDate, setQuickCreateDate] = useState<string | null>(null);
+  const redirectedCreateHandled = useRef(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [joinPanelOpen, setJoinPanelOpen] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -392,6 +393,14 @@ export default function DashboardPage() {
   const [customerMode, setCustomerMode] = useState<'existing' | 'new'>('new');
   const [dayJobsPickerDateKey, setDayJobsPickerDateKey] = useState<string | null>(null);
   const [exceptionsPanelOpen, setExceptionsPanelOpen] = useState(false);
+
+  useEffect(() => {
+    if (redirectedCreateHandled.current) return;
+    const createDate = new URLSearchParams(window.location.search).get('createDate');
+    if (!createDate || !/^\d{4}-\d{2}-\d{2}$/.test(createDate)) return;
+    redirectedCreateHandled.current = true;
+    setQuickCreateDate(createDate);
+  }, []);
 
   // Load form templates when the create modal is opened
   useEffect(() => {
@@ -645,28 +654,6 @@ export default function DashboardPage() {
       hasAssignedManager: Boolean(work.actualTeamLeadName),
     });
 
-  const worksSummary = useMemo(() => {
-    const totalWorks = displayedWorks.length;
-    const totalRequired = displayedWorks.reduce((sum, work) => sum + work.requiredWorkers, 0);
-    // This top summary block reports agreed-vs-assigned totals on a single
-    // `assignedWorkers.length` basis (assigned/required, open, completion %), so
-    // all three stay internally consistent. The staffing-shortage surfaces (grid
-    // badge, attention cards, daily counter) use `workStaffing` instead.
-    const totalAssigned = displayedWorks.reduce((sum, work) => sum + work.approvedWorkers, 0);
-    const openSlots = displayedWorks.reduce(
-      (sum, work) => sum + Math.max(work.requiredWorkers - work.approvedWorkers, 0),
-      0,
-    );
-    const completionRate = totalRequired > 0 ? Math.round((totalAssigned / totalRequired) * 100) : 0;
-
-    return {
-      totalWorks,
-      totalRequired,
-      totalAssigned,
-      openSlots,
-      completionRate,
-    };
-  }, [displayedWorks]);
   const futureWorks = useMemo(
     () => dashboardWorks.filter((work) => work.dateKey >= todayDateKey),
     [dashboardWorks, todayDateKey],
@@ -916,40 +903,6 @@ export default function DashboardPage() {
     return map;
   }, [displayedWorks]);
 
-  const dailyUnfilledSummary = useMemo(() => {
-    return visibleShiftDates.map((date) => {
-      const dateKey = toDateKeyFromDate(date);
-      const nonWorkingLabel = getNonWorkingDayLabel(dateKey);
-      const isNonWorkingDay = isWorkCreationBlockedDay(dateKey);
-      const dayWorks = displayedWorks.filter((work) => work.dateKey === dateKey);
-      const required = dayWorks.reduce((sum, work) => sum + work.requiredWorkers, 0);
-      const assigned = dayWorks.reduce((sum, work) => sum + Math.min(work.approvedWorkers, work.requiredWorkers), 0);
-      const unfilledShifts = dayWorks.filter((work) => workStaffing(work).workerShortageSlots > 0).length;
-      const openSlots = Math.max(required - assigned, 0);
-      const coverage = required > 0 ? assigned / required : 1;
-      const coverageClass = isNonWorkingDay
-        ? 'bg-[var(--color-border-strong)]'
-        : coverage >= 1
-          ? 'bg-[var(--color-calendar-sage)]'
-          : coverage >= 0.75
-            ? 'bg-[var(--color-calendar-sand)]'
-            : 'bg-[var(--color-calendar-unavailable)]';
-      return {
-        dateKey,
-        dayLabel: date.toLocaleDateString('he-IL', { weekday: 'short' }),
-        dateLabel: date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' }),
-        nonWorkingLabel,
-        isNonWorkingDay,
-        required,
-        assigned,
-        unfilledShifts,
-        openSlots,
-        coverage,
-        coverageClass,
-      };
-    });
-  }, [visibleShiftDates, displayedWorks]);
-
   const unassignedWorksByDate = useMemo(() => {
     const map = new Map<string, Array<{ work: ActiveWork; open: number }>>();
     displayedWorks.forEach((work) => {
@@ -992,16 +945,6 @@ export default function DashboardPage() {
     }
   };
 
-  const shiftCountByWorkerName = useMemo(() => {
-    const map = new Map<string, number>();
-    displayedWorks.forEach((work) => {
-      workerRowAssignments(work.assignedWorkers).forEach((assignedWorker) => {
-        map.set(assignedWorker.name, (map.get(assignedWorker.name) ?? 0) + 1);
-      });
-    });
-    return map;
-  }, [displayedWorks]);
-
   const editingWork = useMemo(
     () => (editingWorkId ? dashboardWorks.find((work) => work.id === editingWorkId) ?? null : null),
     [dashboardWorks, editingWorkId],
@@ -1033,16 +976,6 @@ export default function DashboardPage() {
         title="היום בעסק"
         description={mounted ? greetingText : '\u00A0'}
         icon={<CalendarDays className="h-6 w-6" />}
-        action={
-          <button
-            type="button"
-            onClick={() => setQuickCreateDate(todayDateKey)}
-            className="inline-flex min-h-11 w-full items-center justify-center gap-2 bg-[var(--color-calendar-sage)] px-5 py-2.5 text-sm font-medium text-[var(--color-background)] transition-colors hover:bg-primary-700 sm:w-auto"
-          >
-            <span aria-hidden="true">＋</span>
-            יצירת עבודה
-          </button>
-        }
       />
 
       {(priorityAttention.length > 0 || attentionItems.length > 0) && (
@@ -1259,10 +1192,12 @@ export default function DashboardPage() {
                 תצוגת משמרות {selectedRangeContextLabel} ({displayedWorks.length})
               </h2>
               <Link
-                href="/jobs"
-                className="text-xs font-medium text-[var(--color-calendar-sage)] hover:underline"
+                href="/shifts/swaps"
+                aria-label="החלפות משמרות"
+                title="החלפות משמרות"
+                className="inline-flex h-8 w-8 items-center justify-center text-[var(--color-calendar-sage)] hover:bg-[var(--color-calendar-sage-soft)]"
               >
-                הצג הכל
+                <Repeat2 className="h-4 w-4" />
               </Link>
             </div>
 
@@ -1283,18 +1218,24 @@ export default function DashboardPage() {
                       <div className="mt-0.5 text-[10px]">{nonWorkingLabel}</div>
                     </div>
                   ) : (
-                    <button
-                      type="button"
+                    <div
                       key={`head-${dateKey}`}
-                      onClick={() => setQuickCreateDate(dateKey)}
-                      aria-label={`יצירת עבודה בתאריך ${dateKey}`}
-                      className={`min-w-0 border-l border-[var(--color-border)] p-2.5 text-center text-gray-700 ${isToday ? 'bg-[var(--color-calendar-sage-soft)] text-[var(--color-calendar-sage)] shadow-[inset_0_2px_0_var(--color-calendar-sage)]' : ''}`}
+                      className={`group/date relative min-w-0 border-l border-[var(--color-border)] p-2.5 text-center text-gray-700 ${isToday ? 'bg-[var(--color-calendar-sage-soft)] text-[var(--color-calendar-sage)] shadow-[inset_0_2px_0_var(--color-calendar-sage)]' : ''}`}
                     >
                       <div className="text-xs">{date.toLocaleDateString('he-IL', { weekday: 'short' })}</div>
                       <div className="text-xs font-semibold">{date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}</div>
                       {isToday && <div className="text-[10px] font-semibold leading-3 text-[var(--color-calendar-sage)]">היום</div>}
                       {nonWorkingLabel && <div className="text-[10px] text-[var(--color-calendar-sand)]">{nonWorkingLabel}</div>}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => setQuickCreateDate(dateKey)}
+                        aria-label={`יצירת עבודה בתאריך ${dateKey}`}
+                        title="יצירת עבודה"
+                        className="absolute left-1 top-1 inline-flex h-6 w-6 items-center justify-center bg-[var(--color-calendar-sage)] text-white opacity-0 transition-opacity hover:bg-primary-700 focus:opacity-100 group-hover/date:opacity-100"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -1351,9 +1292,7 @@ export default function DashboardPage() {
                   style={shiftGridStyle}
                 >
                  <div className="p-2.5 border-l border-gray-100">
-                   <p className="text-xs font-semibold text-gray-900">
-                      {worker.name} ({shiftCountByWorkerName.get(worker.name) ?? 0})
-                    </p>
+                   <p className="text-xs font-semibold text-gray-900">{worker.name}</p>
                     <p className="text-xs text-gray-500">
                       {worker.role}
                     </p>
@@ -1456,30 +1395,6 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
-        <div className="shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]">
-          <div className="px-3 py-2.5 border-y border-gray-100">
-            <h3 className="font-semibold text-gray-900 text-sm">סיכום שיבוץ לעבודות {selectedRangeContextLabel}</h3>
-            <p className="text-xs text-gray-500 mt-1 mb-2">מבוסס על העבודות שמוצגות מעל</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <div>
-                <p className="text-xs text-gray-600">מספר עבודות</p>
-                <p className="font-semibold text-sm text-gray-900">{worksSummary.totalWorks}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-600">תקנים משובצים</p>
-                <p className="font-semibold text-sm text-gray-900">{worksSummary.totalAssigned}/{worksSummary.totalRequired}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-600">פערי שיבוץ פתוחים</p>
-                <p className={`font-semibold text-sm ${worksSummary.openSlots > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{worksSummary.openSlots}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-600">אחוז שיבוץ</p>
-                <p className={`font-semibold text-sm ${worksSummary.completionRate >= 95 ? 'text-emerald-600' : 'text-amber-600'}`}>{worksSummary.completionRate}%</p>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
       <SidePanel
