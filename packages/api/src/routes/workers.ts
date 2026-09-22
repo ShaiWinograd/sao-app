@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { createClerkClient } from '@clerk/clerk-sdk-node';
 import { prisma } from '../lib/prisma.js';
+import { findEligibleReplacementCandidates } from '../domain/replacementCandidates.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
 import { CreateWorkerSchema, UpdateWorkerSchema, CreateWorkerAvailabilitySchema, UpdateWorkerProfileSchema, UserRole, rankWorkerAvailability, findCandidateDates, isUnavailableOn, isUnavailableDuring } from '@workforce/shared';
 
@@ -301,6 +302,17 @@ export async function workersRoutes(app: FastifyInstance) {
       orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
     });
     return workers.map((w) => ({ id: w.id, name: `${w.firstName} ${w.lastName}`.trim() }));
+  });
+
+  app.get('/replacement-candidates', { preHandler: [authenticate, requireAnyRole] }, async (req, reply) => {
+    const user = (req as any).user;
+    const { shiftId } = req.query as { shiftId?: string };
+    if (!shiftId) return reply.status(400).send({ error: 'shiftId is required' });
+    const worker = await prisma.worker.findUnique({ where: { userId: user.id }, select: { id: true } });
+    if (!worker) return reply.status(403).send({ error: 'Worker profile not found' });
+    const candidates = await findEligibleReplacementCandidates(shiftId, worker.id);
+    if (!candidates) return reply.status(404).send({ error: 'Shift not found' });
+    return candidates.map(({ id, name }) => ({ id, name }));
   });
 
   // Worker: update own contact details (phone, email, home area).
