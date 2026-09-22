@@ -324,10 +324,11 @@ test.describe('Worker desktop layout', () => {
     await expect(page.locator(`[data-worker-date="${nextDateKey}"]`)).toBeInViewport();
     await expect(page.getByRole('heading', { name: 'יומן' })).toBeVisible();
     await expect(page.getByText('העבודה הבאה')).toBeVisible();
-    await expect(page.getByText('משפחת לוי').first()).toBeVisible();
     const nextJobRibbon = page.getByRole('button', { name: /העבודה הבאה/ });
+    await expect(nextJobRibbon).not.toContainText('משפחת לוי');
     await nextJobRibbon.click();
     await expect(nextJobRibbon).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('next-job-details')).toContainText('משפחת לוי');
     await page.getByRole('button', { name: /תל אביב/ }).first().click();
     await expect(page.getByTitle('מפה של תל אביב')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'יומן' })).toBeVisible();

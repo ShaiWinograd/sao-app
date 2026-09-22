@@ -595,7 +595,6 @@ export default function WorkerShiftsPage() {
           >
             <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
               <span className="opacity-70">העבודה הבאה</span>
-              <span className="truncate">{nextMyShift.customerName}</span>
               <span className="opacity-80">
                 {shortDate(nextMyShift.date)} · <bdi>{formatScheduledTime(nextMyShift.plannedStart)}–{formatScheduledTime(nextMyShift.plannedEnd)}</bdi>
               </span>
@@ -905,8 +904,9 @@ function NextShiftDetails({
   onReplacement: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3 text-sm">
+    <div data-testid="next-job-details" className="flex flex-wrap items-end justify-between gap-3 text-sm">
       <div className="space-y-2">
+        <p className="font-semibold text-gray-900">{shift.customerName}</p>
         {shift.address && <InlineAddressMap address={shift.address} compact />}
         <AssignedNames workers={shift.assignedWorkers} />
       </div>
