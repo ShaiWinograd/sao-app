@@ -573,18 +573,17 @@ export default function WorkerShiftsPage() {
       <PageHeader
         eyebrow="YOUR WORK, BEAUTIFULLY ARRANGED"
         title="יומן"
-        description="כל מה שצריך לדעת ולעשות לקראת העבודה הבאה."
+        action={(
+          <button
+            type="button"
+            onClick={downloadCalendar}
+            aria-label="הוספה ל-Google או Apple Calendar"
+            className="text-xs font-semibold text-primary-700 underline decoration-primary-300 underline-offset-4 hover:text-primary-900"
+          >
+            ייצוא ליומן
+          </button>
+        )}
       />
-
-      <div className="flex flex-wrap items-center justify-between gap-3 border-y border-[var(--color-border-strong)] py-3">
-        <div>
-          <p className="text-sm font-semibold text-[#292724]">היומן של כולן</p>
-          <p className="text-xs text-[var(--color-text-secondary)]">שיבוצים, הזמנות שמחכות לאישורך ומשמרות פתוחות במקום אחד.</p>
-        </div>
-        <button type="button" onClick={downloadCalendar} className="border border-primary-700 px-3 py-2 text-xs font-semibold text-primary-800">
-          הוספה ל-Google או Apple Calendar
-        </button>
-      </div>
 
       {nextMyShift && (
         <section>
@@ -611,7 +610,7 @@ export default function WorkerShiftsPage() {
       )}
 
       <section
-        className="sticky top-0 z-30 -mx-3 bg-[var(--color-background)] px-3 pb-3 pt-2 shadow-[0_1px_0_var(--color-border)] sm:-mx-6 sm:px-6"
+        className="sticky top-0 z-30 -mx-3 bg-[var(--color-background)] px-3 pb-3 pt-2 sm:-mx-6 sm:px-6"
         data-swipe-navigation="ignore"
       >
         <div className="mx-auto mb-3 flex max-w-[900px] flex-wrap items-end justify-between gap-3">
@@ -643,7 +642,7 @@ export default function WorkerShiftsPage() {
           </div>
         </div>
         <div
-          className="mx-auto flex max-w-[900px] gap-1 overflow-x-auto border-y border-[var(--color-border)] py-3"
+          className="mx-auto flex max-w-[900px] gap-1 overflow-x-auto py-2"
           data-testid="worker-week-calendar"
         >
           {calendarDays.map((date) => {
@@ -744,7 +743,7 @@ export default function WorkerShiftsPage() {
                       : ''
                 }`}
               >
-                <div className="flex flex-wrap items-center gap-3 border-b border-[var(--color-border)] py-2">
+                <div className="flex flex-wrap items-center gap-3 py-2">
                   <h2 className="font-display text-lg text-[#292724]">{new Date(`${dateKey}T00:00:00`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>
                   {nonWorkingDay ? (
                     <span className="text-xs font-medium text-gray-400">{nonWorkingDay}</span>
@@ -774,11 +773,13 @@ export default function WorkerShiftsPage() {
                   <div className="flex min-h-10 items-center px-1 py-1.5">
                     <span className="text-xs text-[var(--color-text-muted)]">{nonWorkingDay ? 'יום מנוחה' : 'אין עבודות'}</span>
                   </div>
-                ) : shifts.map((s) => (
+                ) : shifts.map((s, index) => (
                 <div
                   key={s.jobId}
                   data-worker-shift={s.myShiftId ?? undefined}
-                  className={`border-b border-[var(--color-border)] px-1 py-2 transition-shadow ${
+                  className={`px-1 py-2 transition-shadow ${
+                    index > 0 ? 'border-t border-[var(--color-border)]' : ''
+                  } ${
                     focusedShiftId && s.myShiftId === focusedShiftId
                       ? 'ring-2 ring-inset ring-primary-500'
                       : ''

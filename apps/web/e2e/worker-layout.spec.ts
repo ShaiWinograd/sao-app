@@ -187,7 +187,7 @@ test.describe('Worker desktop layout', () => {
     await page.goto('/worker/history');
     await page.getByRole('link', { name: 'מעבר ליומן' }).click();
     await expect(page).toHaveURL(/\/worker$/);
-    await expect(page.getByText('היומן של כולן')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'הוספה ל-Google או Apple Calendar' })).toBeVisible();
 
     const main = page.locator('main');
     await main.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: 300, clientY: 400 });
@@ -331,7 +331,7 @@ test.describe('Worker desktop layout', () => {
     await expect(nextJobRibbon).toHaveAttribute('aria-expanded', 'true');
     await page.getByRole('button', { name: /תל אביב/ }).first().click();
     await expect(page.getByTitle('מפה של תל אביב')).toBeVisible();
-    await expect(page.getByText('היומן של כולן')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'יומן' })).toBeVisible();
     await page.getByRole('button', { name: 'חזרה להיום' }).click();
     const availableDay = page.locator(`#worker-day-${availabilityDateKey}`).getByRole('button', { name: 'זמינות' });
     await expect(availableDay).toBeVisible();
