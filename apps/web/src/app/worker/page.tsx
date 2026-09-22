@@ -595,7 +595,6 @@ export default function WorkerShiftsPage() {
           >
             <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
               <span className="opacity-70">העבודה הבאה</span>
-              <span className="truncate">{nextMyShift.customerName}</span>
               <span className="opacity-80">
                 {shortDate(nextMyShift.date)} · <bdi>{formatScheduledTime(nextMyShift.plannedStart)}–{formatScheduledTime(nextMyShift.plannedEnd)}</bdi>
               </span>
@@ -672,17 +671,21 @@ export default function WorkerShiftsPage() {
                   {date.toLocaleDateString('he-IL', { weekday: 'long' })}
                 </span>
                 <span className="relative mt-1 inline-flex pb-3">
-                  <span className="font-display text-2xl font-semibold leading-none">{date.getDate()}</span>
-                  <span className="absolute bottom-0 left-1/2 flex h-1.5 -translate-x-1/2 items-center gap-1">
-                    <span
-                      data-worker-indicator="shift"
-                      className={`h-1.5 w-1.5 rounded-full ${hasShift ? (active && !nonWorkingDay ? 'bg-white' : 'bg-primary-500') : 'bg-transparent'}`}
-                    />
-                    <span
-                      aria-label={hasAvailability ? 'הוגדרה זמינות' : undefined}
-                      data-worker-indicator="availability"
-                      className={`h-1.5 w-1.5 rounded-full ${hasAvailability ? (active && !nonWorkingDay ? 'bg-white/70' : 'bg-[#8b7d84]') : 'bg-transparent'}`}
-                    />
+                  <span data-worker-day-number className="font-display text-2xl font-semibold leading-none">{date.getDate()}</span>
+                  <span data-worker-indicators className="absolute bottom-0 left-1/2 flex h-1.5 -translate-x-1/2 items-center gap-1">
+                    {hasShift && (
+                      <span
+                        data-worker-indicator="shift"
+                        className={`h-1.5 w-1.5 rounded-full ${active && !nonWorkingDay ? 'bg-white' : 'bg-primary-500'}`}
+                      />
+                    )}
+                    {hasAvailability && (
+                      <span
+                        aria-label="הוגדרה זמינות"
+                        data-worker-indicator="availability"
+                        className={`h-1.5 w-1.5 rounded-full ${active && !nonWorkingDay ? 'bg-white/70' : 'bg-[#8b7d84]'}`}
+                      />
+                    )}
                   </span>
                 </span>
               </button>
@@ -901,8 +904,9 @@ function NextShiftDetails({
   onReplacement: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3 text-sm">
+    <div data-testid="next-job-details" className="flex flex-wrap items-end justify-between gap-3 text-sm">
       <div className="space-y-2">
+        <p className="font-semibold text-gray-900">{shift.customerName}</p>
         {shift.address && <InlineAddressMap address={shift.address} compact />}
         <AssignedNames workers={shift.assignedWorkers} />
       </div>

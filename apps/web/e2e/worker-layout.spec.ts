@@ -320,15 +320,15 @@ test.describe('Worker desktop layout', () => {
     await expect(page.locator(`#worker-day-${nextSaturdayKey}`)).toHaveAttribute('data-non-working', 'true');
     await expect(page.locator(`#worker-day-${nextSaturdayKey}`).getByRole('button', { name: 'זמינות' })).toHaveCount(0);
     await expect(page.locator('[data-worker-indicator="shift"]').first()).toHaveClass(/h-1\.5 w-1\.5/);
-    await expect(page.locator('[data-worker-indicator="availability"]').first()).toHaveClass(/h-1\.5 w-1\.5/);
     await expect(page.locator(`#worker-day-${nextDateKey}`)).toBeInViewport();
     await expect(page.locator(`[data-worker-date="${nextDateKey}"]`)).toBeInViewport();
     await expect(page.getByRole('heading', { name: 'יומן' })).toBeVisible();
     await expect(page.getByText('העבודה הבאה')).toBeVisible();
-    await expect(page.getByText('משפחת לוי').first()).toBeVisible();
     const nextJobRibbon = page.getByRole('button', { name: /העבודה הבאה/ });
+    await expect(nextJobRibbon).not.toContainText('משפחת לוי');
     await nextJobRibbon.click();
     await expect(nextJobRibbon).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('next-job-details')).toContainText('משפחת לוי');
     await page.getByRole('button', { name: /תל אביב/ }).first().click();
     await expect(page.getByTitle('מפה של תל אביב')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'יומן' })).toBeVisible();
@@ -347,6 +347,16 @@ test.describe('Worker desktop layout', () => {
     await availabilityDialog.getByRole('button', { name: 'סימון כלא זמינה' }).click();
     expect(availabilityPayload).toMatchObject({ type: 'DATE', startTime: '13:00', endTime: '17:00', reason: 'לימודים' });
     await expect(page.locator('[aria-label="הוגדרה זמינות"]')).toHaveCount(1);
+    await expect(page.locator('[data-worker-indicator="availability"]')).toHaveClass(/h-1\.5 w-1\.5/);
+    const indicatorAlignment = await page.locator(`[data-worker-date="${availabilityDateKey}"]`).evaluate((element) => {
+      const number = element.querySelector('[data-worker-day-number]')!.getBoundingClientRect();
+      const indicators = element.querySelector('[data-worker-indicators]')!.getBoundingClientRect();
+      return {
+        numberCenter: number.left + number.width / 2,
+        indicatorCenter: indicators.left + indicators.width / 2,
+      };
+    });
+    expect(Math.abs(indicatorAlignment.numberCenter - indicatorAlignment.indicatorCenter)).toBeLessThan(1);
 
     await expect(page).toHaveURL(/\/worker$/);
     await page.getByRole('button', { name: 'בקשת מחליפה' }).first().click();
