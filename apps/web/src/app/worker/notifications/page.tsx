@@ -75,9 +75,9 @@ export default function WorkerNotificationsPage() {
   const openNotification = useCallback(async (notification: Notification) => {
     if (!notification.isRead) await markRead(notification.id);
     if (notification.data?.shiftId) {
-      router.push(`/worker/shifts/${notification.data.shiftId}`);
+      router.push(`/worker?focusShiftId=${notification.data.shiftId}`);
     } else if (notification.data?.jobId) {
-      router.push('/worker');
+      router.push(`/worker?focusJobId=${notification.data.jobId}`);
     }
   }, [markRead, router]);
 
@@ -125,7 +125,7 @@ export default function WorkerNotificationsPage() {
                 <p className="mt-1 text-sm leading-6 text-[var(--color-text-secondary)]">{n.body}</p>
                 {(n.data?.shiftId || n.data?.jobId) && (
                   <p className="mt-2 text-xs font-semibold text-primary-700">
-                    {n.data.shiftId ? 'פתיחת המשמרת' : 'פתיחת היומן'} ←
+                    פתיחה ביומן ←
                   </p>
                 )}
               </div>

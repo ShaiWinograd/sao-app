@@ -523,7 +523,7 @@ export async function jobsRoutes(app: FastifyInstance) {
           data: {
             userId: worker.userId,
             title: 'שובצת למשמרת – נדרש אישורך',
-            body: `בעל/ת העסק שיבץ/ה אותך לעבודה בתאריך ${dateKey}. יש לאשר או לדחות ביומן.`,
+            body: `שובצת לעבודה בתאריך ${dateKey}. יש לאשר או לדחות ביומן.`,
             data: { type: 'DIRECT_ASSIGNMENT', shiftId: shift.id, jobId: job.id } as any,
           },
         });

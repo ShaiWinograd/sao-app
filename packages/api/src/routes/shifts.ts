@@ -314,7 +314,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
       data: {
         userId: worker.userId,
         title: 'שובצת למשמרת – נדרש אישורך',
-        body: `בעל/ת העסק שיבץ/ה אותך לעבודה בתאריך ${dk}. יש לאשר או לדחות מ"היומן שלי".`,
+        body: `שובצת לעבודה בתאריך ${dk}. יש לאשר או לדחות ביומן.`,
         data: { type: 'DIRECT_ASSIGNMENT', shiftId: shift.id, jobId: job.id } as any,
       },
     });
@@ -585,7 +585,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
         });
         const promoted = backups[0];
         if (!promoted) {
-          throw new AppError(409, 'DROP_LOCKED', 'לא ניתן לבטל פחות מ-48 שעות לפני העבודה ללא גיבוי זמין. פנה/י לבעל/ת העסק.');
+          throw new AppError(409, 'DROP_LOCKED', 'לא ניתן לבטל פחות מ-48 שעות לפני העבודה ללא גיבוי זמין. פנה/י לתמיכה.');
         }
         // Promote the earliest backup into a regular position.
         await tx.shift.update({ where: { id: promoted.id }, data: { assignmentRole: 'REGULAR' } });
@@ -1253,7 +1253,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
         data: [swap.fromWorker.userId, swap.toWorker.userId].map((userId) => ({
           userId,
           title: 'בקשת ההחלפה נדחתה',
-          body: 'בעל/ת העסק דחה/תה את החלפת המשמרות.',
+          body: 'בקשת החלפת המשמרות נדחתה.',
           data: { type: 'SWAP_DECISION', swapId: id, approved: false } as any,
         })),
       });
@@ -1426,7 +1426,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
       data: [fromShift.worker.userId, toShift.worker.userId].map((userId) => ({
         userId,
         title: 'המשמרת שלך הוחלפה',
-        body: `בעל/ת העסק החליף/ה את שיבוץ המשמרות בתאריך ${dateKey}.`,
+        body: `שיבוץ המשמרות בתאריך ${dateKey} הוחלף.`,
         data: { type: 'SWAP_OWNER', dateKey } as any,
       })),
     });
