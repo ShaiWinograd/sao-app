@@ -51,9 +51,9 @@ enum JobType {
   HOME_ORGANIZATION
 }
 
-// Owner-visible job lifecycle (spec §4). Every new job starts as RESERVATION
-// and is published to workers immediately (no draft state). ARCHIVED replaces
-// the old CANCELLED status; permanent deletion is a separate hard-delete.
+// Owner-visible job lifecycle (spec §4). RESERVATION is owner-only; APPROVED
+// jobs are published to workers. ARCHIVED replaces the old CANCELLED status;
+// permanent deletion is a separate hard-delete.
 enum JobStatus {
   RESERVATION
   APPROVED
@@ -862,6 +862,18 @@ model Notification {
   readAt DateTime?
 
   @@map("notifications")
+}
+
+model DailyInfo {
+  id              String   @id @default(cuid())
+  date            DateTime @unique @db.Date
+  title           String
+  body            String
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("daily_info")
 }
 
 // ─── App Setting ──────────────────────────────────────────────────────────────
