@@ -59,7 +59,23 @@ test.describe('Dashboard urgent and workflow sections', () => {
             customer: { firstName: 'יעל', lastName: 'כהן' },
             case: { id: 'case-active', name: 'אריזה דחופה' },
             address: { fullAddress: 'תל אביב 1' },
-            shifts: [{ worker: { firstName: 'נועה', lastName: 'לוי' } }],
+            shifts: [
+              {
+                worker: { firstName: 'נועה', lastName: 'לוי' },
+                joinRequestStatus: 'APPROVED',
+                assignmentRole: 'REGULAR',
+              },
+              {
+                worker: { firstName: 'מיה', lastName: 'גל' },
+                joinRequestStatus: 'PENDING',
+                assignmentRole: 'REGULAR',
+              },
+              {
+                worker: { firstName: 'רות', lastName: 'בר' },
+                joinRequestStatus: 'AWAITING_WORKER',
+                assignmentRole: 'REGULAR',
+              },
+            ],
             slots: [{ requiredSkill: 'SHIFT_LEADER' }],
           },
         ]),
@@ -206,6 +222,21 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await page.getByRole('button', { name: /שיבוץ לעבודה/ }).click();
 
     await expect.poll(() => assignment).toEqual({ jobId: 'job-1', workerId: 'worker-michal', role: 'REGULAR' });
+  });
+
+  test('keeps staffing details compact in the staffing-gap row', async ({ page }) => {
+    await page.goto('/dashboard');
+
+    const gapLine = page.getByTestId('staffing-gap-bottom-line');
+    await expect(gapLine).toHaveText('1/4 משובצות · 3 עדיין נדרשות');
+    await expect(page.getByLabel('1 בקשות הצטרפות ממתינות')).toBeVisible();
+    await expect(page.getByTestId('staffing-state-summary')).toHaveCount(0);
+
+    await gapLine.hover();
+    await expect(page.getByText('נועה לוי · מאושרת')).toBeVisible();
+    await expect(page.getByText('מיה גל · ממתינה לאישור שלך')).toBeVisible();
+    await expect(page.getByText('רות בר · ממתינה לאישור העובדת')).toBeVisible();
+    await expect(page.getByText('3 עדיין נדרשות').last()).toBeVisible();
   });
 
   test('keeps the selected date across views and returns the current view to today', async ({ page }) => {
