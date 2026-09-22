@@ -6,6 +6,9 @@ test.describe('Worker desktop layout', () => {
     const date = new Date();
     date.setDate(date.getDate() + 5);
     const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const endDate = new Date(date);
+    endDate.setDate(endDate.getDate() + 2);
+    const endDateKey = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
     let payload: Record<string, unknown> | null = null;
 
     await page.route('**/api/v1/workers/me/availability', async (route) => {
@@ -63,32 +66,24 @@ test.describe('Worker desktop layout', () => {
       route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
     );
 
-    await page.goto('/worker/availability');
-    await page.getByLabel('התחלה').fill(dateKey);
-    await page.getByLabel('סיום').fill(dateKey);
-    await page.getByLabel('כל היום').uncheck();
-    await page.getByLabel('שעת התחלה').fill('10:00');
-    await page.getByLabel('שעת סיום').fill('13:00');
+    await page.goto('/worker');
+    await page.locator(`#worker-day-${dateKey}`).getByRole('button', { name: 'זמינות' }).click();
+    const availabilityDialog = page.getByRole('dialog', { name: 'עדכון זמינות' });
+    await availabilityDialog.getByLabel('התחלה').fill(dateKey);
+    await availabilityDialog.getByLabel('סיום').fill(endDateKey);
     await page.getByLabel('סיבה').selectOption('חולה');
-    await page.getByRole('button', { name: 'שמירת אי-זמינות' }).click();
+    await page.getByRole('button', { name: 'סימון כלא זמינה' }).click();
 
-    const conflictDialog = page.getByRole('dialog', { name: 'התנגשות עם משמרת' });
+    const conflictDialog = page.getByRole('dialog', { name: 'התנגשות עם עבודה' });
     await expect(conflictDialog).toBeVisible();
     expect(payload).toEqual({
-      type: 'DATE',
+      type: 'RANGE',
       startDate: dateKey,
-      startTime: '10:00',
-      endTime: '13:00',
+      endDate: endDateKey,
       reason: 'חולה',
     });
     await expect(conflictDialog.getByText('משפחת לוי')).toBeVisible();
-    const replacementLink = conflictDialog.getByRole('link', { name: 'בקשת מחליפה' });
-    await expect(replacementLink).toHaveAttribute(
-      'href',
-      '/worker?replacementShiftId=shift-conflict',
-    );
-    await replacementLink.click();
-    await expect(page).toHaveURL(/\/worker\?replacementShiftId=shift-conflict$/);
+    await conflictDialog.getByRole('button', { name: 'בקשת מחליפה' }).click();
     await expect(page.getByRole('dialog', { name: 'בקשת מחליפה' })).toBeVisible();
   });
 
@@ -111,17 +106,43 @@ test.describe('Worker desktop layout', () => {
     await page.route('**/api/v1/notifications/notification-1/read', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true}' }),
     );
-    await page.route('**/api/v1/shifts/shift-1', (route) =>
-      route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not found"}' }),
+    await page.route('**/api/v1/jobs/board', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([{
+          jobId: 'job-1',
+          jobType: 'PACKING',
+          date: new Date(Date.now() + 86_400_000).toISOString(),
+          plannedStart: '10:00',
+          plannedEnd: '15:00',
+          customerName: 'משפחת כהן',
+          address: 'הרצל 1, תל אביב',
+          requiredWorkerCount: 2,
+          assignedWorkers: [{ name: 'שי', isTeamLeader: false }],
+          openSpots: 1,
+          myStatus: 'APPROVED',
+          myShiftId: 'shift-1',
+          replacementStatus: 'NONE',
+        }]),
+      }),
     );
-    await page.route('**/api/v1/workers/colleagues', (route) =>
+    await page.route('**/api/v1/shifts/swaps/mine', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    );
+    await page.route('**/api/v1/shifts/replacement-requests/open', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    );
+    await page.route('**/api/v1/workers/me/availability', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
     );
 
     await page.goto('/worker/notifications');
     await expect(page.getByText('שעות: 09:00–14:00 ← 10:00–15:00')).toBeVisible();
     await page.getByRole('button', { name: /עדכון בפרטי העבודה/ }).click();
-    await expect(page).toHaveURL(/\/worker\/shifts\/shift-1$/);
+    await expect(page).toHaveURL(/\/worker\?focusShiftId=shift-1$/);
+    await expect(page.locator('[data-worker-shift="shift-1"]')).toHaveClass(/ring-primary-500/);
+    await expect(page.getByText('משפחת כהן').first()).toBeVisible();
   });
 
   test('centers history content and presents an intentional empty state', async ({ page }) => {
@@ -288,25 +309,27 @@ test.describe('Worker desktop layout', () => {
     await expect(page.getByRole('heading', { name: 'יומן' })).toBeVisible();
     await expect(page.getByText('העבודה הבאה')).toBeVisible();
     await expect(page.getByText('משפחת לוי').first()).toBeVisible();
-    await page.getByRole('button', { name: 'פרטים' }).click();
+    const nextJobRibbon = page.getByRole('button', { name: /העבודה הבאה/ });
+    await nextJobRibbon.click();
+    await expect(nextJobRibbon).toHaveAttribute('aria-expanded', 'true');
     await page.getByRole('button', { name: /תל אביב/ }).first().click();
     await expect(page.getByTitle('מפה של תל אביב')).toBeVisible();
     await expect(page.getByText('היומן של כולן')).toBeVisible();
     await page.getByRole('button', { name: 'חזרה להיום' }).click();
-    const availableDay = page.getByRole('button', { name: 'זמינה', exact: true }).first();
+    const availableDay = page.locator(`#worker-day-${todayKey}`).getByRole('button', { name: 'זמינות' });
     await expect(availableDay).toBeVisible();
     await availableDay.click();
     await expect(page.getByRole('dialog', { name: 'עדכון זמינות' })).toBeVisible();
     await page.getByRole('button', { name: 'שעות מסוימות' }).click();
     await page.locator('input[type="time"]').first().fill('13:00');
     await page.locator('input[type="time"]').last().fill('17:00');
-    await page.getByLabel('סיבה (רשות)').fill('לימודים');
+    await page.getByLabel('סיבה').selectOption('אחר');
+    await page.getByLabel('פירוט').fill('לימודים');
     await page.getByRole('button', { name: 'סימון כלא זמינה' }).click();
     expect(availabilityPayload).toMatchObject({ type: 'DATE', startTime: '13:00', endTime: '17:00', reason: 'לימודים' });
     await expect(page.locator('[aria-label="הוגדרה זמינות"]')).toHaveCount(1);
 
     await expect(page).toHaveURL(/\/worker$/);
-    await expect(page.getByRole('button', { name: 'סגירת הפרטים' })).toBeVisible();
     await page.getByRole('button', { name: 'בקשת מחליפה' }).first().click();
     const replacementDialog = page.getByRole('dialog', { name: 'בקשת מחליפה' });
     await expect(replacementDialog).toBeVisible();
@@ -321,7 +344,7 @@ test.describe('Worker desktop layout', () => {
     await expect(page.getByRole('button', { name: 'דחייה' })).toBeVisible();
     await expect(page.getByText('דנה כהן')).toBeVisible();
     await expect(page.getByText('גבעתיים 8')).toBeVisible();
-    await expect(page.getByText('לחצי כדי לבקש להצטרף ›')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'בקשת הצטרפות' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'הוספה ל-Google או Apple Calendar' })).toBeVisible();
     await page.locator(`#worker-day-${openDateKey}`).evaluate((element) => {
       element.scrollIntoView({ block: 'start' });

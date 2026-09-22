@@ -402,7 +402,7 @@ function ApprovalCard({
   if (!isPublished) {
     return (
       <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-        <p className="text-sm text-gray-600">הדוח החודשי טרם פורסם על ידי בעל/ת העסק.</p>
+        <p className="text-sm text-gray-600">הדוח החודשי טרם פורסם.</p>
       </div>
     );
   }
@@ -427,7 +427,7 @@ function ApprovalCard({
         <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
           <p className="flex items-center gap-1.5 text-xs font-medium text-rose-800">
             <MessageSquareWarning className="w-3.5 h-3.5" />
-            ביקשת תיקון — ממתין לגרסה מעודכנת מבעל/ת העסק
+            ביקשת תיקון — ממתין לגרסה מעודכנת
           </p>
           {workerNote && <p className="mt-1 text-xs text-rose-700">{workerNote}</p>}
         </div>

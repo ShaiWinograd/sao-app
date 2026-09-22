@@ -11,7 +11,6 @@ import { BrandLockup } from './BrandLockup';
 const navItems = [
   { href: '/worker', label: 'יומן', exact: true },
   { href: '/worker/history', label: 'היסטוריית עבודות' },
-  { href: '/worker/availability', label: 'הזמינות שלי' },
   { href: '/worker/reports', label: 'הדוחות שלי' },
   { href: '/worker/notifications', label: 'התראות' },
   { href: '/worker/profile', label: 'הפרופיל שלי' },

@@ -66,7 +66,7 @@ async function runAutoClockOut(now: Date): Promise<number> {
       data: {
         userId: s.worker.userId,
         title: 'יציאה אוטומטית מהמשמרת',
-        body: `סיימת אוטומטית את המשמרת בתאריך ${heDate(s.job.date)}. בעל/ת העסק יבדוק/תבדוק את השעות.`,
+        body: `סיימת אוטומטית את המשמרת בתאריך ${heDate(s.job.date)}. השעות ייבדקו.`,
         data: { type: 'AUTO_CLOCK_OUT', shiftId: s.id } as any,
       },
     });

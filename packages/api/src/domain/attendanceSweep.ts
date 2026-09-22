@@ -169,7 +169,7 @@ export async function processPendingAreaExits(
           data: {
             userId: c.worker.userId,
             title: 'המשמרת נסגרה אוטומטית',
-            body: 'עזבת את אזור העבודה למעלה מ-15 דקות והמשמרת נסגרה אוטומטית. הנתונים ממתינים לאישור בעל/ת העסק.',
+            body: 'עזבת את אזור העבודה למעלה מ-15 דקות והמשמרת נסגרה אוטומטית. הנתונים ממתינים לאישור.',
             data: { type: 'AUTO_CLOCK_OUT', shiftId: c.id } as any,
           },
         });

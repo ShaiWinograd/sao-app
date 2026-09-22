@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { api, authHeaders } from '../../lib/api';
@@ -10,7 +9,7 @@ import { InlineAddressMap } from '../../components/maps/InlineAddressMap';
 import {
   jobTypeLabel,
   jobTypeBorderColor,
-  jobTypeSolidClasses,
+  jobTypeClasses,
   jobTypeStripColor,
   formatScheduledTime,
 } from '../../lib/worker';
@@ -71,6 +70,18 @@ type AvailabilityBlock = {
   endTime: string | null;
 };
 
+type AvailabilityConflict = {
+  shiftId: string;
+  date: string;
+  plannedStart: string;
+  plannedEnd: string;
+  jobType: string;
+  customerName: string;
+  replacementStatus?: string;
+};
+
+const AVAILABILITY_REASONS = ['חופש', 'חו״ל', 'חולה', 'אחר'] as const;
+
 function shortDate(iso: string): string {
   return new Date(iso).toLocaleDateString('he-IL', { weekday: 'short', day: '2-digit', month: '2-digit' });
 }
@@ -116,11 +127,14 @@ export default function WorkerShiftsPage() {
   const [replacementTarget, setReplacementTarget] = useState<BoardShift | null>(null);
   const [colleagues, setColleagues] = useState<{ id: string; name: string }[]>([]);
   const [availabilityTarget, setAvailabilityTarget] = useState<string | null>(null);
+  const [availabilityConflicts, setAvailabilityConflicts] = useState<AvailabilityConflict[]>([]);
+  const [focusedShiftId, setFocusedShiftId] = useState<string | null>(null);
   const [shiftFilter, setShiftFilter] = useState<'ALL' | 'MINE'>('ALL');
   const [nextShiftExpanded, setNextShiftExpanded] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => toDateKey(new Date()));
   const initialCalendarPositioned = useRef(false);
   const queryReplacementOpened = useRef(false);
+  const queryFocusOpened = useRef(false);
 
   const loadBoard = useCallback(async () => {
     try {
@@ -179,7 +193,7 @@ export default function WorkerShiftsPage() {
           await api.delete(`/shifts/replacement/${requestId}/volunteer`, auth);
         } else {
           await api.post(`/shifts/replacement/${requestId}/volunteer`, {}, auth);
-          setMessage('התנדבת למשמרת. בעל/ת העסק תבחר/י מחליף/ה.');
+          setMessage('התנדבת למשמרת. תקבלי עדכון לאחר הבחירה.');
         }
         await loadReplacements();
       } catch (err) {
@@ -199,7 +213,7 @@ export default function WorkerShiftsPage() {
     try {
       const auth = await authHeaders(getToken);
       await api.post('/shifts/join-request', { jobId: joinTarget.jobId }, auth);
-      setMessage('בקשת ההצטרפות נשלחה לאישור בעל/ת העסק.');
+      setMessage('בקשת ההצטרפות נשלחה לאישור.');
       setJoinTarget(null);
       await loadBoard();
     } catch (err) {
@@ -441,29 +455,70 @@ export default function WorkerShiftsPage() {
     }, 0);
   }, []);
 
+  useEffect(() => {
+    const shiftId = searchParams.get('focusShiftId');
+    const jobId = searchParams.get('focusJobId');
+    if (loading || queryFocusOpened.current || (!shiftId && !jobId)) return;
+    const shift = board.find((candidate) =>
+      shiftId ? candidate.myShiftId === shiftId : candidate.jobId === jobId,
+    );
+    if (!shift) return;
+    queryFocusOpened.current = true;
+    setFocusedShiftId(shift.myShiftId);
+    selectDate(toDateKey(shift.date));
+    window.setTimeout(() => {
+      if (shift.myShiftId) {
+        document.querySelector<HTMLElement>(`[data-worker-shift="${shift.myShiftId}"]`)?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        });
+      }
+    }, 350);
+  }, [board, loading, searchParams, selectDate]);
+
   const saveAvailability = useCallback(async (
-    dateKey: string,
-    values: { reason?: string; startTime?: string; endTime?: string },
+    values: {
+      type: 'DATE' | 'RANGE';
+      startDate: string;
+      endDate?: string;
+      reason: string;
+      startTime?: string;
+      endTime?: string;
+    },
     existing?: AvailabilityBlock | null,
   ) => {
-    setBusy(`availability-${dateKey}`);
+    setBusy(`availability-${availabilityTarget}`);
     setMessage(null);
+    setAvailabilityConflicts([]);
     try {
       const auth = await authHeaders(getToken);
-      if (existing?.type === 'DATE') {
-        await api.patch(`/workers/me/availability/${existing.id}`, { type: 'DATE', startDate: dateKey, ...values }, auth);
+      if (existing) {
+        await api.patch(`/workers/me/availability/${existing.id}`, values, auth);
       } else {
-        await api.post('/workers/me/availability', { type: 'DATE', startDate: dateKey, ...values }, auth);
+        await api.post('/workers/me/availability', values, auth);
       }
       await loadAvailability();
       setAvailabilityTarget(null);
-      setMessage(`הזמינות ל-${new Date(`${dateKey}T00:00:00`).toLocaleDateString('he-IL')} נשמרה.`);
-    } catch {
-      setMessage('לא ניתן לשמור את הזמינות. ייתכן שיש חפיפה עם שיבוץ קיים.');
+      setMessage('הזמינות נשמרה.');
+    } catch (err) {
+      const data = (err as {
+        response?: {
+          data?: {
+            error?: string;
+            message?: string;
+            conflicts?: AvailabilityConflict[];
+          };
+        };
+      })?.response?.data;
+      if (data?.error === 'AVAILABILITY_CONFLICT' && data.conflicts?.length) {
+        setAvailabilityConflicts(data.conflicts);
+      } else {
+        setMessage(data?.message ?? 'לא ניתן לשמור את הזמינות.');
+      }
     } finally {
       setBusy(null);
     }
-  }, [getToken, loadAvailability]);
+  }, [availabilityTarget, getToken, loadAvailability]);
 
   const removeUnavailable = useCallback(async (blockId: string, dateKey: string) => {
     setBusy(`availability-${dateKey}`);
@@ -528,31 +583,23 @@ export default function WorkerShiftsPage() {
 
       {nextMyShift && (
         <section>
-          <div className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3 ${jobTypeSolidClasses(nextMyShift.jobType)}`}>
+          <button
+            type="button"
+            aria-expanded={nextShiftExpanded}
+            onClick={() => setNextShiftExpanded((value) => !value)}
+            className={`flex w-full flex-wrap items-center gap-x-3 gap-y-1 border px-4 py-2.5 text-right transition-opacity hover:opacity-85 ${jobTypeClasses(nextMyShift.jobType)}`}
+          >
             <div className="flex min-w-0 items-center gap-3">
-              <span className="text-[10px] font-semibold tracking-[0.12em] text-white/75">העבודה הבאה</span>
+              <span className="text-[10px] font-semibold tracking-[0.12em] opacity-70">העבודה הבאה</span>
               <span className="font-display text-lg font-semibold">{jobTypeLabel(nextMyShift.jobType)}</span>
               <span className="truncate text-sm font-semibold">{nextMyShift.customerName}</span>
-              <span className="text-xs text-white/85">
+              <span className="text-xs opacity-80">
                 {shortDate(nextMyShift.date)} · <bdi>{formatScheduledTime(nextMyShift.plannedStart)}–{formatScheduledTime(nextMyShift.plannedEnd)}</bdi>
               </span>
             </div>
-            <button
-              type="button"
-              aria-expanded={nextShiftExpanded}
-              onClick={() => setNextShiftExpanded((value) => !value)}
-              className="shrink-0 border border-white/70 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/15"
-            >
-              {nextShiftExpanded ? 'סגירת הפרטים' : 'פרטים'}
-            </button>
-          </div>
+          </button>
           {nextShiftExpanded && (
             <div className="border-x border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-              {nextMyShift.address && (
-                <div className="mb-3">
-                  <InlineAddressMap address={nextMyShift.address} compact />
-                </div>
-              )}
               <ShiftCard
                 shift={nextMyShift}
                 busy={Boolean(nextMyShift.myShiftId && busy === nextMyShift.myShiftId)}
@@ -560,6 +607,7 @@ export default function WorkerShiftsPage() {
                 onRespond={(accepted) => nextMyShift.myShiftId && void respondAssignment(nextMyShift.myShiftId, accepted)}
                 onCancelRequest={() => nextMyShift.myShiftId && void cancelRequest(nextMyShift.myShiftId)}
                 onReplacement={() => void openReplacement(nextMyShift)}
+                showStatus={false}
               />
             </div>
           )}
@@ -614,7 +662,11 @@ export default function WorkerShiftsPage() {
                 data-worker-date={key}
                 onClick={() => selectDate(key)}
                 className={`flex min-h-[76px] min-w-16 flex-col items-center justify-center px-1 transition-colors ${
-                  active ? 'bg-primary-700 text-white' : 'text-[var(--color-text-secondary)] hover:bg-primary-50'
+                  active
+                    ? 'bg-primary-700 text-white'
+                    : hasAvailability
+                      ? 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+                      : 'text-[var(--color-text-secondary)] hover:bg-primary-50'
                 }`}
               >
                 <span className={`text-[11px] ${active ? 'text-white/75' : 'text-gray-400'}`}>
@@ -679,36 +731,48 @@ export default function WorkerShiftsPage() {
                 id={`worker-day-${dateKey}`}
                 data-worker-day={dateKey}
                 className={`scroll-mt-44 border-b border-[var(--color-border)] ${
-                  selectedDate === dateKey ? 'bg-primary-50/35' : ''
+                  availabilityBlock
+                    ? 'bg-gray-100/80'
+                    : selectedDate === dateKey
+                      ? 'bg-primary-50/35'
+                      : ''
                 }`}
               >
-                <div className="flex items-center justify-between border-b border-[var(--color-border)] py-2">
+                <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] py-2">
                   <h2 className="font-display text-lg text-[#292724]">{new Date(`${dateKey}T00:00:00`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>
-                </div>
-                {shifts.length === 0 ? (
-                  <div className="flex min-h-12 items-center justify-between gap-3 px-1 py-2">
-                    <span className="text-xs text-[var(--color-text-muted)]">אין עבודות</span>
+                  <div className="flex items-center gap-3">
+                    {availabilityBlock && (
+                      <span className="text-xs font-semibold text-gray-500">
+                        {availabilityBlock.startTime && availabilityBlock.endTime
+                          ? `לא זמינה ${availabilityBlock.startTime}–${availabilityBlock.endTime}`
+                          : 'לא זמינה כל היום'}
+                        {availabilityBlock.reason ? ` · ${availabilityBlock.reason}` : ''}
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={() => setAvailabilityTarget(dateKey)}
                       disabled={busy === `availability-${dateKey}`}
-                      className={`px-2 py-1 text-xs font-semibold disabled:opacity-50 ${
-                        availabilityBlock ? 'text-rose-700' : 'text-[#53644b]'
-                      }`}
+                      className="border border-gray-300 bg-[var(--color-surface)] px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                     >
-                      {availabilityBlock
-                        ? availabilityBlock.startTime && availabilityBlock.endTime
-                          ? `לא זמינה ${availabilityBlock.startTime}–${availabilityBlock.endTime}`
-                          : 'לא זמינה'
-                        : 'זמינה'}
+                      זמינות
                     </button>
                   </div>
-                ) : shifts.map((s) => (
-                <div key={s.jobId} className="grid grid-cols-[4rem_minmax(0,1fr)] items-start gap-3 border-b border-[var(--color-border)] py-3 sm:grid-cols-[5rem_minmax(0,1fr)]">
-                  <div className="border-l border-[var(--color-border)] pl-3 text-center" dir="ltr">
-                    <p className="text-sm font-semibold tabular-nums leading-none text-[#292724]">{formatScheduledTime(s.plannedStart)}</p>
-                    <p className="mt-1 text-xs tabular-nums text-[var(--color-text-muted)]">{formatScheduledTime(s.plannedEnd)}</p>
+                </div>
+                {shifts.length === 0 ? (
+                  <div className="flex min-h-12 items-center px-1 py-2">
+                    <span className="text-xs text-[var(--color-text-muted)]">אין עבודות</span>
                   </div>
+                ) : shifts.map((s) => (
+                <div
+                  key={s.jobId}
+                  data-worker-shift={s.myShiftId ?? undefined}
+                  className={`border-b border-[var(--color-border)] px-1 py-3 transition-shadow ${
+                    focusedShiftId && s.myShiftId === focusedShiftId
+                      ? 'ring-2 ring-inset ring-primary-500'
+                      : ''
+                  }`}
+                >
                   <ShiftCard
                     shift={s}
                     busy={busy === s.jobId || (s.myShiftId ? busy === s.myShiftId : false)}
@@ -771,9 +835,22 @@ export default function WorkerShiftsPage() {
           dateKey={availabilityTarget}
           existing={availabilityForDate(availability, availabilityTarget)}
           busy={busy === `availability-${availabilityTarget}`}
-          onSave={(values, existing) => void saveAvailability(availabilityTarget, values, existing)}
+          onSave={(values, existing) => void saveAvailability(values, existing)}
           onRemove={(blockId) => void removeUnavailable(blockId, availabilityTarget)}
           onClose={() => setAvailabilityTarget(null)}
+        />
+      )}
+      {availabilityConflicts.length > 0 && (
+        <AvailabilityConflictModal
+          conflicts={availabilityConflicts}
+          onReplacement={(shiftId) => {
+            const shift = board.find((candidate) => candidate.myShiftId === shiftId);
+            if (!shift) return;
+            setAvailabilityConflicts([]);
+            setAvailabilityTarget(null);
+            void openReplacement(shift);
+          }}
+          onClose={() => setAvailabilityConflicts([])}
         />
       )}
       {replacementTarget && (
@@ -794,9 +871,13 @@ export default function WorkerShiftsPage() {
 function AssignedNames({ workers }: { workers: BoardShift['assignedWorkers'] }) {
   if (workers.length === 0) return <span className="text-gray-400">טרם שובצו עובדים</span>;
   return (
-    <span className="text-[11px] text-gray-600">
-      {workers.map((worker) => `${worker.name}${worker.isTeamLeader ? ' · ראש צוות' : ''}`).join('  |  ')}
-    </span>
+    <div className="flex flex-wrap gap-x-4 gap-y-1">
+      {workers.map((worker) => (
+        <span key={`${worker.name}-${worker.isTeamLeader}`} className="text-sm font-medium text-gray-700">
+          {worker.name}{worker.isTeamLeader ? ' · ראש צוות' : ''}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -804,7 +885,6 @@ function CardHeader({ shift }: { shift: BoardShift }) {
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-sm font-bold text-gray-900">{jobTypeLabel(shift.jobType)}</span>
-      <span className="text-xs font-medium text-gray-600">{shortDate(shift.date)}</span>
     </div>
   );
 }
@@ -812,10 +892,11 @@ function CardHeader({ shift }: { shift: BoardShift }) {
 function CardMeta({ shift }: { shift: BoardShift }) {
   return (
     <>
-      <p className="mt-1 text-sm font-semibold text-gray-900">{shift.customerName}</p>
-      {shift.address && (
-        <p className="mt-0.5 text-xs text-gray-600">{shift.address}</p>
-      )}
+      <p className="mt-1 text-sm font-semibold tabular-nums text-[#292724]" dir="ltr">
+        {formatScheduledTime(shift.plannedStart)} – {formatScheduledTime(shift.plannedEnd)}
+      </p>
+      <p className="mt-1 text-base font-semibold text-gray-900">{shift.customerName}</p>
+      {shift.address && <InlineAddressMap address={shift.address} compact />}
     </>
   );
 }
@@ -827,6 +908,7 @@ function ShiftCard({
   onRespond,
   onCancelRequest,
   onReplacement,
+  showStatus = true,
 }: {
   shift: BoardShift;
   busy: boolean;
@@ -834,6 +916,7 @@ function ShiftCard({
   onRespond: (accepted: boolean) => void;
   onCancelRequest: () => void;
   onReplacement: () => void;
+  showStatus?: boolean;
 }) {
   // 1) Fully assigned (not mine).
   if (shift.myStatus === 'NONE' && shift.openSpots === 0) {
@@ -868,11 +951,7 @@ function ShiftCard({
       );
     }
     return (
-      <button
-        type="button"
-        onClick={onAskToJoin}
-        className={`relative w-full border-r-2 bg-gray-50/50 px-3 py-1 text-right opacity-80 transition-colors hover:opacity-100 ${jobTypeBorderColor(shift.jobType)}`}
-      >
+      <div className={`relative w-full border-r-2 bg-gray-50/50 px-3 py-1 text-right ${jobTypeBorderColor(shift.jobType)}`}>
         <CardHeader shift={shift} />
         <CardMeta shift={shift} />
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -881,8 +960,14 @@ function ShiftCard({
           </span>
           <AssignedNames workers={shift.assignedWorkers} />
         </div>
-        <p className="mt-2 text-[11px] font-semibold text-primary-700">לחצי כדי לבקש להצטרף ›</p>
-      </button>
+        <button
+          type="button"
+          onClick={onAskToJoin}
+          className="mt-3 border border-primary-700 px-3 py-1.5 text-xs font-semibold text-primary-800 hover:bg-primary-50"
+        >
+          בקשת הצטרפות
+        </button>
+      </div>
     );
   }
 
@@ -922,11 +1007,18 @@ function ShiftCard({
   if (shift.myStatus === 'APPROVED') {
     return (
       <div className={`border-r-2 pr-4 ${jobTypeBorderColor(shift.jobType)}`}>
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-bold text-gray-900">{jobTypeLabel(shift.jobType)}</span>
-          <span className="inline-flex items-center rounded-full border border-primary-300 bg-primary-100 px-2 py-0.5 text-[11px] font-semibold text-primary-800">
-            את/ה משובץ/ת
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardHeader shift={shift} />
+          <div className="flex items-center gap-2">
+            {showStatus && (
+              <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                מאושרת
+              </span>
+            )}
+            <span className="inline-flex rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-semibold text-gray-600">
+              {shift.openSpots > 0 ? `${shift.openSpots} מקומות פנויים` : 'הצוות מלא'}
+            </span>
+          </div>
         </div>
         <CardMeta shift={shift} />
         <div className="mt-2">
@@ -948,13 +1040,11 @@ function ShiftCard({
   // 5) My pending join request.
   return (
     <div className="relative block border-r-2 border-amber-300 pr-4">
-      <Link href={shift.myShiftId ? `/worker/shifts/${shift.myShiftId}` : '#'} className="block hover:opacity-90">
-        <CardHeader shift={shift} />
-        <CardMeta shift={shift} />
-        <div className="mt-2">
-          <AssignedNames workers={shift.assignedWorkers} />
-        </div>
-      </Link>
+      <CardHeader shift={shift} />
+      <CardMeta shift={shift} />
+      <div className="mt-2">
+        <AssignedNames workers={shift.assignedWorkers} />
+      </div>
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
           ממתין לאישור
@@ -1067,7 +1157,7 @@ function ReplacementModal({
               </label>
             )}
             <p className="text-xs text-[var(--color-text-secondary)]">
-              הבקשה תישלח לבעלת העסק. עד לאישור את נשארת משובצת למשמרת.
+              הבקשה תישלח לאישור. עד לאישור את נשארת משובצת למשמרת.
             </p>
             <button
               type="submit"
@@ -1094,15 +1184,41 @@ function AvailabilityModal({
   dateKey: string;
   existing: AvailabilityBlock | null;
   busy: boolean;
-  onSave: (values: { reason?: string; startTime?: string; endTime?: string }, existing: AvailabilityBlock | null) => void;
+  onSave: (
+    values: {
+      type: 'DATE' | 'RANGE';
+      startDate: string;
+      endDate?: string;
+      reason: string;
+      startTime?: string;
+      endTime?: string;
+    },
+    existing: AvailabilityBlock | null,
+  ) => void;
   onRemove: (blockId: string) => void;
   onClose: () => void;
 }) {
+  const initialStartDate = existing?.startDate?.slice(0, 10) ?? dateKey;
+  const initialEndDate =
+    existing?.type === 'RANGE' && existing.endDate
+      ? existing.endDate.slice(0, 10)
+      : initialStartDate;
   const [allDay, setAllDay] = useState(!existing?.startTime || !existing?.endTime);
+  const [startDate, setStartDate] = useState(initialStartDate);
+  const [endDate, setEndDate] = useState(initialEndDate);
   const [startTime, setStartTime] = useState(existing?.startTime ?? '09:00');
   const [endTime, setEndTime] = useState(existing?.endTime ?? '17:00');
-  const [reason, setReason] = useState(existing?.reason ?? '');
+  const initialReason = AVAILABILITY_REASONS.includes(existing?.reason as (typeof AVAILABILITY_REASONS)[number])
+    ? existing!.reason as (typeof AVAILABILITY_REASONS)[number]
+    : existing?.reason
+      ? 'אחר'
+      : 'חופש';
+  const [reason, setReason] = useState<(typeof AVAILABILITY_REASONS)[number]>(initialReason);
+  const [otherReason, setOtherReason] = useState(initialReason === 'אחר' ? existing?.reason ?? '' : '');
+  const invalidRange = endDate < startDate;
   const invalidHours = !allDay && startTime >= endTime;
+  const invalidTimedRange = !allDay && startDate !== endDate;
+  const invalidReason = reason === 'אחר' && !otherReason.trim();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" onClick={onClose}>
@@ -1114,9 +1230,32 @@ function AvailabilityModal({
         onClick={(event) => event.stopPropagation()}
       >
         <p className="text-[11px] font-semibold tracking-[0.12em] text-primary-700">זמינות</p>
-        <h2 className="font-display mt-1 text-2xl text-[#292724]">
-          {new Date(`${dateKey}T00:00:00`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}
-        </h2>
+        <h2 className="font-display mt-1 text-2xl text-[#292724]">מתי אינך זמינה?</h2>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <label className="text-xs text-gray-600">
+            התחלה
+            <input
+              type="date"
+              value={startDate}
+              onChange={(event) => {
+                const value = event.target.value;
+                setStartDate(value);
+                if (endDate < value) setEndDate(value);
+              }}
+              className="mt-1 w-full border border-gray-300 px-2 py-2 text-sm"
+            />
+          </label>
+          <label className="text-xs text-gray-600">
+            סיום
+            <input
+              type="date"
+              min={startDate}
+              value={endDate}
+              onChange={(event) => setEndDate(event.target.value)}
+              className="mt-1 w-full border border-gray-300 px-2 py-2 text-sm"
+            />
+          </label>
+        </div>
         <div className="mt-4 grid grid-cols-2 border border-[var(--color-border-strong)] p-0.5 text-xs">
           <button type="button" onClick={() => setAllDay(true)} className={`px-3 py-2 font-semibold ${allDay ? 'bg-primary-700 text-white' : 'text-gray-600'}`}>
             כל היום
@@ -1138,16 +1277,33 @@ function AvailabilityModal({
           </div>
         )}
         <label className="mt-4 block text-xs text-gray-600">
-          סיבה (רשות)
-          <input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={200} className="mt-1 w-full border border-gray-300 px-3 py-2 text-sm" />
+          סיבה
+          <select
+            value={reason}
+            onChange={(event) => setReason(event.target.value as (typeof AVAILABILITY_REASONS)[number])}
+            className="mt-1 w-full border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
+          >
+            {AVAILABILITY_REASONS.map((value) => <option key={value} value={value}>{value}</option>)}
+          </select>
         </label>
+        {reason === 'אחר' && (
+          <label className="mt-3 block text-xs text-gray-600">
+            פירוט
+            <input value={otherReason} onChange={(event) => setOtherReason(event.target.value)} maxLength={200} className="mt-1 w-full border border-gray-300 px-3 py-2 text-sm" />
+          </label>
+        )}
+        {invalidRange && <p className="mt-2 text-xs text-rose-600">יש לבחור טווח תאריכים תקין.</p>}
         {invalidHours && <p className="mt-2 text-xs text-rose-600">שעת הסיום חייבת להיות אחרי שעת ההתחלה.</p>}
+        {invalidTimedRange && <p className="mt-2 text-xs text-rose-600">שעות מסוימות זמינות לתאריך בודד. לטווח תאריכים יש לבחור יום מלא.</p>}
         <div className="mt-5 flex items-center gap-2">
           <button
             type="button"
-            disabled={busy || invalidHours}
+            disabled={busy || invalidRange || invalidHours || invalidTimedRange || invalidReason}
             onClick={() => onSave({
-              reason: reason.trim() || undefined,
+              type: startDate === endDate ? 'DATE' : 'RANGE',
+              startDate,
+              endDate: startDate === endDate ? undefined : endDate,
+              reason: reason === 'אחר' ? otherReason.trim() : reason,
               startTime: allDay ? undefined : startTime,
               endTime: allDay ? undefined : endTime,
             }, existing)}
@@ -1155,7 +1311,7 @@ function AvailabilityModal({
           >
             סימון כלא זמינה
           </button>
-          {existing?.type === 'DATE' && (
+          {existing && (
             <button type="button" disabled={busy} onClick={() => onRemove(existing.id)} className="px-3 py-2 text-xs font-semibold text-[#53644b] disabled:opacity-50">
               סימון כזמינה
             </button>
@@ -1164,6 +1320,53 @@ function AvailabilityModal({
             ביטול
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function AvailabilityConflictModal({
+  conflicts,
+  onReplacement,
+  onClose,
+}: {
+  conflicts: AvailabilityConflict[];
+  onReplacement: (shiftId: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="התנגשות עם עבודה"
+        className="w-full max-w-lg bg-[var(--color-surface)] p-5 shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold text-gray-900">כבר יש לך עבודה בזמן הזה</h2>
+        <p className="mt-1 text-sm text-gray-600">יש למצוא מחליפה לפני שניתן יהיה לשמור את אי-הזמינות.</p>
+        <div className="mt-4 divide-y divide-[var(--color-border)] border-y border-[var(--color-border)]">
+          {conflicts.map((conflict) => (
+            <div key={conflict.shiftId} className="flex items-center justify-between gap-3 py-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-900">{conflict.customerName}</p>
+                <p className="mt-1 text-xs text-gray-600">
+                  {shortDate(conflict.date)} · {formatScheduledTime(conflict.plannedStart)}–{formatScheduledTime(conflict.plannedEnd)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onReplacement(conflict.shiftId)}
+                className="shrink-0 border border-primary-700 px-3 py-2 text-xs font-semibold text-primary-800 hover:bg-primary-50"
+              >
+                {conflict.replacementStatus === 'PENDING' ? 'צפייה בבקשה' : 'בקשת מחליפה'}
+              </button>
+            </div>
+          ))}
+        </div>
+        <button type="button" onClick={onClose} className="mt-4 w-full border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700">
+          חזרה
+        </button>
       </div>
     </div>
   );
@@ -1190,7 +1393,7 @@ function JoinModal({
             {shortDate(shift.date)} · {formatScheduledTime(shift.plannedStart)}–{formatScheduledTime(shift.plannedEnd)}
           </p>
         </div>
-        <p className="text-xs text-gray-500">הבקשה תישלח לאישור בעל/ת העסק. תקבלי הודעה כשהיא תאושר.</p>
+        <p className="text-xs text-gray-500">הבקשה תישלח לאישור. תקבלי הודעה כשהיא תאושר.</p>
         <div className="flex gap-2">
           <button
             type="button"
