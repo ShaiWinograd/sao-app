@@ -239,7 +239,7 @@ export default function WorkerShiftDetailPage() {
       await api.post(`/shifts/${shift.id}/replacement`, { reason: dropReason.trim(), suggestedWorkerId: suggestedWorkerId || undefined }, auth);
       setDropReason('');
       setSuggestedWorkerId('');
-      setActionMsg('הבקשה נשלחה. תישארי משובצת עד לאישור בעל/ת העסק.');
+      setActionMsg('הבקשה נשלחה. תישארי משובצת עד לאישור.');
       await load();
     } catch {
       setActionMsg('שליחת הבקשה נכשלה. נסי שוב.');
@@ -355,7 +355,7 @@ export default function WorkerShiftDetailPage() {
       {isAwaitingAcceptance && !isCancelled && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
           <p className="text-sm font-semibold text-amber-900">שובצת למשמרת זו – נדרש אישורך</p>
-          <p className="text-xs text-amber-800">בעל/ת העסק שיבץ/ה אותך למשמרת. יש לאשר כדי להיקבע, או לדחות כדי לשחרר את המקום.</p>
+          <p className="text-xs text-amber-800">שובצת למשמרת. יש לאשר כדי להיקבע, או לדחות כדי לשחרר את המקום.</p>
           <div className="flex gap-2">
             <button
               type="button"
@@ -596,7 +596,7 @@ function ShiftChangePanel({
     return (
       <div className="border-y border-[var(--color-calendar-sand-border)] bg-[var(--color-calendar-sand-soft)] p-4 space-y-2">
         <p className="text-sm font-semibold text-gray-900">בקשה לשינוי המשמרת נשלחה</p>
-        <p className="text-xs text-gray-600">הבקשה ממתינה לאישור בעל/ת העסק. עד לאישור את נשארת משובצת.</p>
+        <p className="text-xs text-gray-600">הבקשה ממתינה לאישור. עד לאישור את נשארת משובצת.</p>
         {pending.reason && <p className="text-xs text-gray-600">סיבה: {pending.reason}</p>}
         <button
           type="button"
@@ -686,7 +686,7 @@ function ShiftChangePanel({
         <div className="space-y-3">
           {within48 && (
             <p className="border border-[var(--color-calendar-sand-border)] bg-[var(--color-calendar-sand-soft)] px-3 py-2 text-xs text-[var(--color-calendar-sand)]">
-              נשארו פחות מ-48 שעות. החלפה הדדית היא האפשרות הזמינה באפליקציה; אם אין משמרת מתאימה, פני לבעלת העסק.
+              נשארו פחות מ-48 שעות. החלפה הדדית היא האפשרות הזמינה באפליקציה; אם אין משמרת מתאימה, פני לתמיכה.
             </p>
           )}
           <label className="block text-xs text-gray-600">

@@ -212,7 +212,7 @@ export default function OwnerSwapApprovalsPage() {
       )}
 
       <section className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-gray-900">החלפה יזומה (על ידי בעל/ת העסק)</h2>
+        <h2 className="text-sm font-semibold text-gray-900">החלפה יזומה</h2>
         <p className="text-xs text-gray-500">בחר/י תאריך ושתי משמרות מאושרות של עובדים שונים כדי להחליף ביניהן ישירות.</p>
         <label className="block text-xs text-gray-600">
           תאריך

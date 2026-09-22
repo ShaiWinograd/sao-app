@@ -16,7 +16,7 @@ export default function UnauthorizedPage() {
       <div className="max-w-md rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
         <h1 className="text-lg font-semibold text-gray-900">אין הרשאה</h1>
         <p className="mt-3 text-sm leading-6 text-gray-600">
-          אין לך הרשאה להשתמש במערכת. יש לפנות לבעלת העסק.
+          אין לך הרשאה להשתמש במערכת. יש לפנות לאחראית המערכת.
         </p>
         <button
           type="button"

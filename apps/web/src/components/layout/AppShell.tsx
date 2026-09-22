@@ -21,7 +21,6 @@ const areaConfig = {
 const workerRoutes = [
   '/worker',
   '/worker/history',
-  '/worker/availability',
   '/worker/reports',
   '/worker/notifications',
   '/worker/profile',
