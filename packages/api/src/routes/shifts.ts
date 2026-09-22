@@ -13,6 +13,7 @@ import { assertWorkerFreeOnDate, lockJob } from '../lib/commitment.js';
 import { assertDirectAssignCapacity } from '../domain/directAssign.js';
 import { changeShiftRole } from '../domain/roleChange.js';
 import { AppError } from '../lib/errors.js';
+import { findEligibleReplacementCandidates } from '../domain/replacementCandidates.js';
 
 // After removing `outgoingShiftId`'s worker from `job`, does a team leader remain?
 // True when the job needs no leader, the incoming worker is leader-eligible, or
@@ -628,18 +629,29 @@ export async function shiftsRoutes(app: FastifyInstance) {
       return { released: true, autoPromoted: true, promotedShiftId: result.promoted.id, missingLeader: droppedIsLeader && !leaderStillCovered };
     }
 
-    // Optional specific-worker suggestion (must be a different active worker).
-    let suggestedWorkerId: string | null = null;
-    if (body.suggestedWorkerId && body.suggestedWorkerId !== worker.id) {
-      const suggested = await prisma.worker.findFirst({
-        where: { id: body.suggestedWorkerId, isActive: true },
-        select: { id: true, userId: true },
-      });
-      if (suggested) suggestedWorkerId = suggested.id;
+    const requestedWorkerIds = Array.from(new Set([
+      ...(body.suggestedWorkerIds ?? []),
+      ...(body.suggestedWorkerId ? [body.suggestedWorkerId] : []),
+    ])).filter((workerId) => workerId !== worker.id);
+    const eligibleCandidates = await findEligibleReplacementCandidates(id, worker.id);
+    if (!eligibleCandidates) return reply.status(404).send({ error: 'Shift not found' });
+    const eligibleById = new Map(eligibleCandidates.map((candidate) => [candidate.id, candidate]));
+    const suggestedWorkers = requestedWorkerIds.map((workerId) => eligibleById.get(workerId)).filter(Boolean);
+    if (suggestedWorkers.length !== requestedWorkerIds.length) {
+      return reply.status(400).send({ error: 'INVALID_REPLACEMENT_CANDIDATE', message: 'אחת העובדות שנבחרו כבר משובצת או אינה זמינה בזמן העבודה.' });
     }
+    const suggestedWorkerIds = suggestedWorkers.map((candidate) => candidate!.id);
+    const suggestedWorkerId = suggestedWorkerIds[0] ?? null;
 
     const request = await prisma.replacementRequest.create({
-      data: { shiftId: id, requestedByWorkerId: worker.id, reason: body.reason, suggestedWorkerId, status: 'PENDING' },
+      data: {
+        shiftId: id,
+        requestedByWorkerId: worker.id,
+        reason: body.reason,
+        suggestedWorkerId,
+        suggestedWorkerIds,
+        status: 'PENDING',
+      },
     });
     await prisma.shift.update({ where: { id }, data: { replacementStatus: 'PENDING' } });
     await logAudit((req as any).user, 'CREATE', 'ReplacementRequest', request.id, null, { shiftId: id, requestedByWorkerId: worker.id }, 'replacement-request');
@@ -660,35 +672,20 @@ export async function shiftsRoutes(app: FastifyInstance) {
       });
     }
 
-    // Notify all other active workers so they can volunteer to take the shift.
-    const otherWorkers = await prisma.worker.findMany({
-      where: { isActive: true, id: { not: worker.id } },
-      select: { userId: true },
-    });
-    if (otherWorkers.length) {
+    const workersToNotify = suggestedWorkers.length > 0
+      ? suggestedWorkers
+      : eligibleCandidates;
+    if (workersToNotify.length) {
       await prisma.notification.createMany({
-        data: otherWorkers.map((w) => ({
-          userId: w.userId,
-          title: 'נפתחה משמרת להחלפה',
-          body: `דרוש/ה מחליף/ה למשמרת בתאריך ${dateKey}. אפשר להתנדב מתוך "עבודות פתוחות".`,
+        data: workersToNotify.map((candidate) => ({
+          userId: candidate!.userId,
+          title: suggestedWorkers.length > 0 ? 'הוצעת להחלפת משמרת' : 'נפתחה משמרת להחלפה',
+          body: suggestedWorkers.length > 0
+            ? `${worker.firstName} ${worker.lastName} הציע/ה אותך להחלפה במשמרת בתאריך ${dateKey}. אפשר להתנדב מתוך "עבודות פתוחות".`
+            : `דרוש/ה מחליף/ה למשמרת בתאריך ${dateKey}. אפשר להתנדב מתוך "עבודות פתוחות".`,
           data: { type: 'REPLACEMENT_OPEN', shiftId: id, requestId: request.id } as any,
         })),
       });
-    }
-
-    // Extra targeted nudge for a specifically-suggested colleague.
-    if (suggestedWorkerId) {
-      const suggested = await prisma.worker.findUnique({ where: { id: suggestedWorkerId }, select: { userId: true } });
-      if (suggested) {
-        await prisma.notification.create({
-          data: {
-            userId: suggested.userId,
-            title: 'הוצעת להחלפת משמרת',
-            body: `${worker.firstName} ${worker.lastName} הציע/ה אותך להחלפה במשמרת בתאריך ${dateKey}. אפשר להתנדב מתוך "עבודות פתוחות".`,
-            data: { type: 'REPLACEMENT_SUGGESTED', shiftId: id, requestId: request.id } as any,
-          },
-        });
-      }
     }
 
     reply.status(201);
@@ -780,7 +777,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
         customerName: `${r.shift.job.customer.firstName} ${r.shift.job.customer.lastName}`.trim(),
         hasVolunteered: r.volunteers.some((v) => v.workerId === worker.id),
         volunteerCount: r.volunteers.length,
-        suggestedForYou: r.suggestedWorkerId === worker.id,
+        suggestedForYou: r.suggestedWorkerId === worker.id || r.suggestedWorkerIds.includes(worker.id),
       }));
   });
 

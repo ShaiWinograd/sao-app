@@ -265,17 +265,21 @@ export default function WorkerShiftsPage() {
   const openReplacement = useCallback(async (shift: BoardShift) => {
     setMessage(null);
     setReplacementTarget(shift);
-    if (shift.replacementStatus === 'PENDING' || colleagues.length > 0) return;
+    setColleagues([]);
+    if (shift.replacementStatus === 'PENDING' || !shift.myShiftId) return;
     try {
       const auth = await authHeaders(getToken);
-      const res = await api.get<{ id: string; name: string }[]>('/workers/colleagues', auth);
+      const res = await api.get<{ id: string; name: string }[]>(
+        `/workers/replacement-candidates?shiftId=${encodeURIComponent(shift.myShiftId)}`,
+        auth,
+      );
       setColleagues(res.data ?? []);
     } catch {
       setColleagues([]);
     }
-  }, [colleagues.length, getToken]);
+  }, [getToken]);
 
-  const requestReplacement = useCallback(async (reason: string, suggestedWorkerId: string) => {
+  const requestReplacement = useCallback(async (reason: string, suggestedWorkerIds: string[]) => {
     if (!replacementTarget?.myShiftId) return;
     setBusy(replacementTarget.myShiftId);
     setMessage(null);
@@ -283,7 +287,7 @@ export default function WorkerShiftsPage() {
       const auth = await authHeaders(getToken);
       const response = await api.post<{ released?: boolean }>(
         `/shifts/${replacementTarget.myShiftId}/replacement`,
-        { reason, suggestedWorkerId: suggestedWorkerId || undefined },
+        { reason, suggestedWorkerIds },
         auth,
       );
       setMessage(
@@ -587,28 +591,20 @@ export default function WorkerShiftsPage() {
             type="button"
             aria-expanded={nextShiftExpanded}
             onClick={() => setNextShiftExpanded((value) => !value)}
-            className={`flex w-full flex-wrap items-center gap-x-3 gap-y-1 border px-4 py-2.5 text-right transition-opacity hover:opacity-85 ${jobTypeClasses(nextMyShift.jobType)}`}
+            className={`flex w-full flex-wrap items-center gap-x-4 gap-y-1 border px-4 py-2.5 text-right text-sm font-semibold transition-opacity hover:opacity-85 ${jobTypeClasses(nextMyShift.jobType)}`}
           >
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="text-[10px] font-semibold tracking-[0.12em] opacity-70">העבודה הבאה</span>
-              <span className="font-display text-lg font-semibold">{jobTypeLabel(nextMyShift.jobType)}</span>
-              <span className="truncate text-sm font-semibold">{nextMyShift.customerName}</span>
-              <span className="text-xs opacity-80">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
+              <span className="opacity-70">העבודה הבאה</span>
+              <span>{jobTypeLabel(nextMyShift.jobType)}</span>
+              <span className="truncate">{nextMyShift.customerName}</span>
+              <span className="opacity-80">
                 {shortDate(nextMyShift.date)} · <bdi>{formatScheduledTime(nextMyShift.plannedStart)}–{formatScheduledTime(nextMyShift.plannedEnd)}</bdi>
               </span>
             </div>
           </button>
           {nextShiftExpanded && (
-            <div className="border-x border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-              <ShiftCard
-                shift={nextMyShift}
-                busy={Boolean(nextMyShift.myShiftId && busy === nextMyShift.myShiftId)}
-                onAskToJoin={() => setJoinTarget(nextMyShift)}
-                onRespond={(accepted) => nextMyShift.myShiftId && void respondAssignment(nextMyShift.myShiftId, accepted)}
-                onCancelRequest={() => nextMyShift.myShiftId && void cancelRequest(nextMyShift.myShiftId)}
-                onReplacement={() => void openReplacement(nextMyShift)}
-                showStatus={false}
-              />
+            <div className="border-x border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-3">
+              <NextShiftDetails shift={nextMyShift} onReplacement={() => void openReplacement(nextMyShift)} />
             </div>
           )}
         </section>
@@ -664,9 +660,7 @@ export default function WorkerShiftsPage() {
                 className={`flex min-h-[76px] min-w-16 flex-col items-center justify-center px-1 transition-colors ${
                   active
                     ? 'bg-primary-700 text-white'
-                    : hasAvailability
-                      ? 'bg-gray-200 text-gray-500 hover:bg-gray-300'
-                      : 'text-[var(--color-text-secondary)] hover:bg-primary-50'
+                    : 'text-[var(--color-text-secondary)] hover:bg-primary-50'
                 }`}
               >
                 <span className={`text-[11px] ${active ? 'text-white/75' : 'text-gray-400'}`}>
@@ -678,7 +672,7 @@ export default function WorkerShiftsPage() {
                     <span className={`h-1 w-1 rounded-full ${hasShift ? (active ? 'bg-white' : 'bg-primary-500') : 'bg-transparent'}`} />
                     <span
                       aria-label={hasAvailability ? 'הוגדרה זמינות' : undefined}
-                      className={`h-1.5 w-1.5 rounded-full ${hasAvailability ? (active ? 'bg-rose-200' : 'bg-rose-500') : 'bg-transparent'}`}
+                      className={`h-1.5 w-1.5 rounded-full ${hasAvailability ? (active ? 'bg-white/70' : 'bg-[#8b7d84]') : 'bg-transparent'}`}
                     />
                   </span>
                 </span>
@@ -730,19 +724,14 @@ export default function WorkerShiftsPage() {
                 key={dateKey}
                 id={`worker-day-${dateKey}`}
                 data-worker-day={dateKey}
-                className={`scroll-mt-44 border-b border-[var(--color-border)] ${
-                  availabilityBlock
-                    ? 'bg-gray-100/80'
-                    : selectedDate === dateKey
-                      ? 'bg-primary-50/35'
-                      : ''
-                }`}
+                className={`scroll-mt-44 border-b border-[var(--color-border)] ${selectedDate === dateKey ? 'bg-primary-50/35' : ''}`}
               >
                 <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] py-2">
                   <h2 className="font-display text-lg text-[#292724]">{new Date(`${dateKey}T00:00:00`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>
                   <div className="flex items-center gap-3">
                     {availabilityBlock && (
-                      <span className="text-xs font-semibold text-gray-500">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500">
+                        <span className="h-1.5 w-1.5 rounded-full bg-[#8b7d84]" />
                         {availabilityBlock.startTime && availabilityBlock.endTime
                           ? `לא זמינה ${availabilityBlock.startTime}–${availabilityBlock.endTime}`
                           : 'לא זמינה כל היום'}
@@ -753,7 +742,7 @@ export default function WorkerShiftsPage() {
                       type="button"
                       onClick={() => setAvailabilityTarget(dateKey)}
                       disabled={busy === `availability-${dateKey}`}
-                      className="border border-gray-300 bg-[var(--color-surface)] px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      className="px-1 py-1 text-xs font-semibold text-primary-700 underline decoration-primary-300 underline-offset-4 hover:text-primary-900 disabled:opacity-50"
                     >
                       זמינות
                     </button>
@@ -859,7 +848,7 @@ export default function WorkerShiftsPage() {
           colleagues={colleagues}
           busy={busy === replacementTarget.myShiftId}
           message={message}
-          onSubmit={(reason, suggestedWorkerId) => void requestReplacement(reason, suggestedWorkerId)}
+          onSubmit={(reason, suggestedWorkerIds) => void requestReplacement(reason, suggestedWorkerIds)}
           onCancel={() => void cancelReplacement()}
           onClose={() => setReplacementTarget(null)}
         />
@@ -877,6 +866,35 @@ function AssignedNames({ workers }: { workers: BoardShift['assignedWorkers'] }) 
           {worker.name}{worker.isTeamLeader ? ' · ראש צוות' : ''}
         </span>
       ))}
+    </div>
+  );
+}
+
+function NextShiftDetails({
+  shift,
+  onReplacement,
+}: {
+  shift: BoardShift;
+  onReplacement: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-3 text-sm">
+      <div className="space-y-2">
+        {shift.address && <InlineAddressMap address={shift.address} compact />}
+        <AssignedNames workers={shift.assignedWorkers} />
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-medium text-gray-500">
+          {shift.openSpots > 0 ? `${shift.openSpots} מקומות פנויים` : 'הצוות מלא'}
+        </span>
+        <button
+          type="button"
+          onClick={onReplacement}
+          className="border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+        >
+          {shift.replacementStatus === 'PENDING' ? 'בקשת מחליפה ממתינה' : 'בקשת מחליפה'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -908,7 +926,6 @@ function ShiftCard({
   onRespond,
   onCancelRequest,
   onReplacement,
-  showStatus = true,
 }: {
   shift: BoardShift;
   busy: boolean;
@@ -916,7 +933,6 @@ function ShiftCard({
   onRespond: (accepted: boolean) => void;
   onCancelRequest: () => void;
   onReplacement: () => void;
-  showStatus?: boolean;
 }) {
   // 1) Fully assigned (not mine).
   if (shift.myStatus === 'NONE' && shift.openSpots === 0) {
@@ -1010,11 +1026,9 @@ function ShiftCard({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardHeader shift={shift} />
           <div className="flex items-center gap-2">
-            {showStatus && (
-              <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                מאושרת
-              </span>
-            )}
+            <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+              מאושרת
+            </span>
             <span className="inline-flex rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-semibold text-gray-600">
               {shift.openSpots > 0 ? `${shift.openSpots} מקומות פנויים` : 'הצוות מלא'}
             </span>
@@ -1075,21 +1089,27 @@ function ReplacementModal({
   colleagues: { id: string; name: string }[];
   busy: boolean;
   message: string | null;
-  onSubmit: (reason: string, suggestedWorkerId: string) => void;
+  onSubmit: (reason: string, suggestedWorkerIds: string[]) => void;
   onCancel: () => void;
   onClose: () => void;
 }) {
   const [reason, setReason] = useState('');
-  const [suggestedWorkerId, setSuggestedWorkerId] = useState('');
+  const [suggestedWorkerIds, setSuggestedWorkerIds] = useState<string[]>([]);
   const pending = shift.replacementStatus === 'PENDING';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 p-3 sm:items-center" dir="rtl">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 p-3 sm:items-center"
+      dir="rtl"
+      data-testid="replacement-backdrop"
+      onClick={onClose}
+    >
       <div
         role="dialog"
         aria-modal="true"
         aria-label="בקשת מחליפה"
         className="w-full max-w-lg border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-5 shadow-xl"
+        onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -1127,41 +1147,50 @@ function ReplacementModal({
             className="mt-5 space-y-4"
             onSubmit={(event) => {
               event.preventDefault();
-              if (reason.trim()) onSubmit(reason.trim(), suggestedWorkerId);
+              onSubmit(reason.trim(), suggestedWorkerIds);
             }}
           >
             <label className="block text-sm font-medium text-gray-700">
-              למה את צריכה מחליפה?
+              סיבה (רשות)
               <textarea
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
-                rows={3}
+                rows={2}
                 autoFocus
-                required
+                maxLength={100}
                 className="mt-1 block w-full border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
               />
+              <span className="mt-1 block text-left text-[11px] font-normal text-gray-400">{reason.length}/100</span>
             </label>
             {colleagues.length > 0 && (
-              <label className="block text-sm font-medium text-gray-700">
-                יש לך מחליפה מתאימה? (רשות)
-                <select
-                  value={suggestedWorkerId}
-                  onChange={(event) => setSuggestedWorkerId(event.target.value)}
-                  className="mt-1 block w-full border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
-                >
-                  <option value="">פרסום לכל העובדות</option>
+              <fieldset className="block text-sm font-medium text-gray-700">
+                <legend>עובדות מסוימות (רשות)</legend>
+                <p className="mt-1 text-xs font-normal text-gray-500">ללא בחירה, הבקשה תפורסם לכל העובדות הזמינות.</p>
+                <div className="mt-2 grid max-h-32 grid-cols-2 gap-2 overflow-y-auto border border-gray-300 p-2">
                   {colleagues.map((colleague) => (
-                    <option key={colleague.id} value={colleague.id}>{colleague.name}</option>
+                    <label key={colleague.id} className="flex items-center gap-2 text-sm font-normal text-gray-700">
+                      <input
+                        type="checkbox"
+                        value={colleague.id}
+                        checked={suggestedWorkerIds.includes(colleague.id)}
+                        onChange={(event) => setSuggestedWorkerIds((current) =>
+                          event.target.checked
+                            ? [...current, colleague.id]
+                            : current.filter((workerId) => workerId !== colleague.id),
+                        )}
+                      />
+                      {colleague.name}
+                    </label>
                   ))}
-                </select>
-              </label>
+                </div>
+              </fieldset>
             )}
             <p className="text-xs text-[var(--color-text-secondary)]">
               הבקשה תישלח לאישור. עד לאישור את נשארת משובצת למשמרת.
             </p>
             <button
               type="submit"
-              disabled={busy || !reason.trim()}
+              disabled={busy}
               className="w-full bg-primary-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-800 disabled:opacity-50"
             >
               שליחת בקשת מחליפה
@@ -1217,7 +1246,6 @@ function AvailabilityModal({
   const [otherReason, setOtherReason] = useState(initialReason === 'אחר' ? existing?.reason ?? '' : '');
   const invalidRange = endDate < startDate;
   const invalidHours = !allDay && startTime >= endTime;
-  const invalidTimedRange = !allDay && startDate !== endDate;
   const invalidReason = reason === 'אחר' && !otherReason.trim();
 
   return (
@@ -1231,9 +1259,9 @@ function AvailabilityModal({
       >
         <p className="text-[11px] font-semibold tracking-[0.12em] text-primary-700">זמינות</p>
         <h2 className="font-display mt-1 text-2xl text-[#292724]">מתי אינך זמינה?</h2>
-        <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className={`mt-4 grid gap-3 ${allDay ? 'grid-cols-2' : 'grid-cols-1'}`}>
           <label className="text-xs text-gray-600">
-            התחלה
+            {allDay ? 'תאריך התחלה' : 'תאריך'}
             <input
               type="date"
               value={startDate}
@@ -1245,34 +1273,43 @@ function AvailabilityModal({
               className="mt-1 w-full border border-gray-300 px-2 py-2 text-sm"
             />
           </label>
-          <label className="text-xs text-gray-600">
-            סיום
-            <input
-              type="date"
-              min={startDate}
-              value={endDate}
-              onChange={(event) => setEndDate(event.target.value)}
-              className="mt-1 w-full border border-gray-300 px-2 py-2 text-sm"
-            />
-          </label>
+          {allDay && (
+            <label className="text-xs text-gray-600">
+              תאריך סיום
+              <input
+                type="date"
+                min={startDate}
+                value={endDate}
+                onChange={(event) => setEndDate(event.target.value)}
+                className="mt-1 w-full border border-gray-300 px-2 py-2 text-sm"
+              />
+            </label>
+          )}
         </div>
         <div className="mt-4 grid grid-cols-2 border border-[var(--color-border-strong)] p-0.5 text-xs">
           <button type="button" onClick={() => setAllDay(true)} className={`px-3 py-2 font-semibold ${allDay ? 'bg-primary-700 text-white' : 'text-gray-600'}`}>
             כל היום
           </button>
-          <button type="button" onClick={() => setAllDay(false)} className={`px-3 py-2 font-semibold ${!allDay ? 'bg-primary-700 text-white' : 'text-gray-600'}`}>
+          <button
+            type="button"
+            onClick={() => {
+              setAllDay(false);
+              setEndDate(startDate);
+            }}
+            className={`px-3 py-2 font-semibold ${!allDay ? 'bg-primary-700 text-white' : 'text-gray-600'}`}
+          >
             שעות מסוימות
           </button>
         </div>
         {!allDay && (
-          <div className="mt-4 grid grid-cols-2 gap-3" dir="ltr">
+          <div className="mt-4 grid grid-cols-2 gap-3">
             <label className="text-xs text-gray-600">
-              Start
-              <input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} className="mt-1 w-full border border-gray-300 px-2 py-2 text-sm" />
+              שעת התחלה
+              <input type="time" dir="ltr" value={startTime} onChange={(event) => setStartTime(event.target.value)} className="mt-1 w-full border border-gray-300 px-2 py-2 text-sm" />
             </label>
             <label className="text-xs text-gray-600">
-              End
-              <input type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} className="mt-1 w-full border border-gray-300 px-2 py-2 text-sm" />
+              שעת סיום
+              <input type="time" dir="ltr" value={endTime} onChange={(event) => setEndTime(event.target.value)} className="mt-1 w-full border border-gray-300 px-2 py-2 text-sm" />
             </label>
           </div>
         )}
@@ -1294,15 +1331,14 @@ function AvailabilityModal({
         )}
         {invalidRange && <p className="mt-2 text-xs text-rose-600">יש לבחור טווח תאריכים תקין.</p>}
         {invalidHours && <p className="mt-2 text-xs text-rose-600">שעת הסיום חייבת להיות אחרי שעת ההתחלה.</p>}
-        {invalidTimedRange && <p className="mt-2 text-xs text-rose-600">שעות מסוימות זמינות לתאריך בודד. לטווח תאריכים יש לבחור יום מלא.</p>}
         <div className="mt-5 flex items-center gap-2">
           <button
             type="button"
-            disabled={busy || invalidRange || invalidHours || invalidTimedRange || invalidReason}
+            disabled={busy || invalidRange || invalidHours || invalidReason}
             onClick={() => onSave({
-              type: startDate === endDate ? 'DATE' : 'RANGE',
+              type: allDay && startDate !== endDate ? 'RANGE' : 'DATE',
               startDate,
-              endDate: startDate === endDate ? undefined : endDate,
+              endDate: allDay && startDate !== endDate ? endDate : undefined,
               reason: reason === 'אחר' ? otherReason.trim() : reason,
               startTime: allDay ? undefined : startTime,
               endTime: allDay ? undefined : endTime,

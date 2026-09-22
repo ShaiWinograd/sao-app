@@ -269,11 +269,14 @@ test.describe('Worker desktop layout', () => {
     await page.route('**/api/v1/shifts/replacement-requests/open', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
     );
-    await page.route('**/api/v1/workers/colleagues', (route) =>
+    await page.route('**/api/v1/workers/replacement-candidates?shiftId=*', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([{ id: 'worker-ruth', name: 'רות כהן' }]),
+        body: JSON.stringify([
+          { id: 'worker-ruth', name: 'רות כהן' },
+          { id: 'worker-maya', name: 'מאיה לוי' },
+        ]),
       }),
     );
     let replacementPayload: Record<string, unknown> | null = null;
@@ -319,24 +322,31 @@ test.describe('Worker desktop layout', () => {
     const availableDay = page.locator(`#worker-day-${todayKey}`).getByRole('button', { name: 'זמינות' });
     await expect(availableDay).toBeVisible();
     await availableDay.click();
-    await expect(page.getByRole('dialog', { name: 'עדכון זמינות' })).toBeVisible();
-    await page.getByRole('button', { name: 'שעות מסוימות' }).click();
-    await page.locator('input[type="time"]').first().fill('13:00');
-    await page.locator('input[type="time"]').last().fill('17:00');
-    await page.getByLabel('סיבה').selectOption('אחר');
-    await page.getByLabel('פירוט').fill('לימודים');
-    await page.getByRole('button', { name: 'סימון כלא זמינה' }).click();
+    const availabilityDialog = page.getByRole('dialog', { name: 'עדכון זמינות' });
+    await expect(availabilityDialog).toBeVisible();
+    await availabilityDialog.getByRole('button', { name: 'שעות מסוימות' }).click();
+    await expect(availabilityDialog.locator('input[type="date"]')).toHaveCount(1);
+    await availabilityDialog.locator('input[type="time"]').first().fill('13:00');
+    await availabilityDialog.locator('input[type="time"]').last().fill('17:00');
+    await availabilityDialog.getByLabel('סיבה').selectOption('אחר');
+    await availabilityDialog.getByLabel('פירוט').fill('לימודים');
+    await availabilityDialog.getByRole('button', { name: 'סימון כלא זמינה' }).click();
     expect(availabilityPayload).toMatchObject({ type: 'DATE', startTime: '13:00', endTime: '17:00', reason: 'לימודים' });
     await expect(page.locator('[aria-label="הוגדרה זמינות"]')).toHaveCount(1);
 
     await expect(page).toHaveURL(/\/worker$/);
     await page.getByRole('button', { name: 'בקשת מחליפה' }).first().click();
-    const replacementDialog = page.getByRole('dialog', { name: 'בקשת מחליפה' });
+    let replacementDialog = page.getByRole('dialog', { name: 'בקשת מחליפה' });
     await expect(replacementDialog).toBeVisible();
-    await replacementDialog.getByLabel('למה את צריכה מחליפה?').fill('אירוע משפחתי');
-    await replacementDialog.getByLabel('יש לך מחליפה מתאימה? (רשות)').selectOption('worker-ruth');
+    await page.getByTestId('replacement-backdrop').click({ position: { x: 5, y: 5 } });
+    await expect(replacementDialog).toBeHidden();
+    await page.getByRole('button', { name: 'בקשת מחליפה' }).first().click();
+    replacementDialog = page.getByRole('dialog', { name: 'בקשת מחליפה' });
+    await expect(replacementDialog.getByLabel('סיבה (רשות)')).toHaveAttribute('maxlength', '100');
+    await replacementDialog.getByLabel('רות כהן').check();
+    await replacementDialog.getByLabel('מאיה לוי').check();
     await replacementDialog.getByRole('button', { name: 'שליחת בקשת מחליפה' }).click();
-    expect(replacementPayload).toEqual({ reason: 'אירוע משפחתי', suggestedWorkerId: 'worker-ruth' });
+    expect(replacementPayload).toEqual({ reason: '', suggestedWorkerIds: ['worker-ruth', 'worker-maya'] });
     await expect(page.getByText('בקשת המחליפה נשלחה. את נשארת משובצת עד לאישור.')).toBeVisible();
     await expect(page.getByText('נועה ישראלי')).toBeVisible();
     await expect(page.getByText('רמת גן 4')).toBeVisible();
