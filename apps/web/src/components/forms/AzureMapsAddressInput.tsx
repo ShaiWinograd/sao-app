@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuth } from '@clerk/nextjs';
-import { CheckCircle2, MapPin } from 'lucide-react';
+import { CheckCircle2, MapPin, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, authHeaders } from '../../lib/api';
 
@@ -33,6 +33,7 @@ type AzureMapsAddressInputProps = {
   onSelectionChange?: (selection: AddressSelection | null) => void;
   placeholder?: string;
   className?: string;
+  invalid?: boolean;
 };
 
 export default function AzureMapsAddressInput({
@@ -41,6 +42,7 @@ export default function AzureMapsAddressInput({
   onSelectionChange,
   placeholder,
   className,
+  invalid = false,
 }: AzureMapsAddressInputProps) {
   const { getToken } = useAuth();
   const [suggestions, setSuggestions] = useState<AzureMapsSuggestion[]>([]);
@@ -168,10 +170,22 @@ export default function AzureMapsAddressInput({
         }}
         placeholder={placeholder}
         className={className}
+        aria-invalid={invalid}
         autoComplete="off"
       />
       {isOpen && suggestions.length > 0 && (
         <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg">
+          <div className="flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1.5">
+            <span className="text-[11px] text-gray-500">כתובות מוצעות</span>
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              aria-label="סגירת הצעות כתובת"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-white hover:text-gray-800"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
           {suggestions.map((suggestion, index) => (
             <button
               key={suggestion.token}

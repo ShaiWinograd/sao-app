@@ -93,6 +93,12 @@ test.describe('Dashboard urgent and workflow sections', () => {
             lastName: 'כהן',
             skills: ['GENERAL_WORKER'],
           },
+          ...Array.from({ length: 14 }, (_, index) => ({
+            id: `worker-${index}`,
+            firstName: `עובדת ${index + 1}`,
+            lastName: 'בדיקה',
+            skills: ['GENERAL_WORKER'],
+          })),
         ]),
       });
     });
@@ -107,6 +113,8 @@ test.describe('Dashboard urgent and workflow sections', () => {
             workerId: 'worker-michal',
             dateKey: availableBlockDate,
             reason: 'חופשה',
+            startTime: '10:00',
+            endTime: '13:30',
           },
         ]),
       });
@@ -194,6 +202,11 @@ test.describe('Dashboard urgent and workflow sections', () => {
     const mainBounds = await page.locator('main').boundingBox();
     expect(sidebarBounds?.width).toBe(220);
     expect(mainBounds?.width).toBeGreaterThanOrEqual(1190);
+    await page.getByRole('button', { name: 'סגירת תפריט צד' }).click();
+    await expect(page.getByRole('button', { name: 'פתיחת תפריט צד' })).toBeVisible();
+    const expandedMainBounds = await page.locator('main').boundingBox();
+    expect(expandedMainBounds?.width).toBeGreaterThan(mainBounds?.width ?? 0);
+    await page.getByRole('button', { name: 'פתיחת תפריט צד' }).click();
     const brand = page.getByRole('link', { name: 'מעבר ללוח הבקרה' });
     await expect(brand).not.toContainText('ניהול עסק');
     const logoBounds = await brand.locator('img').boundingBox();
@@ -224,6 +237,9 @@ test.describe('Dashboard urgent and workflow sections', () => {
 
     await expect(page.getByText('לא זמינה', { exact: true })).toBeVisible();
     await expect(page.getByText('חופשה', { exact: true })).toBeVisible();
+    await expect(page.getByText('10:00–13:30', { exact: true })).toBeVisible();
+    const calendarScroll = page.getByTestId('owner-calendar-scroll');
+    expect(await calendarScroll.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
     const createForDate = page.getByRole('button', { name: `יצירת עבודה בתאריך ${tomorrow}` });
     await expect(createForDate).toBeVisible();
     await expect(
@@ -246,7 +262,7 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await page.goto('/dashboard');
 
     const gapLine = page.getByTestId('staffing-gap-bottom-line');
-    await expect(gapLine).toHaveText('1/4 מאוישים · 3 חסרים');
+    await expect(gapLine).toHaveText('2/4 מאוישים · 2 חסרים');
     await expect(page.getByLabel('1 בקשות הצטרפות ממתינות')).toBeVisible();
     await expect(page.getByTestId('staffing-state-summary')).toHaveCount(0);
 
@@ -254,7 +270,7 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await expect(page.getByText('נועה לוי · מאושרת')).toBeVisible();
     await expect(page.getByText('מיה גל · ממתינה לאישור שלך')).toBeVisible();
     await expect(page.getByText('רות בר · ממתינה לאישור העובדת')).toBeVisible();
-    await expect(page.getByText('3 חסרים').last()).toBeVisible();
+    await expect(page.getByText('2 חסרים').last()).toBeVisible();
   });
 
   test('keeps the selected date across views and returns the current view to today', async ({ page }) => {
@@ -276,7 +292,7 @@ test.describe('Dashboard urgent and workflow sections', () => {
   });
 
   test('creates a job with the server-signed geocoded address selection', async ({ page }) => {
-    const submitted: { payload?: { address?: unknown; cityOrAddress?: unknown } } = {};
+    const submitted: { payload?: { address?: unknown; cityOrAddress?: unknown; initialStatus?: unknown } } = {};
     await page.route('**/api/v1/geocode/suggest', async (route) => {
       await route.fulfill({
         status: 200,
@@ -309,15 +325,26 @@ test.describe('Dashboard urgent and workflow sections', () => {
     });
 
     await page.goto('/jobs/new');
+    await expect(page.getByRole('button', { name: 'יצירת העבודה' })).toHaveCount(0);
+    await expect(page.getByText('סטטוס התחלתי', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('מתלמדת', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'אושר', exact: true }).click();
+    await expect(page.getByPlaceholder('שם פרטי')).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByPlaceholder('טלפון')).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByPlaceholder('רחוב, מספר ועיר')).toHaveAttribute('aria-invalid', 'true');
     await page.getByPlaceholder('שם פרטי').fill('יעל');
     await page.getByPlaceholder('טלפון').fill('0501111111');
     await page.getByPlaceholder('רחוב, מספר ועיר').fill('הרצל 10 תל אביב');
+    await page.getByRole('button', { name: 'סגירת הצעות כתובת' }).click();
+    await expect(page.getByRole('button', { name: /הרצל 10, תל אביב/ })).toHaveCount(0);
+    await page.getByPlaceholder('רחוב, מספר ועיר').focus();
     await page.getByRole('button', { name: /הרצל 10, תל אביב/ }).click();
 
     await expect(page.getByText('הכתובת אומתה ותאפשר ניטור מיקום במשמרת.')).toBeVisible();
-    await page.getByRole('button', { name: 'יצירת העבודה' }).click();
+    await page.getByRole('button', { name: 'אושר', exact: true }).click();
     await expect.poll(() => submitted.payload).toBeDefined();
     expect(submitted.payload?.address).toEqual({ mode: 'selected', token: 'signed-address-token' });
+    expect(submitted.payload?.initialStatus).toBe('APPROVED');
     expect(submitted.payload).not.toHaveProperty('cityOrAddress');
   });
 });

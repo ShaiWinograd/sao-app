@@ -12,6 +12,7 @@ import { logAudit } from '../lib/audit.js';
 import { assertWorkerFreeOnDate, lockJob } from '../lib/commitment.js';
 import { assertDirectAssignCapacity } from '../domain/directAssign.js';
 import { changeShiftRole } from '../domain/roleChange.js';
+import { isWorkerVisibleJob, WORKER_VISIBLE_JOB_STATUS } from '../domain/workerJobVisibility.js';
 import { AppError } from '../lib/errors.js';
 import { findEligibleReplacementCandidates } from '../domain/replacementCandidates.js';
 
@@ -39,7 +40,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
     if (!worker) return reply.status(403).send({ error: 'Worker profile not found' });
 
     return prisma.shift.findMany({
-      where: { workerId: worker.id },
+      where: { workerId: worker.id, job: { status: WORKER_VISIBLE_JOB_STATUS } },
       include: {
         job: {
           include: {
@@ -72,7 +73,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
 
     const job = await prisma.job.findUnique({ where: { id: body.jobId }, include: { slots: true } });
     if (!job) return reply.status(404).send({ error: 'Job not found' });
-    if (job.status === 'ARCHIVED' || job.status === 'COMPLETED') return reply.status(400).send({ error: 'Job is not open for applications' });
+    if (!isWorkerVisibleJob(job.status)) return reply.status(400).send({ error: 'Job is not open for applications' });
 
     // All join requests require owner approval in Version 1 (§12.2). The pending
     // request immediately blocks the worker's full date (§12.1) — enforced by the
@@ -250,7 +251,7 @@ export async function shiftsRoutes(app: FastifyInstance) {
     return { ...result.updated, assignedRole: result.assignRole, warning: result.warning };
   });
 
-  // Admin: directly assign a worker to a job slot (creates an approved shift)
+  // Admin: directly invite a worker to an approved job slot.
   app.post('/admin-assign', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { jobId, workerId, slotId, role } = req.body as {
       jobId: string;
@@ -264,6 +265,9 @@ export async function shiftsRoutes(app: FastifyInstance) {
 
     const job = await prisma.job.findUnique({ where: { id: jobId } });
     if (!job) return reply.status(404).send({ error: 'Job not found' });
+    if (!isWorkerVisibleJob(job.status)) {
+      return reply.status(409).send({ error: 'יש לאשר את העבודה לפני שיבוץ עובדות.' });
+    }
 
     const worker = await prisma.worker.findUnique({ where: { id: workerId } });
     if (!worker) return reply.status(404).send({ error: 'Worker not found' });
@@ -521,6 +525,9 @@ export async function shiftsRoutes(app: FastifyInstance) {
     // Strip financials + customer PII for workers. Only the assigned team leader
     // may see the customer phone (acceptance §Discovery).
     if (user.role === UserRole.WORKER) {
+      if (!isWorkerVisibleJob(shift.job.status)) {
+        return reply.status(404).send({ error: 'Shift not found' });
+      }
       const { hourlyWageSnapshot, dailyPaymentSnapshot, ...safe } = shift as any;
       const viewer = await prisma.worker.findUnique({ where: { userId: user.id }, select: { id: true } });
       const leaderSlot = ((safe.job?.slots ?? []) as any[]).find(

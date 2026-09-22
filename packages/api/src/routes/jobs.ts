@@ -21,6 +21,11 @@ import { lockJob } from '../lib/commitment.js';
 import { assignRealCustomerToJob } from '../domain/assignCustomer.js';
 import { syncJobSlots } from '../domain/jobSlots.js';
 import { getCaseReadiness } from '../domain/customerReport.js';
+import {
+  isWorkerVisibleJob,
+  workerInvitationsForJob,
+  WORKER_VISIBLE_JOB_STATUS,
+} from '../domain/workerJobVisibility.js';
 import { z } from 'zod';
 
 const JOB_TYPE_HE: Record<string, string> = {
@@ -45,7 +50,7 @@ async function notifyJobPublished(jobId: string): Promise<void> {
     where: { id: jobId },
     include: { customer: { select: { firstName: true, lastName: true } } },
   });
-  if (!job) return;
+  if (!job || !isWorkerVisibleJob(job.status)) return;
   const workers = await prisma.worker.findMany({ where: { isActive: true }, select: { userId: true } });
   if (!workers.length) return;
   const title = 'פורסמה עבודה חדשה';
@@ -221,7 +226,7 @@ export async function jobsRoutes(app: FastifyInstance) {
     const me = await prisma.worker.findUnique({ where: { userId: user.id }, select: { id: true } });
 
     const jobs = await prisma.job.findMany({
-      where: { status: { in: ['RESERVATION', 'APPROVED'] }, date: { gte: today } },
+      where: { status: WORKER_VISIBLE_JOB_STATUS, date: { gte: today } },
       include: {
         customer: { select: { firstName: true, lastName: true } },
         address: { select: { fullAddress: true } },
@@ -339,6 +344,9 @@ export async function jobsRoutes(app: FastifyInstance) {
 
     // Strip sensitive data for workers
     if (user.role === UserRole.WORKER) {
+      if (!isWorkerVisibleJob(job.status)) {
+        return reply.status(404).send({ error: 'Job not found' });
+      }
       const { customer, shifts, formTemplate, ...rest } = job as any;
       // The assigned team leader may see the customer phone (acceptance §Discovery).
       const myWorker = await prisma.worker.findUnique({ where: { userId: user.id }, select: { id: true } });
@@ -449,7 +457,7 @@ export async function jobsRoutes(app: FastifyInstance) {
     await logAudit((req as any).user, 'CREATE', 'Job', job.id, null, { status: job.status, quick: true }, 'quick-created');
     await notifyJobPublished(job.id);
 
-    const selectedWorkerIds = body.selectedWorkerIds ?? [];
+    const selectedWorkerIds = workerInvitationsForJob(job.status, body.selectedWorkerIds ?? []);
     const invitedWorkerIds = selectedWorkerIds.slice(0, body.requiredWorkerCount);
     const assignmentFailures: Array<{ workerId: string; error: string }> = selectedWorkerIds
       .slice(body.requiredWorkerCount)
@@ -597,8 +605,15 @@ export async function jobsRoutes(app: FastifyInstance) {
       include: { slots: true },
     });
 
-    // Spec §6.3: every new job is published to workers immediately (no draft).
-    await logAudit((req as any).user, 'CREATE', 'Job', job.id, null, { status: job.status }, 'created+published');
+    await logAudit(
+      (req as any).user,
+      'CREATE',
+      'Job',
+      job.id,
+      null,
+      { status: job.status },
+      isWorkerVisibleJob(job.status) ? 'created+published' : 'created+reserved',
+    );
     await notifyJobPublished(job.id);
 
     reply.status(201);
@@ -719,7 +734,7 @@ export async function jobsRoutes(app: FastifyInstance) {
     });
 
     const capDateKey = heDate(nextDate);
-    if (demotedUserIds.length) {
+    if (isWorkerVisibleJob(existingJob.status) && demotedUserIds.length) {
       await prisma.notification.createMany({
         data: demotedUserIds.map((userId) => ({
           userId,
@@ -729,7 +744,7 @@ export async function jobsRoutes(app: FastifyInstance) {
         })),
       });
     }
-    if (capacityIncreased) {
+    if (isWorkerVisibleJob(existingJob.status) && capacityIncreased) {
       await notifyAssignedWorkers(id, 'נוספו מקומות לעבודה', `נפתחו מקומות נוספים לעבודה בתאריך ${capDateKey}.`, 'CAPACITY_INCREASED');
     }
 
@@ -794,7 +809,7 @@ export async function jobsRoutes(app: FastifyInstance) {
 
     if (
       changes.length > 0 &&
-      (existingJob.status === 'RESERVATION' || existingJob.status === 'APPROVED')
+      isWorkerVisibleJob(existingJob.status)
     ) {
       if (needsReapproval) {
         // Approved workers must re-approve the changed job (spec §12.3). Capture
@@ -871,6 +886,9 @@ export async function jobsRoutes(app: FastifyInstance) {
     if (!job) {
       return reply.status(404).send({ error: 'Job not found' });
     }
+    if (!isWorkerVisibleJob(job.status)) {
+      return reply.status(409).send({ error: 'יש לאשר את העבודה לפני פרסומה לעובדות.' });
+    }
 
     const readiness = evaluateJobPublishReadiness({
       status: job.status,
@@ -889,8 +907,8 @@ export async function jobsRoutes(app: FastifyInstance) {
       });
     }
 
-    // Jobs are published to workers on creation (spec §6.3); this endpoint
-    // re-broadcasts the job to workers after a readiness check.
+    // Approved jobs are worker-visible; this endpoint re-broadcasts an already
+    // approved job after a readiness check.
     await logAudit((req as any).user, 'UPDATE', 'Job', id, { status: job.status }, { republished: true }, 'republish');
     await notifyJobPublished(id);
     return prisma.job.findUnique({ where: { id } });
@@ -901,14 +919,15 @@ export async function jobsRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const before = await prisma.job.findUnique({ where: { id }, select: { status: true, date: true } });
     const archived = await prisma.job.update({ where: { id }, data: { status: 'ARCHIVED' } });
-    await notifyAssignedWorkers(id, 'עבודה הוסרה', `העבודה בתאריך ${heDate(archived.date)} הוסרה. אינך משובץ/ת אליה יותר.`, 'JOB_CANCELLED');
+    if (before && isWorkerVisibleJob(before.status)) {
+      await notifyAssignedWorkers(id, 'עבודה הוסרה', `העבודה בתאריך ${heDate(archived.date)} הוסרה. אינך משובץ/ת אליה יותר.`, 'JOB_CANCELLED');
+    }
     await logAudit((req as any).user, 'UPDATE', 'Job', id, { status: before?.status ?? null }, { status: 'ARCHIVED' }, 'archive');
     return archived;
   });
 
   // Owner approves a job (spec §4.2). Requires a real customer (not General
-  // Reservation); workers remain assigned and are not notified of the internal
-  // status change.
+  // Reservation); approval is the point at which the job becomes worker-visible.
   app.post('/:id/approve', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const job = await prisma.job.findUnique({
@@ -924,6 +943,9 @@ export async function jobsRoutes(app: FastifyInstance) {
     }
     const updated = await prisma.job.update({ where: { id }, data: { status: 'APPROVED' } });
     await logAudit((req as any).user, 'APPROVE', 'Job', id, { status: job.status }, { status: 'APPROVED' }, 'approve');
+    if (!isWorkerVisibleJob(job.status)) {
+      await notifyJobPublished(id);
+    }
     return updated;
   });
 
