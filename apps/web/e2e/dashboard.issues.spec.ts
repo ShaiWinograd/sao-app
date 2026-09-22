@@ -147,8 +147,8 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await expect(page.getByText('אריזה דחופה').first()).toBeVisible();
     await page.getByRole('button', { name: 'סגירה' }).click();
 
-    // Header quick action
-    await expect(page.getByRole('button', { name: 'יצירת עבודה', exact: true })).toBeVisible();
+    // Creation is available from each future date instead of a global header action.
+    await expect(page.getByRole('button', { name: 'יצירת עבודה', exact: true })).toHaveCount(0);
 
     // The separate 'must handle' urgent panel was removed.
     await expect(page.getByTestId('dashboard-urgent-panel')).toHaveCount(0);
@@ -165,11 +165,17 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await expect(page.getByRole('button', { name: 'פתיחת תפריט' })).toBeVisible();
 
     await page.getByRole('button', { name: 'פתיחת תפריט' }).click();
-    await expect(page.getByRole('dialog', { name: 'תפריט ניווט' })).toBeVisible();
+    const navigationDrawer = page.getByRole('dialog', { name: 'תפריט ניווט' });
+    await expect(navigationDrawer).toBeVisible();
     await expect(page.getByRole('link', { name: 'בית' })).toBeVisible();
+    await expect(navigationDrawer.getByText('ניווט', { exact: true })).toHaveCount(0);
+    await expect(navigationDrawer.getByRole('link', { name: 'יומן עבודות' })).toHaveCount(0);
+    const navigationLabels = await navigationDrawer.locator('nav a').allTextContents();
+    navigationLabels.forEach((label) => expect(label.trim()).not.toMatch(/^\d{2}/));
 
     await page.getByRole('button', { name: 'סגירת תפריט' }).click();
     await page.goto('/jobs/new');
+    await expect(page).toHaveURL(/\/dashboard\?createDate=/);
 
     const firstName = page.getByPlaceholder('שם פרטי');
     const lastName = page.getByPlaceholder('שם משפחה');
@@ -193,6 +199,13 @@ test.describe('Dashboard urgent and workflow sections', () => {
     const logoBounds = await brand.locator('img').boundingBox();
     expect(logoBounds?.width).toBeGreaterThanOrEqual(92);
     await expect(page.getByRole('heading', { name: 'היום בעסק' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'יומן עבודות' })).toHaveCount(0);
+  });
+
+  test('redirects the retired jobs calendar to the home calendar', async ({ page }) => {
+    await page.goto('/jobs');
+    await expect(page).toHaveURL(/\/dashboard#owner-shift-grid$/);
+    await expect(page.getByRole('heading', { name: 'היום בעסק' })).toBeVisible();
   });
 
   test('uses date headers for creation and worker cells for assignment', async ({ page }) => {
@@ -211,11 +224,16 @@ test.describe('Dashboard urgent and workflow sections', () => {
 
     await expect(page.getByText('לא זמינה', { exact: true })).toBeVisible();
     await expect(page.getByText('חופשה', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: `יצירת עבודה בתאריך ${tomorrow}` })).toBeVisible();
+    const createForDate = page.getByRole('button', { name: `יצירת עבודה בתאריך ${tomorrow}` });
+    await expect(createForDate).toBeVisible();
     await expect(
       page.locator('button[aria-label^="יצירת עבודה בתאריך"]').filter({ hasText: 'יצירת עבודה' }),
     ).toHaveCount(0);
-    await expect(page.getByRole('link', { name: 'הצג הכל' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'החלפות משמרות' })).toBeVisible();
+    await createForDate.click();
+    await expect(page.getByRole('heading', { name: 'יצירת עבודה' })).toBeVisible();
+    await page.getByRole('button', { name: 'סגירה' }).click();
+    await expect(page.getByText('סיכום שיבוץ לעבודות')).toHaveCount(0);
 
     await page.getByRole('button', { name: `שיבוץ מיכל כהן בתאריך ${tomorrow}` }).click();
     await expect(page.getByRole('heading', { name: 'שיבוץ עובדת' })).toBeVisible();
@@ -228,7 +246,7 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await page.goto('/dashboard');
 
     const gapLine = page.getByTestId('staffing-gap-bottom-line');
-    await expect(gapLine).toHaveText('1/4 משובצות · 3 עדיין נדרשות');
+    await expect(gapLine).toHaveText('1/4 מאוישים · 3 חסרים');
     await expect(page.getByLabel('1 בקשות הצטרפות ממתינות')).toBeVisible();
     await expect(page.getByTestId('staffing-state-summary')).toHaveCount(0);
 
@@ -236,7 +254,7 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await expect(page.getByText('נועה לוי · מאושרת')).toBeVisible();
     await expect(page.getByText('מיה גל · ממתינה לאישור שלך')).toBeVisible();
     await expect(page.getByText('רות בר · ממתינה לאישור העובדת')).toBeVisible();
-    await expect(page.getByText('3 עדיין נדרשות').last()).toBeVisible();
+    await expect(page.getByText('3 חסרים').last()).toBeVisible();
   });
 
   test('keeps the selected date across views and returns the current view to today', async ({ page }) => {

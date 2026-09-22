@@ -199,6 +199,9 @@ test.describe('Worker desktop layout', () => {
     await expect(page.getByRole('dialog', { name: 'תפריט ניווט' })).toBeVisible();
 
     const drawer = page.getByRole('dialog', { name: 'תפריט ניווט' });
+    await expect(drawer.getByText('ניווט', { exact: true })).toHaveCount(0);
+    const navigationLabels = await drawer.locator('nav a').allTextContents();
+    navigationLabels.forEach((label) => expect(label.trim()).not.toMatch(/^\d{2}/));
     await drawer.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: 120, clientY: 400 });
     await drawer.dispatchEvent('pointerup', { pointerType: 'touch', clientX: 210, clientY: 405 });
     await expect(page.getByRole('dialog', { name: 'תפריט ניווט' })).toHaveCount(0);

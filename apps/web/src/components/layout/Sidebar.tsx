@@ -13,7 +13,6 @@ import { BrandLockup } from './BrandLockup';
 // and the customer report live under Reports and deep links.
 const navItems = [
   { href: '/dashboard', label: 'בית', matchPrefix: '/dashboard' },
-  { href: '/jobs', label: 'יומן עבודות', matchPrefix: '/jobs' },
   { href: '/workers', label: 'עובדים', matchPrefix: '/workers' },
   { href: '/customers', label: 'לקוחות', matchPrefix: '/customers' },
   { href: '/reports', label: 'דוחות', matchPrefix: '/reports' },
@@ -35,8 +34,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-5 py-5">
-        <p className="mb-3 text-[10px] font-semibold tracking-[0.16em] text-[var(--color-text-muted)]">ניווט</p>
-        {visibleNavItems.map(({ href, label, matchPrefix }, index) => {
+        {visibleNavItems.map(({ href, label, matchPrefix }) => {
           const isActive =
             pathname === href || (matchPrefix !== '/dashboard' && pathname.startsWith(matchPrefix));
           return (
@@ -45,15 +43,12 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
               href={href}
               onClick={onNavigate}
               aria-current={isActive ? 'page' : undefined}
-              className={`grid min-h-12 grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-3 border-b border-[var(--color-border)] border-r-2 px-2 py-3 text-sm transition-colors ${
+              className={`flex min-h-12 items-center border-b border-[var(--color-border)] border-r-2 px-3 py-3 text-sm transition-colors ${
                 isActive
                   ? 'border-r-primary-600 font-semibold text-primary-800'
                   : 'border-r-transparent font-medium text-gray-600 hover:text-primary-700'
               }`}
             >
-              <span dir="ltr" className={`text-[10px] tracking-[0.08em] ${isActive ? 'text-primary-700' : 'text-[var(--color-text-muted)]'}`}>
-                {String(index + 1).padStart(2, '0')}
-              </span>
               <span className="truncate">{label}</span>
             </Link>
           );

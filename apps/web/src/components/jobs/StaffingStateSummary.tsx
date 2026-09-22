@@ -59,7 +59,7 @@ export function StaffingGapSummary({
       (shift) =>
         `${shift.workerNameSnapshot ?? shift.name ?? 'עובדת'} — ${staffingStatusLabel(shift.joinRequestStatus)}`,
     ),
-    `${summary.openSlots} עדיין נדרשות`,
+    `${summary.openSlots} חסרים`,
   ].join('\n');
 
   return (
@@ -78,19 +78,15 @@ export function StaffingGapSummary({
         data-testid="staffing-gap-bottom-line"
         title={hoverText}
       >
-        {summary.approvedNames.length}/{summary.required} משובצות · {summary.openSlots} עדיין נדרשות
+        {summary.approvedNames.length}/{summary.required} מאוישים · {summary.openSlots} חסרים
       </div>
       <div className="pointer-events-none absolute left-1 top-full z-50 mt-1 hidden w-56 border border-[var(--color-border-strong)] bg-[var(--color-background)] px-3 py-2 text-right text-[11px] leading-5 text-gray-700 shadow-lg group-hover/staffing:block group-focus-within/staffing:block">
-        <p className="font-semibold text-gray-900">{summary.openSlots} עדיין נדרשות</p>
-        {active.length > 0 ? (
-          active.map((shift, index) => (
+        <p className="font-semibold text-gray-900">{summary.openSlots} חסרים</p>
+        {active.map((shift, index) => (
             <p key={`${shift.workerNameSnapshot ?? shift.name ?? 'worker'}-${index}`}>
               {shift.workerNameSnapshot ?? shift.name ?? 'עובדת'} · {staffingStatusLabel(shift.joinRequestStatus)}
             </p>
-          ))
-        ) : (
-          <p>עדיין אין עובדות בתהליך</p>
-        )}
+          ))}
       </div>
     </>
   );
@@ -107,7 +103,7 @@ function StaffingCounter({
   names?: string[];
   tone: string;
 }) {
-  const detail = names?.length ? names.join(' · ') : 'אין עובדים במצב זה';
+  const detail = names?.length ? names.join(' · ') : '';
   const [open, setOpen] = useState(false);
   return (
     <div
@@ -117,15 +113,15 @@ function StaffingCounter({
       onFocus={() => setOpen(true)}
       onBlur={() => setOpen(false)}
       className="relative min-w-0 border-l border-[var(--color-border)] px-2 py-1.5 text-center outline-none last:border-l-0 focus:bg-[var(--color-surface)]"
-      aria-label={`${label}: ${value}. ${detail}`}
-      title={`${label}: ${value}. ${detail}`}
+      aria-label={`${label}: ${value}${detail ? `. ${detail}` : ''}`}
+      title={`${label}: ${value}${detail ? `. ${detail}` : ''}`}
     >
       <strong className={`block text-sm font-semibold leading-none ${tone}`}>{value}</strong>
       <span className="mt-1 block truncate text-[9px] text-[var(--color-text-secondary)]">{label}</span>
       {open && (
         <div className="pointer-events-none absolute bottom-full right-1/2 z-40 mb-2 w-52 translate-x-1/2 border border-[var(--color-border-strong)] bg-[var(--color-background)] px-3 py-2 text-right text-[11px] leading-5 text-gray-700 shadow-lg">
           <p className="font-semibold text-gray-900">{label} · {value}</p>
-          <p>{detail}</p>
+          {detail && <p>{detail}</p>}
         </div>
       )}
     </div>
@@ -144,13 +140,19 @@ export function StaffingStateSummary({
   const summary = getStaffingStateSummary(shifts, requiredWorkerCount);
   return (
     <div
-      className={`grid grid-cols-4 border-y border-[var(--color-border)] bg-[var(--color-surface-muted)] ${className}`}
+      className={`grid grid-flow-col auto-cols-fr border-y border-[var(--color-border)] bg-[var(--color-surface-muted)] ${className}`}
       data-testid="staffing-state-summary"
     >
       <StaffingCounter label="נדרש" value={summary.required} tone="text-gray-900" />
-      <StaffingCounter label="ממתין לבעלים" value={summary.pendingOwnerNames.length} names={summary.pendingOwnerNames} tone="text-[var(--color-calendar-sand)]" />
-      <StaffingCounter label="מאושר" value={summary.approvedNames.length} names={summary.approvedNames} tone="text-[var(--color-calendar-sage)]" />
-      <StaffingCounter label="ממתין לעובד/ת" value={summary.awaitingWorkerNames.length} names={summary.awaitingWorkerNames} tone="text-primary-700" />
+      {summary.pendingOwnerNames.length > 0 && (
+        <StaffingCounter label="ממתין לבעלים" value={summary.pendingOwnerNames.length} names={summary.pendingOwnerNames} tone="text-[var(--color-calendar-sand)]" />
+      )}
+      {summary.approvedNames.length > 0 && (
+        <StaffingCounter label="מאוישים" value={summary.approvedNames.length} names={summary.approvedNames} tone="text-[var(--color-calendar-sage)]" />
+      )}
+      {summary.awaitingWorkerNames.length > 0 && (
+        <StaffingCounter label="ממתין לעובד/ת" value={summary.awaitingWorkerNames.length} names={summary.awaitingWorkerNames} tone="text-primary-700" />
+      )}
     </div>
   );
 }
