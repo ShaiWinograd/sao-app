@@ -14,7 +14,7 @@ const areaDetails = {
   },
   worker: {
     href: '/worker',
-    ariaLabel: 'מעבר למסך המשמרות',
+    ariaLabel: 'מעבר ליומן',
   },
 } satisfies Record<BrandLockupProps['area'], { href: string; ariaLabel: string }>;
 

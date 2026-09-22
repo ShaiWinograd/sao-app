@@ -1,6 +1,129 @@
 import { expect, test } from '@playwright/test';
 
 test.describe('Worker desktop layout', () => {
+  test('creates availability like a calendar event and guides shift conflicts to replacement', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const date = new Date();
+    date.setDate(date.getDate() + 5);
+    const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    let payload: Record<string, unknown> | null = null;
+
+    await page.route('**/api/v1/workers/me/availability', async (route) => {
+      if (route.request().method() === 'POST') {
+        payload = route.request().postDataJSON() as Record<string, unknown>;
+        await route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error: 'AVAILABILITY_CONFLICT',
+            message: 'כבר קיימת משמרת בזמן שסימנת.',
+            conflicts: [{
+              shiftId: 'shift-conflict',
+              date: `${dateKey}T00:00:00.000Z`,
+              plannedStart: `${dateKey}T09:00:00.000Z`,
+              plannedEnd: `${dateKey}T14:00:00.000Z`,
+              jobType: 'HOME_ORGANIZATION',
+              customerName: 'משפחת לוי',
+              replacementStatus: 'NONE',
+            }],
+          }),
+        });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    });
+    await page.route('**/api/v1/jobs/board', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([{
+          jobId: 'job-conflict',
+          jobType: 'HOME_ORGANIZATION',
+          date: `${dateKey}T00:00:00.000Z`,
+          plannedStart: '09:00',
+          plannedEnd: '14:00',
+          customerName: 'משפחת לוי',
+          address: 'תל אביב',
+          requiredWorkerCount: 1,
+          assignedWorkers: [{ name: 'שי', isTeamLeader: false }],
+          openSpots: 0,
+          myStatus: 'APPROVED',
+          myShiftId: 'shift-conflict',
+          replacementStatus: 'NONE',
+        }]),
+      }),
+    );
+    await page.route('**/api/v1/shifts/swaps/mine', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    );
+    await page.route('**/api/v1/shifts/replacement-requests/open', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    );
+    await page.route('**/api/v1/workers/colleagues', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    );
+
+    await page.goto('/worker/availability');
+    await page.getByLabel('התחלה').fill(dateKey);
+    await page.getByLabel('סיום').fill(dateKey);
+    await page.getByLabel('כל היום').uncheck();
+    await page.getByLabel('שעת התחלה').fill('10:00');
+    await page.getByLabel('שעת סיום').fill('13:00');
+    await page.getByLabel('סיבה').selectOption('חולה');
+    await page.getByRole('button', { name: 'שמירת אי-זמינות' }).click();
+
+    const conflictDialog = page.getByRole('dialog', { name: 'התנגשות עם משמרת' });
+    await expect(conflictDialog).toBeVisible();
+    expect(payload).toEqual({
+      type: 'DATE',
+      startDate: dateKey,
+      startTime: '10:00',
+      endTime: '13:00',
+      reason: 'חולה',
+    });
+    await expect(conflictDialog.getByText('משפחת לוי')).toBeVisible();
+    const replacementLink = conflictDialog.getByRole('link', { name: 'בקשת מחליפה' });
+    await expect(replacementLink).toHaveAttribute(
+      'href',
+      '/worker?replacementShiftId=shift-conflict',
+    );
+    await replacementLink.click();
+    await expect(page).toHaveURL(/\/worker\?replacementShiftId=shift-conflict$/);
+    await expect(page.getByRole('dialog', { name: 'בקשת מחליפה' })).toBeVisible();
+  });
+
+  test('shows exact notification details and opens the affected shift', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.route('**/api/v1/notifications/mine', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([{
+          id: 'notification-1',
+          title: 'עדכון בפרטי העבודה',
+          body: 'שעות: 09:00–14:00 ← 10:00–15:00',
+          isRead: false,
+          sentAt: new Date().toISOString(),
+          data: { type: 'JOB_CHANGED', jobId: 'job-1', shiftId: 'shift-1' },
+        }]),
+      }),
+    );
+    await page.route('**/api/v1/notifications/notification-1/read', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true}' }),
+    );
+    await page.route('**/api/v1/shifts/shift-1', (route) =>
+      route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not found"}' }),
+    );
+    await page.route('**/api/v1/workers/colleagues', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    );
+
+    await page.goto('/worker/notifications');
+    await expect(page.getByText('שעות: 09:00–14:00 ← 10:00–15:00')).toBeVisible();
+    await page.getByRole('button', { name: /עדכון בפרטי העבודה/ }).click();
+    await expect(page).toHaveURL(/\/worker\/shifts\/shift-1$/);
+  });
+
   test('centers history content and presents an intentional empty state', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.route('**/api/v1/shifts/mine', async (route) => {
@@ -40,7 +163,7 @@ test.describe('Worker desktop layout', () => {
     );
 
     await page.goto('/worker/history');
-    await page.getByRole('link', { name: 'מעבר למסך המשמרות' }).click();
+    await page.getByRole('link', { name: 'מעבר ליומן' }).click();
     await expect(page).toHaveURL(/\/worker$/);
     await expect(page.getByText('היומן של כולן')).toBeVisible();
 
@@ -125,6 +248,18 @@ test.describe('Worker desktop layout', () => {
     await page.route('**/api/v1/shifts/replacement-requests/open', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
     );
+    await page.route('**/api/v1/workers/colleagues', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([{ id: 'worker-ruth', name: 'רות כהן' }]),
+      }),
+    );
+    let replacementPayload: Record<string, unknown> | null = null;
+    await page.route('**/api/v1/shifts/shift-next/replacement', async (route) => {
+      replacementPayload = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({ status: 201, contentType: 'application/json', body: '{}' });
+    });
     let availabilityPayload: Record<string, unknown> | null = null;
     let savedAvailability: Record<string, unknown>[] = [];
     await page.route('**/api/v1/workers/me/availability', async (route) => {
@@ -139,14 +274,21 @@ test.describe('Worker desktop layout', () => {
 
     await page.goto('/worker');
 
+    const today = new Date();
+    const calendarEnd = new Date(today);
+    calendarEnd.setMonth(calendarEnd.getMonth() + 2);
+    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const calendarEndKey = `${calendarEnd.getFullYear()}-${String(calendarEnd.getMonth() + 1).padStart(2, '0')}-${String(calendarEnd.getDate()).padStart(2, '0')}`;
     const nextDateKey = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
+    const openDateKey = `${openDate.getFullYear()}-${String(openDate.getMonth() + 1).padStart(2, '0')}-${String(openDate.getDate()).padStart(2, '0')}`;
+    await expect(page.locator('[data-worker-date]').first()).toHaveAttribute('data-worker-date', todayKey);
+    await expect(page.locator('[data-worker-date]').last()).toHaveAttribute('data-worker-date', calendarEndKey);
     await expect(page.locator(`#worker-day-${nextDateKey}`)).toBeInViewport();
     await expect(page.locator(`[data-worker-date="${nextDateKey}"]`)).toBeInViewport();
-    await expect(page.getByRole('heading', { name: 'המשמרות שלי' })).toBeVisible();
-    await expect(page.getByText('המשמרת הבאה')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'יומן' })).toBeVisible();
+    await expect(page.getByText('העבודה הבאה')).toBeVisible();
     await expect(page.getByText('משפחת לוי').first()).toBeVisible();
-    await expect(page.getByText('הצוות במשמרת')).toBeVisible();
-    await expect(page.getByText('שי').first()).toBeVisible();
+    await page.getByRole('button', { name: 'פרטים' }).click();
     await page.getByRole('button', { name: /תל אביב/ }).first().click();
     await expect(page.getByTitle('מפה של תל אביב')).toBeVisible();
     await expect(page.getByText('היומן של כולן')).toBeVisible();
@@ -163,10 +305,16 @@ test.describe('Worker desktop layout', () => {
     expect(availabilityPayload).toMatchObject({ type: 'DATE', startTime: '13:00', endTime: '17:00', reason: 'לימודים' });
     await expect(page.locator('[aria-label="הוגדרה זמינות"]')).toHaveCount(1);
 
-    await page.getByRole('button', { name: 'כל פרטי המשמרת' }).click();
     await expect(page).toHaveURL(/\/worker$/);
     await expect(page.getByRole('button', { name: 'סגירת הפרטים' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'החלפה או בקשת מחליפה' }).first()).toBeVisible();
+    await page.getByRole('button', { name: 'בקשת מחליפה' }).first().click();
+    const replacementDialog = page.getByRole('dialog', { name: 'בקשת מחליפה' });
+    await expect(replacementDialog).toBeVisible();
+    await replacementDialog.getByLabel('למה את צריכה מחליפה?').fill('אירוע משפחתי');
+    await replacementDialog.getByLabel('יש לך מחליפה מתאימה? (רשות)').selectOption('worker-ruth');
+    await replacementDialog.getByRole('button', { name: 'שליחת בקשת מחליפה' }).click();
+    expect(replacementPayload).toEqual({ reason: 'אירוע משפחתי', suggestedWorkerId: 'worker-ruth' });
+    await expect(page.getByText('בקשת המחליפה נשלחה. את נשארת משובצת עד לאישור.')).toBeVisible();
     await expect(page.getByText('נועה ישראלי')).toBeVisible();
     await expect(page.getByText('רמת גן 4')).toBeVisible();
     await expect(page.getByRole('button', { name: 'אישור' })).toBeVisible();
@@ -175,6 +323,11 @@ test.describe('Worker desktop layout', () => {
     await expect(page.getByText('גבעתיים 8')).toBeVisible();
     await expect(page.getByText('לחצי כדי לבקש להצטרף ›')).toBeVisible();
     await expect(page.getByRole('button', { name: 'הוספה ל-Google או Apple Calendar' })).toBeVisible();
+    await page.locator(`#worker-day-${openDateKey}`).evaluate((element) => {
+      element.scrollIntoView({ block: 'start' });
+    });
+    await expect(page.locator(`[data-worker-date="${openDateKey}"]`)).toHaveClass(/bg-primary-700/);
+    await expect(page.locator(`[data-worker-date="${openDateKey}"]`)).toBeInViewport();
     await page.getByRole('button', { name: 'קשורות אליי' }).click();
     await expect(page.getByText('דנה כהן')).toHaveCount(0);
 

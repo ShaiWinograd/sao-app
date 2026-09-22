@@ -56,15 +56,26 @@ async function notifyJobPublished(jobId: string): Promise<void> {
 }
 
 // Notify workers with a confirmed shift on a job (job changed / cancelled, spec §12).
-async function notifyAssignedWorkers(jobId: string, title: string, body: string, dataType: string): Promise<void> {
+async function notifyAssignedWorkers(
+  jobId: string,
+  title: string,
+  body: string,
+  dataType: string,
+  extraData: Record<string, unknown> = {},
+): Promise<void> {
   const shifts = await prisma.shift.findMany({
     where: { jobId, joinRequestStatus: 'APPROVED' },
     include: { worker: { select: { userId: true } } },
   });
-  const userIds = Array.from(new Set(shifts.map((s) => s.worker.userId)));
-  if (!userIds.length) return;
+  const shiftsByUser = new Map(shifts.map((shift) => [shift.worker.userId, shift]));
+  if (!shiftsByUser.size) return;
   await prisma.notification.createMany({
-    data: userIds.map((userId) => ({ userId, title, body, data: { type: dataType, jobId } as any })),
+    data: Array.from(shiftsByUser.entries()).map(([userId, shift]) => ({
+      userId,
+      title,
+      body,
+      data: { type: dataType, jobId, shiftId: shift.id, ...extraData } as any,
+    })),
   });
 }
 
@@ -291,6 +302,7 @@ export async function jobsRoutes(app: FastifyInstance) {
         openSpots,
         myStatus: myShift ? myShift.joinRequestStatus : 'NONE',
         myShiftId: myShift?.id ?? null,
+        replacementStatus: myShift?.replacementStatus ?? 'NONE',
         blockedSameDay,
       };
     });
@@ -614,6 +626,7 @@ export async function jobsRoutes(app: FastifyInstance) {
         addressId: true,
         status: true,
         requiredWorkerCount: true,
+        workerVisibleNotes: true,
         slots: { select: { requiredSkill: true } },
       },
     });
@@ -743,8 +756,46 @@ export async function jobsRoutes(app: FastifyInstance) {
       newStart: nextStart,
       newEnd: nextEnd,
     });
+    const hadTeamLeaderRequirement = existingJob.slots.some((slot) => slot.requiredSkill === MANAGER_SKILL);
+    const changes: string[] = [];
+    if (nextDate.getTime() !== existingJob.date.getTime()) {
+      changes.push(`תאריך: מ־${heDate(existingJob.date)} ל־${heDate(nextDate)}`);
+    }
+    if (
+      nextStart.getTime() !== existingJob.plannedStart.getTime() ||
+      nextEnd.getTime() !== existingJob.plannedEnd.getTime()
+    ) {
+      changes.push(
+        `שעות: מ־${heTime(existingJob.plannedStart)}–${heTime(existingJob.plannedEnd)} ל־${heTime(nextStart)}–${heTime(nextEnd)}`,
+      );
+    }
+    if (oldAddress !== newAddress) {
+      changes.push(`כתובת: מ־${oldAddress || 'לא הוגדרה'} ל־${newAddress || 'לא הוגדרה'}`);
+    }
+    if (nextJobType !== existingJob.jobType) {
+      changes.push(`סוג עבודה: מ־${JOB_TYPE_HE[existingJob.jobType]} ל־${JOB_TYPE_HE[nextJobType]}`);
+    }
+    if (typeof newCount === 'number' && newCount !== existingJob.requiredWorkerCount) {
+      changes.push(`מספר עובדות: מ־${existingJob.requiredWorkerCount} ל־${newCount}`);
+    }
+    if (
+      body.workerVisibleNotes !== undefined &&
+      body.workerVisibleNotes !== existingJob.workerVisibleNotes
+    ) {
+      changes.push('ההערות לעובדות עודכנו');
+    }
+    if (
+      typeof requiresTeamLeader === 'boolean' &&
+      requiresTeamLeader !== hadTeamLeaderRequirement
+    ) {
+      changes.push(requiresTeamLeader ? 'נוספה דרישה לראש צוות' : 'הוסרה הדרישה לראש צוות');
+    }
+    const changeSummary = changes.join(' · ');
 
-    if (existingJob.status === 'RESERVATION' || existingJob.status === 'APPROVED') {
+    if (
+      changes.length > 0 &&
+      (existingJob.status === 'RESERVATION' || existingJob.status === 'APPROVED')
+    ) {
       if (needsReapproval) {
         // Approved workers must re-approve the changed job (spec §12.3). Capture
         // them, flip to awaiting-worker (they stay occupied), and ask them to
@@ -762,13 +813,24 @@ export async function jobsRoutes(app: FastifyInstance) {
             data: approvedShifts.map((s) => ({
               userId: s.worker.userId,
               title: 'העבודה עודכנה – נדרש אישור מחדש',
-              body: `פרטי העבודה בתאריך ${heDate(nextDate)} השתנו (כתובת או שעות). יש לאשר או לדחות מ"היומן שלי".`,
-              data: { type: 'CHANGE_APPROVAL_REQUIRED', jobId: id, shiftId: s.id } as any,
+              body: `${changeSummary}. יש לאשר או לדחות את השיבוץ מחדש.`,
+              data: {
+                type: 'CHANGE_APPROVAL_REQUIRED',
+                jobId: id,
+                shiftId: s.id,
+                changes,
+              } as any,
             })),
           });
         }
       } else {
-        await notifyAssignedWorkers(id, 'עדכון בפרטי העבודה', `בוצע עדכון בפרטי העבודה בתאריך ${heDate(nextDate)}.`, 'JOB_CHANGED');
+        await notifyAssignedWorkers(
+          id,
+          'עדכון בפרטי העבודה',
+          changeSummary,
+          'JOB_CHANGED',
+          { changes },
+        );
       }
     }
     await logAudit(
