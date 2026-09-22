@@ -24,12 +24,15 @@ export function getStaffingStateSummary(
       .filter((shift) => shift.joinRequestStatus === status)
       .map((shift) => shift.workerNameSnapshot ?? shift.name ?? 'עובד/ת');
   const approvedNames = names('APPROVED');
+  const awaitingWorkerNames = names('AWAITING_WORKER');
+  const occupiedNames = [...approvedNames, ...awaitingWorkerNames];
   return {
     required: requiredWorkerCount,
     pendingOwnerNames: names('PENDING'),
     approvedNames,
-    awaitingWorkerNames: names('AWAITING_WORKER'),
-    openSlots: Math.max(requiredWorkerCount - approvedNames.length, 0),
+    awaitingWorkerNames,
+    occupiedNames,
+    openSlots: Math.max(requiredWorkerCount - occupiedNames.length, 0),
   };
 }
 
@@ -78,7 +81,7 @@ export function StaffingGapSummary({
         data-testid="staffing-gap-bottom-line"
         title={hoverText}
       >
-        {summary.approvedNames.length}/{summary.required} מאוישים · {summary.openSlots} חסרים
+        {summary.occupiedNames.length}/{summary.required} מאוישים · {summary.openSlots} חסרים
       </div>
       <div className="pointer-events-none absolute left-1 top-full z-50 mt-1 hidden w-56 border border-[var(--color-border-strong)] bg-[var(--color-background)] px-3 py-2 text-right text-[11px] leading-5 text-gray-700 shadow-lg group-hover/staffing:block group-focus-within/staffing:block">
         <p className="font-semibold text-gray-900">{summary.openSlots} חסרים</p>

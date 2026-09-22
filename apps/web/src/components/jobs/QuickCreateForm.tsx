@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
-import { Loader2, Plus, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { api, authHeaders } from '../../lib/api';
 import AzureMapsAddressInput, { type AddressSelection } from '../forms/AzureMapsAddressInput';
 
@@ -18,6 +18,15 @@ function makeIdemKey(): string {
 
 type CustomerMatch = { id: string; firstName: string; lastName: string; phone: string };
 type WorkerCandidate = { id: string; name: string; available: boolean; reason?: string };
+type FieldName =
+  | 'customerFirst'
+  | 'customerPhone'
+  | 'date'
+  | 'time'
+  | 'address'
+  | 'workerCount'
+  | 'traineeName'
+  | 'traineeWage';
 
 export type QuickCreateCapacity = { warning: boolean; available: number };
 
@@ -64,7 +73,6 @@ export function QuickCreateForm({
   const [manualAddressConfirmed, setManualAddressConfirmed] = useState(false);
   const [workerCount, setWorkerCount] = useState('2');
   const [requiresTeamLeader, setRequiresTeamLeader] = useState(true);
-  const [initialStatus, setInitialStatus] = useState<'RESERVATION' | 'APPROVED'>('RESERVATION');
   const [notes, setNotes] = useState('');
   const [selectedWorkerIds, setSelectedWorkerIds] = useState<string[]>([]);
   const [workerCandidates, setWorkerCandidates] = useState<WorkerCandidate[]>([]);
@@ -74,6 +82,7 @@ export function QuickCreateForm({
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldName, string>>>({});
   // One idempotency key per opened form so a repeated/retried submit cannot
   // create a second job. Regenerated after a successful create.
   const idemKeyRef = useRef<string>(makeIdemKey());
@@ -138,30 +147,56 @@ export function QuickCreateForm({
     setCustLast(c.lastName);
     setCustPhone(c.phone);
     setMatches([]);
+    setFieldErrors((current) => {
+      const next = { ...current };
+      delete next.customerFirst;
+      delete next.customerPhone;
+      return next;
+    });
   }, []);
 
-  const submit = useCallback(async () => {
+  const clearFieldError = useCallback((field: FieldName) => {
+    setFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  }, []);
+
+  const submit = useCallback(async (status: 'RESERVATION' | 'APPROVED') => {
     setError(null);
+    const nextFieldErrors: Partial<Record<FieldName, string>> = {};
     if (!generalReservation && !selectedCustomerId) {
       if (!custFirst.trim()) {
-        setError('יש להזין שם פרטי של הלקוח, לבחור לקוח קיים, או לסמן שריון כללי.');
-        return;
+        nextFieldErrors.customerFirst = 'יש להזין שם פרטי, לבחור לקוח קיים או לסמן שריון כללי.';
       }
       if (!custPhone.trim()) {
-        setError('יש להזין טלפון ללקוח חדש.');
-        return;
+        nextFieldErrors.customerPhone = 'יש להזין טלפון ללקוח חדש.';
       }
     }
+    if (!date || date < todayKey()) {
+      nextFieldErrors.date = 'יש לבחור תאריך מהיום והלאה.';
+    }
+    if (!startTime || !endTime || endTime <= startTime) {
+      nextFieldErrors.time = 'שעת הסיום חייבת להיות אחרי שעת ההתחלה.';
+    }
     if (!cityOrAddress.trim()) {
-      setError('יש להזין עיר או כתובת.');
-      return;
+      nextFieldErrors.address = 'יש להזין עיר או כתובת.';
+    } else if (!addressSelection && !manualAddressConfirmed) {
+      nextFieldErrors.address = 'יש לבחור כתובת מהרשימה או לאשר שמירה ידנית.';
     }
-    if (!addressSelection && !manualAddressConfirmed) {
-      setError('יש לבחור כתובת מדויקת מהרשימה או לאשר שמירה ידנית ללא ניטור מיקום.');
-      return;
+    if (!Number.isFinite(Number(workerCount)) || Number(workerCount) < 1) {
+      nextFieldErrors.workerCount = 'יש להזין לפחות עובדת אחת.';
     }
-    if (hasTrainee && (!traineeName.trim() || Number(traineeHourlyWage) < 0)) {
-      setError('יש להזין שם מלא ושכר שעתי למתלמדת.');
+    if (hasTrainee && !traineeName.trim()) {
+      nextFieldErrors.traineeName = 'יש להזין שם מלא למתלמדת.';
+    }
+    if (hasTrainee && (!traineeHourlyWage.trim() || Number(traineeHourlyWage) < 0)) {
+      nextFieldErrors.traineeWage = 'יש להזין שכר שעתי תקין.';
+    }
+    setFieldErrors(nextFieldErrors);
+    if (Object.keys(nextFieldErrors).length > 0) {
       return;
     }
     setBusy(true);
@@ -190,9 +225,9 @@ export function QuickCreateForm({
           : { mode: 'manual' as const, text: cityOrAddress.trim(), confirmedUnresolved: true as const },
         requiredWorkerCount: Math.max(1, Number(workerCount) || 1),
         requiresTeamLeader,
-        initialStatus,
+        initialStatus: status,
         notes: notes.trim() || undefined,
-        selectedWorkerIds,
+        selectedWorkerIds: status === 'APPROVED' ? selectedWorkerIds : [],
         ...(hasTrainee
           ? { traineeName: traineeName.trim(), traineeHourlyWage: Number(traineeHourlyWage) || 0 }
           : {}),
@@ -223,17 +258,10 @@ export function QuickCreateForm({
     } finally {
       setBusy(false);
     }
-  }, [generalReservation, selectedCustomerId, custFirst, custLast, custPhone, custEmail, jobType, date, startTime, endTime, cityOrAddress, addressSelection, manualAddressConfirmed, workerCount, requiresTeamLeader, initialStatus, notes, selectedWorkerIds, hasTrainee, traineeName, traineeHourlyWage, getToken, onCreated]);
+  }, [generalReservation, selectedCustomerId, custFirst, custLast, custPhone, custEmail, jobType, date, startTime, endTime, cityOrAddress, addressSelection, manualAddressConfirmed, workerCount, requiresTeamLeader, notes, selectedWorkerIds, hasTrainee, traineeName, traineeHourlyWage, getToken, onCreated]);
 
   return (
     <div className="quick-create-form space-y-0" dir="rtl">
-      {error && (
-        <div className="flex items-center gap-2 border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          {error}
-        </div>
-      )}
-
       {createdJobId && (
         <div className="flex items-center justify-between gap-2 border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
           <span className="inline-flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> העבודה נוצרה בהצלחה.</span>
@@ -254,7 +282,12 @@ export function QuickCreateForm({
                 if (e.target.checked) {
                   setSelectedCustomerId(null);
                   setMatches([]);
-                  setInitialStatus('RESERVATION');
+                  setFieldErrors((current) => {
+                    const next = { ...current };
+                    delete next.customerFirst;
+                    delete next.customerPhone;
+                    return next;
+                  });
                 }
               }}
             />
@@ -279,9 +312,34 @@ export function QuickCreateForm({
               </div>
             )}
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <input value={custFirst} onChange={(e) => onCustomerFieldChange(setCustFirst, e.target.value)} placeholder="שם פרטי" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <label>
+                <input
+                  value={custFirst}
+                  onChange={(e) => {
+                    clearFieldError('customerFirst');
+                    onCustomerFieldChange(setCustFirst, e.target.value);
+                  }}
+                  placeholder="שם פרטי"
+                  aria-invalid={Boolean(fieldErrors.customerFirst)}
+                  className={`w-full rounded-lg border px-3 py-2 text-sm ${fieldErrors.customerFirst ? 'border-danger' : 'border-gray-300'}`}
+                />
+                {fieldErrors.customerFirst && <span className="mt-1 block text-xs text-danger">{fieldErrors.customerFirst}</span>}
+              </label>
               <input value={custLast} onChange={(e) => onCustomerFieldChange(setCustLast, e.target.value)} placeholder="שם משפחה" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-              <input value={custPhone} onChange={(e) => onCustomerFieldChange(setCustPhone, e.target.value)} placeholder="טלפון" inputMode="tel" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <label>
+                <input
+                  value={custPhone}
+                  onChange={(e) => {
+                    clearFieldError('customerPhone');
+                    onCustomerFieldChange(setCustPhone, e.target.value);
+                  }}
+                  placeholder="טלפון"
+                  inputMode="tel"
+                  aria-invalid={Boolean(fieldErrors.customerPhone)}
+                  className={`w-full rounded-lg border px-3 py-2 text-sm ${fieldErrors.customerPhone ? 'border-danger' : 'border-gray-300'}`}
+                />
+                {fieldErrors.customerPhone && <span className="mt-1 block text-xs text-danger">{fieldErrors.customerPhone}</span>}
+              </label>
               <input value={custEmail} onChange={(e) => setCustEmail(e.target.value)} placeholder="אימייל (אופציונלי)" inputMode="email" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </div>
             {!selectedCustomerId && matches.length > 0 && (
@@ -313,7 +371,18 @@ export function QuickCreateForm({
         </label>
         <label className="text-sm">
           <span className="block text-gray-600 mb-1">תאריך</span>
-          <input type="date" value={date} min={todayKey()} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
+          <input
+            type="date"
+            value={date}
+            min={todayKey()}
+            onChange={(e) => {
+              clearFieldError('date');
+              setDate(e.target.value);
+            }}
+            aria-invalid={Boolean(fieldErrors.date)}
+            className={`w-full rounded-lg border px-2.5 py-2 ${fieldErrors.date ? 'border-danger' : 'border-gray-300'}`}
+          />
+          {fieldErrors.date && <span className="mt-1 block text-xs text-danger">{fieldErrors.date}</span>}
         </label>
         <div className="sm:col-span-2">
           <p className="mb-2 text-xs font-medium text-gray-600">בחירה מהירה מהיומן</p>
@@ -325,7 +394,10 @@ export function QuickCreateForm({
                 <button
                   key={key}
                   type="button"
-                  onClick={() => setDate(key)}
+                  onClick={() => {
+                    clearFieldError('date');
+                    setDate(key);
+                  }}
                   className={`min-w-14 px-2 py-2 text-center ${active ? 'bg-primary-700 text-white' : 'text-gray-600 hover:bg-primary-50'}`}
                 >
                   <span className="block text-[10px]">{calendarDate.toLocaleDateString('he-IL', { weekday: 'short' })}</span>
@@ -337,17 +409,19 @@ export function QuickCreateForm({
         </div>
         <label className="text-sm">
           <span className="block text-gray-600 mb-1">שעת התחלה</span>
-          <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
+          <input type="time" value={startTime} onChange={(e) => { clearFieldError('time'); setStartTime(e.target.value); }} aria-invalid={Boolean(fieldErrors.time)} className={`w-full rounded-lg border px-2.5 py-2 ${fieldErrors.time ? 'border-danger' : 'border-gray-300'}`} />
+          {fieldErrors.time && <span className="mt-1 block text-xs text-danger">{fieldErrors.time}</span>}
         </label>
         <label className="text-sm">
           <span className="block text-gray-600 mb-1">שעת סיום</span>
-          <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
+          <input type="time" value={endTime} onChange={(e) => { clearFieldError('time'); setEndTime(e.target.value); }} aria-invalid={Boolean(fieldErrors.time)} className={`w-full rounded-lg border px-2.5 py-2 ${fieldErrors.time ? 'border-danger' : 'border-gray-300'}`} />
         </label>
         <label className="text-sm sm:col-span-2">
           <span className="mb-1 block text-gray-600">כתובת מלאה</span>
           <AzureMapsAddressInput
             value={cityOrAddress}
             onChange={(value) => {
+              clearFieldError('address');
               setCityOrAddress(value);
               setAddressSelection(null);
               setManualAddressConfirmed(false);
@@ -357,8 +431,10 @@ export function QuickCreateForm({
               if (selection) setManualAddressConfirmed(false);
             }}
             placeholder="רחוב, מספר ועיר"
-            className="w-full rounded-lg border border-gray-300 px-2.5 py-2"
+            className={`w-full rounded-lg border px-2.5 py-2 ${fieldErrors.address ? 'border-danger' : 'border-gray-300'}`}
+            invalid={Boolean(fieldErrors.address)}
           />
+          {fieldErrors.address && <span className="mt-1 block text-xs text-danger">{fieldErrors.address}</span>}
           {addressSelection ? (
             <span className="mt-1 flex items-center gap-1 text-[11px] text-emerald-700">
               <CheckCircle2 className="h-3.5 w-3.5" />
@@ -369,7 +445,10 @@ export function QuickCreateForm({
               <input
                 type="checkbox"
                 checked={manualAddressConfirmed}
-                onChange={(event) => setManualAddressConfirmed(event.target.checked)}
+                onChange={(event) => {
+                  clearFieldError('address');
+                  setManualAddressConfirmed(event.target.checked);
+                }}
               />
               <span>לא מצאתי כתובת מדויקת. שמירה ידנית תשבית ניטור מיקום לעבודה זו עד לאימות הכתובת.</span>
             </label>
@@ -377,7 +456,8 @@ export function QuickCreateForm({
         </label>
         <label className="text-sm">
           <span className="block text-gray-600 mb-1">מספר עובדים</span>
-          <input type="number" min={1} value={workerCount} onChange={(e) => setWorkerCount(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
+          <input type="number" min={1} value={workerCount} onChange={(e) => { clearFieldError('workerCount'); setWorkerCount(e.target.value); }} aria-invalid={Boolean(fieldErrors.workerCount)} className={`w-full rounded-lg border px-2.5 py-2 ${fieldErrors.workerCount ? 'border-danger' : 'border-gray-300'}`} />
+          {fieldErrors.workerCount && <span className="mt-1 block text-xs text-danger">{fieldErrors.workerCount}</span>}
         </label>
         <label className="text-sm flex items-end gap-2 pb-2">
           <input type="checkbox" checked={requiresTeamLeader} onChange={(e) => setRequiresTeamLeader(e.target.checked)} />
@@ -391,7 +471,7 @@ export function QuickCreateForm({
 
       <section className="border-b border-[var(--color-border)] py-6">
         <h2 className="text-sm font-semibold text-gray-900">הזמנת עובדות זמינות</h2>
-        <p className="mt-1 text-xs text-gray-500">העובדות שתבחרי יקבלו שיבוץ שמחייב אישור או דחייה.</p>
+        <p className="mt-1 text-xs text-gray-500">העובדות שתבחרי יקבלו שיבוץ רק אם העבודה תאושר.</p>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           {workerCandidates.map((candidate) => (
             <label
@@ -419,7 +499,7 @@ export function QuickCreateForm({
 
       <section className="border-b border-[var(--color-border)] py-6">
         <label className="flex items-center justify-between text-sm font-medium text-gray-800">
-          <span>יש מתלמדת בעבודה</span>
+          <span>מתלמדת</span>
           <input type="checkbox" checked={hasTrainee} onChange={(event) => setHasTrainee(event.target.checked)} />
         </label>
         {hasTrainee && (
@@ -428,10 +508,12 @@ export function QuickCreateForm({
               <span className="mb-1 block text-gray-600">שם מלא</span>
               <input
                 value={traineeName}
-                onChange={(event) => setTraineeName(event.target.value)}
+                onChange={(event) => { clearFieldError('traineeName'); setTraineeName(event.target.value); }}
                 required
-                className="w-full border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-2"
+                aria-invalid={Boolean(fieldErrors.traineeName)}
+                className={`w-full border bg-[var(--color-surface)] px-3 py-2 ${fieldErrors.traineeName ? 'border-danger' : 'border-[var(--color-border-strong)]'}`}
               />
+              {fieldErrors.traineeName && <span className="mt-1 block text-xs text-danger">{fieldErrors.traineeName}</span>}
             </label>
             <label className="text-sm">
               <span className="mb-1 block text-gray-600">שכר שעתי</span>
@@ -439,10 +521,12 @@ export function QuickCreateForm({
                 type="number"
                 min={0}
                 value={traineeHourlyWage}
-                onChange={(event) => setTraineeHourlyWage(event.target.value)}
+                onChange={(event) => { clearFieldError('traineeWage'); setTraineeHourlyWage(event.target.value); }}
                 required
-                className="w-full border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-2"
+                aria-invalid={Boolean(fieldErrors.traineeWage)}
+                className={`w-full border bg-[var(--color-surface)] px-3 py-2 ${fieldErrors.traineeWage ? 'border-danger' : 'border-[var(--color-border-strong)]'}`}
               />
+              {fieldErrors.traineeWage && <span className="mt-1 block text-xs text-danger">{fieldErrors.traineeWage}</span>}
             </label>
             <p className="text-xs text-gray-500 sm:col-span-2">
               שעות המתלמדת יוזנו ידנית לאחר העבודה ויופיעו רק בעלויות השכר, לא בחיוב הלקוח.
@@ -451,41 +535,37 @@ export function QuickCreateForm({
         )}
       </section>
 
-      {/* Status */}
-      <section className="border-b border-[var(--color-border)] py-6">
-        <h2 className="text-sm font-semibold text-gray-900 mb-3">סטטוס התחלתי</h2>
-        <div className="flex gap-2">
+      <div className="pt-5">
+        {error && (
+          <div className="mb-3 flex items-center gap-2 border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            {error}
+          </div>
+        )}
+        <div className="flex flex-wrap justify-end gap-3">
+          <button type="button" onClick={onCancel} className="px-2 py-2 text-sm text-[var(--color-calendar-sage)] underline decoration-[var(--color-border-strong)] underline-offset-4 hover:decoration-[var(--color-calendar-sage)]">
+            ביטול
+          </button>
           <button
             type="button"
-            onClick={() => setInitialStatus('RESERVATION')}
-            className={`px-3 py-1.5 text-sm font-medium ${initialStatus === 'RESERVATION' ? 'bg-[var(--color-calendar-sage)] text-[var(--color-background)]' : 'bg-[var(--color-surface-muted)] text-gray-600 hover:bg-[var(--color-calendar-sage-soft)]'}`}
+            onClick={() => void submit('RESERVATION')}
+            disabled={busy}
+            className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 border border-[var(--color-calendar-sage)] px-5 py-2.5 text-sm font-medium text-[var(--color-calendar-sage)] hover:bg-[var(--color-calendar-sage-soft)] disabled:opacity-50 sm:flex-none"
           >
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
             שריון
           </button>
           <button
             type="button"
-            onClick={() => setInitialStatus('APPROVED')}
-            disabled={generalReservation}
+            onClick={() => void submit('APPROVED')}
+            disabled={busy || generalReservation}
             title={generalReservation ? 'לא ניתן לאשר עבודה בשריון כללי' : ''}
-            className={`px-3 py-1.5 text-sm font-medium disabled:opacity-40 ${initialStatus === 'APPROVED' ? 'bg-[var(--color-calendar-sage)] text-[var(--color-background)]' : 'bg-[var(--color-surface-muted)] text-gray-600 hover:bg-[var(--color-calendar-sage-soft)]'}`}
+            className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 bg-[var(--color-calendar-sage)] px-5 py-2.5 text-sm font-medium text-[var(--color-background)] hover:bg-primary-700 disabled:opacity-40 sm:flex-none"
           >
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
             אושר
           </button>
         </div>
-      </section>
-
-      <div className="flex justify-end gap-3 pt-5">
-        <button type="button" onClick={onCancel} className="px-2 py-2 text-sm text-[var(--color-calendar-sage)] underline decoration-[var(--color-border-strong)] underline-offset-4 hover:decoration-[var(--color-calendar-sage)]">
-          ביטול
-        </button>
-        <button
-          onClick={() => void submit()}
-          disabled={busy}
-          className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 bg-[var(--color-calendar-sage)] px-5 py-2.5 text-sm font-medium text-[var(--color-background)] hover:bg-primary-700 disabled:opacity-50 sm:flex-none"
-        >
-          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-          יצירת העבודה
-        </button>
       </div>
     </div>
   );

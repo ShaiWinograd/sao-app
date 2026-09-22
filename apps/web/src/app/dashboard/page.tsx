@@ -353,7 +353,13 @@ export default function DashboardPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [joinPanelOpen, setJoinPanelOpen] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-  const [dashboardAvailability, setDashboardAvailability] = useState<Array<{ workerId: string; dateKey: string; reason: string }>>([]);
+  const [dashboardAvailability, setDashboardAvailability] = useState<Array<{
+    workerId: string;
+    dateKey: string;
+    reason: string;
+    startTime: string | null;
+    endTime: string | null;
+  }>>([]);
   const [assignmentTarget, setAssignmentTarget] = useState<{
     workerId: string;
     workerName: string;
@@ -474,8 +480,8 @@ export default function DashboardPage() {
           const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
           const day = String(date.getDate()).padStart(2, '0');
           const month = String(date.getMonth() + 1).padStart(2, '0');
-          // Exclude rejected/cancelled requests. Pending requests are shown on the
-          // worker row (with a distinct badge) but do NOT fill a required slot.
+          // Exclude rejected/cancelled requests. Owner invitations awaiting the
+          // worker reserve capacity; worker-initiated pending requests do not.
           const assignedWorkers: AssignedWorker[] = (job.shifts ?? [])
             .filter((shift: any) => shift.joinRequestStatus !== 'REJECTED' && shift.joinRequestStatus !== 'CANCELLED')
             .map((shift: any) => ({
@@ -484,7 +490,11 @@ export default function DashboardPage() {
               joinRequestStatus: shift.joinRequestStatus ?? null,
               assignmentRole: shift.assignmentRole ?? null,
             }));
-          const approvedWorkers = assignedWorkers.filter(fillsRequiredSlot).length;
+          const approvedWorkers = assignedWorkers.filter(
+            (worker) =>
+              worker.assignmentRole !== 'BACKUP' &&
+              (fillsRequiredSlot(worker) || worker.joinRequestStatus === 'AWAITING_WORKER'),
+          ).length;
           const actualTeamLeadName =
             assignedWorkers.find(
               (worker: AssignedWorker) =>
@@ -879,7 +889,13 @@ export default function DashboardPage() {
     void (async () => {
       try {
         const auth = await authHeaders(getToken);
-        const res = await api.get<Array<{ workerId: string; dateKey: string; reason: string }>>(
+        const res = await api.get<Array<{
+          workerId: string;
+          dateKey: string;
+          reason: string;
+          startTime: string | null;
+          endTime: string | null;
+        }>>(
           `/workers/calendar-availability?start=${visibleAvailabilityRange.start}&end=${visibleAvailabilityRange.end}`,
           auth,
         );
@@ -1185,7 +1201,7 @@ export default function DashboardPage() {
 
       </div>
 
-      <div id="owner-shift-grid" className="flex flex-col gap-2.5 lg:h-[calc(100vh-180px)] lg:min-h-[620px] min-h-0 scroll-mt-4">
+      <div id="owner-shift-grid" className="flex min-h-0 flex-col gap-2.5 scroll-mt-4 lg:h-[calc(100vh-180px)] lg:max-h-[calc(100vh-180px)]">
         <div className="flex min-h-[430px] flex-1 flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]">
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
               <h2 className="font-semibold text-gray-900">
@@ -1201,7 +1217,7 @@ export default function DashboardPage() {
               </Link>
             </div>
 
-            <div className="overflow-auto flex-1 min-h-0">
+            <div data-testid="owner-calendar-scroll" className="min-h-0 flex-1 overflow-auto">
               <div className="grid border-b border-[var(--color-border)] bg-[var(--color-background)]" style={shiftGridStyle}>
                 <div className="p-2.5 text-xs font-semibold text-gray-700 border-l border-gray-200">עובדת</div>
                 {visibleShiftDates.map((date) => {
@@ -1325,6 +1341,11 @@ export default function DashboardPage() {
                           <div className="border-y border-[var(--color-calendar-unavailable-border)] px-2 py-2 text-center">
                             <p className="text-[11px] font-semibold text-[var(--color-calendar-unavailable)]">לא זמינה</p>
                             <p className="mt-0.5 text-[10px] text-[var(--color-text-secondary)]">{unavailable.reason}</p>
+                            <p className="mt-0.5 text-[10px] font-medium text-[var(--color-calendar-unavailable)]">
+                              {unavailable.startTime && unavailable.endTime
+                                ? `${unavailable.startTime}–${unavailable.endTime}`
+                                : 'כל היום'}
+                            </p>
                           </div>
                         ) : shifts.length > 0 ? (
                           <div className="space-y-1">

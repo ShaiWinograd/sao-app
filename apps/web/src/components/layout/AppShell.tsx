@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Menu, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Menu, X } from 'lucide-react';
 import Sidebar from './Sidebar';
 import WorkerSidebar from './WorkerSidebar';
 import { BrandLockup } from './BrandLockup';
@@ -28,6 +28,7 @@ const workerRoutes = [
 
 export default function AppShell({ area, children }: { area: AppArea; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -125,7 +126,24 @@ export default function AppShell({ area, children }: { area: AppArea; children: 
 
   return (
     <div className={`${config.themeClass} flex h-screen overflow-x-hidden bg-[var(--color-background)]`} dir="rtl">
-      <div className="hidden h-screen w-[220px] shrink-0 md:block">{renderSidebar()}</div>
+      <div
+        className={`relative hidden h-screen shrink-0 transition-[width] duration-200 md:block ${
+          desktopSidebarCollapsed ? 'w-0' : 'w-[220px]'
+        }`}
+      >
+        <div className={`h-full w-[220px] overflow-hidden transition-transform duration-200 ${desktopSidebarCollapsed ? 'translate-x-full' : 'translate-x-0'}`}>
+          {renderSidebar()}
+        </div>
+        <button
+          type="button"
+          onClick={() => setDesktopSidebarCollapsed((collapsed) => !collapsed)}
+          aria-label={desktopSidebarCollapsed ? 'פתיחת תפריט צד' : 'סגירת תפריט צד'}
+          aria-expanded={!desktopSidebarCollapsed}
+          className="absolute left-0 top-5 z-40 inline-flex h-9 w-7 -translate-x-full items-center justify-center rounded-l-md border border-r-0 border-[var(--color-border-strong)] bg-[var(--color-background)] text-gray-600 shadow-sm hover:text-primary-700"
+        >
+          {desktopSidebarCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </button>
+      </div>
 
       <div
         className={`fixed inset-0 z-40 bg-black/40 transition-opacity duration-200 md:hidden ${
