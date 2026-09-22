@@ -13,7 +13,7 @@ export function InlineAddressMap({
   const embedUrl = `https://www.google.com/maps?q=${encodeURIComponent(address)}&output=embed`;
 
   return (
-    <div className={compact ? 'mt-2' : 'mt-3'}>
+    <div className={compact ? 'mt-0' : 'mt-3'}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}

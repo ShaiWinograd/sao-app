@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
+import { israeliNonWorkingDayName } from '@workforce/shared';
 import { api, authHeaders } from '../../lib/api';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { InlineAddressMap } from '../../components/maps/InlineAddressMap';
@@ -595,7 +596,6 @@ export default function WorkerShiftsPage() {
           >
             <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
               <span className="opacity-70">העבודה הבאה</span>
-              <span>{jobTypeLabel(nextMyShift.jobType)}</span>
               <span className="truncate">{nextMyShift.customerName}</span>
               <span className="opacity-80">
                 {shortDate(nextMyShift.date)} · <bdi>{formatScheduledTime(nextMyShift.plannedStart)}–{formatScheduledTime(nextMyShift.plannedEnd)}</bdi>
@@ -651,28 +651,38 @@ export default function WorkerShiftsPage() {
             const active = key === selectedDate;
             const hasShift = visible.some((shift) => toDateKey(shift.date) === key);
             const hasAvailability = Boolean(availabilityForDate(availability, key));
+            const nonWorkingDay = israeliNonWorkingDayName(date);
             return (
               <button
                 key={key}
                 type="button"
                 data-worker-date={key}
+                data-non-working={nonWorkingDay ? 'true' : undefined}
                 onClick={() => selectDate(key)}
                 className={`flex min-h-[76px] min-w-16 flex-col items-center justify-center px-1 transition-colors ${
-                  active
+                  nonWorkingDay
+                    ? active
+                      ? 'bg-gray-300 text-gray-600'
+                      : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                    : active
                     ? 'bg-primary-700 text-white'
                     : 'text-[var(--color-text-secondary)] hover:bg-primary-50'
                 }`}
               >
-                <span className={`text-[11px] ${active ? 'text-white/75' : 'text-gray-400'}`}>
+                <span className={`text-[11px] ${active && !nonWorkingDay ? 'text-white/75' : 'text-gray-400'}`}>
                   {date.toLocaleDateString('he-IL', { weekday: 'long' })}
                 </span>
                 <span className="relative mt-1 inline-flex pb-3">
                   <span className="font-display text-2xl font-semibold leading-none">{date.getDate()}</span>
                   <span className="absolute bottom-0 left-1/2 flex h-1.5 -translate-x-1/2 items-center gap-1">
-                    <span className={`h-1 w-1 rounded-full ${hasShift ? (active ? 'bg-white' : 'bg-primary-500') : 'bg-transparent'}`} />
+                    <span
+                      data-worker-indicator="shift"
+                      className={`h-1.5 w-1.5 rounded-full ${hasShift ? (active && !nonWorkingDay ? 'bg-white' : 'bg-primary-500') : 'bg-transparent'}`}
+                    />
                     <span
                       aria-label={hasAvailability ? 'הוגדרה זמינות' : undefined}
-                      className={`h-1.5 w-1.5 rounded-full ${hasAvailability ? (active ? 'bg-white/70' : 'bg-[#8b7d84]') : 'bg-transparent'}`}
+                      data-worker-indicator="availability"
+                      className={`h-1.5 w-1.5 rounded-full ${hasAvailability ? (active && !nonWorkingDay ? 'bg-white/70' : 'bg-[#8b7d84]') : 'bg-transparent'}`}
                     />
                   </span>
                 </span>
@@ -719,16 +729,35 @@ export default function WorkerShiftsPage() {
           const dateKey = toDateKey(date);
           const shifts = shiftsByDate.get(dateKey) ?? [];
           const availabilityBlock = availabilityForDate(availability, dateKey);
+          const nonWorkingDay = israeliNonWorkingDayName(date);
           return (
               <section
                 key={dateKey}
                 id={`worker-day-${dateKey}`}
                 data-worker-day={dateKey}
-                className={`scroll-mt-44 border-b border-[var(--color-border)] ${selectedDate === dateKey ? 'bg-primary-50/35' : ''}`}
+                data-non-working={nonWorkingDay ? 'true' : undefined}
+                className={`scroll-mt-44 border-b border-[var(--color-border)] ${
+                  nonWorkingDay
+                    ? 'bg-gray-100/70'
+                    : selectedDate === dateKey
+                      ? 'bg-primary-50/35'
+                      : ''
+                }`}
               >
-                <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] py-2">
+                <div className="flex flex-wrap items-center gap-3 border-b border-[var(--color-border)] py-2">
                   <h2 className="font-display text-lg text-[#292724]">{new Date(`${dateKey}T00:00:00`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>
-                  <div className="flex items-center gap-3">
+                  {nonWorkingDay ? (
+                    <span className="text-xs font-medium text-gray-400">{nonWorkingDay}</span>
+                  ) : (
+                    <>
+                    <button
+                      type="button"
+                      onClick={() => setAvailabilityTarget(dateKey)}
+                      disabled={busy === `availability-${dateKey}`}
+                      className="px-1 py-1 text-xs font-semibold text-primary-700 underline decoration-primary-300 underline-offset-4 hover:text-primary-900 disabled:opacity-50"
+                    >
+                      זמינות
+                    </button>
                     {availabilityBlock && (
                       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500">
                         <span className="h-1.5 w-1.5 rounded-full bg-[#8b7d84]" />
@@ -738,25 +767,18 @@ export default function WorkerShiftsPage() {
                         {availabilityBlock.reason ? ` · ${availabilityBlock.reason}` : ''}
                       </span>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => setAvailabilityTarget(dateKey)}
-                      disabled={busy === `availability-${dateKey}`}
-                      className="px-1 py-1 text-xs font-semibold text-primary-700 underline decoration-primary-300 underline-offset-4 hover:text-primary-900 disabled:opacity-50"
-                    >
-                      זמינות
-                    </button>
-                  </div>
+                    </>
+                  )}
                 </div>
                 {shifts.length === 0 ? (
-                  <div className="flex min-h-12 items-center px-1 py-2">
-                    <span className="text-xs text-[var(--color-text-muted)]">אין עבודות</span>
+                  <div className="flex min-h-10 items-center px-1 py-1.5">
+                    <span className="text-xs text-[var(--color-text-muted)]">{nonWorkingDay ? 'יום מנוחה' : 'אין עבודות'}</span>
                   </div>
                 ) : shifts.map((s) => (
                 <div
                   key={s.jobId}
                   data-worker-shift={s.myShiftId ?? undefined}
-                  className={`border-b border-[var(--color-border)] px-1 py-3 transition-shadow ${
+                  className={`border-b border-[var(--color-border)] px-1 py-2 transition-shadow ${
                     focusedShiftId && s.myShiftId === focusedShiftId
                       ? 'ring-2 ring-inset ring-primary-500'
                       : ''
@@ -901,21 +923,22 @@ function NextShiftDetails({
 
 function CardHeader({ shift }: { shift: BoardShift }) {
   return (
-    <div className="flex items-center justify-between gap-2">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
       <span className="text-sm font-bold text-gray-900">{jobTypeLabel(shift.jobType)}</span>
+      <span className="text-sm font-semibold text-gray-900">{shift.customerName}</span>
+      <span className="text-sm font-medium tabular-nums text-gray-600" dir="ltr">
+        {formatScheduledTime(shift.plannedStart)} – {formatScheduledTime(shift.plannedEnd)}
+      </span>
     </div>
   );
 }
 
 function CardMeta({ shift }: { shift: BoardShift }) {
   return (
-    <>
-      <p className="mt-1 text-sm font-semibold tabular-nums text-[#292724]" dir="ltr">
-        {formatScheduledTime(shift.plannedStart)} – {formatScheduledTime(shift.plannedEnd)}
-      </p>
-      <p className="mt-1 text-base font-semibold text-gray-900">{shift.customerName}</p>
+    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
       {shift.address && <InlineAddressMap address={shift.address} compact />}
-    </>
+      <AssignedNames workers={shift.assignedWorkers} />
+    </div>
   );
 }
 
@@ -940,10 +963,7 @@ function ShiftCard({
       <div className="relative px-1">
         <CardHeader shift={shift} />
         <CardMeta shift={shift} />
-        <div className="mt-2">
-          <AssignedNames workers={shift.assignedWorkers} />
-        </div>
-        <p className="mt-3 inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600">העבודה מלאה</p>
+        <p className="mt-1.5 inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600">העבודה מלאה</p>
       </div>
     );
   }
@@ -956,13 +976,12 @@ function ShiftCard({
         <div className={`relative w-full border-r-2 bg-gray-50/50 px-3 py-1 text-right opacity-70 ${jobTypeBorderColor(shift.jobType)}`}>
           <CardHeader shift={shift} />
           <CardMeta shift={shift} />
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <span className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-0.5 text-[11px] font-medium text-gray-500">
               {shift.openSpots} מקומות פנויים
             </span>
-            <AssignedNames workers={shift.assignedWorkers} />
           </div>
-          <p className="mt-2 text-[11px] font-semibold text-gray-500">כבר יש לך בקשה או שיבוץ בתאריך זה</p>
+          <p className="mt-1.5 text-[11px] font-semibold text-gray-500">כבר יש לך בקשה או שיבוץ בתאריך זה</p>
         </div>
       );
     }
@@ -970,16 +989,15 @@ function ShiftCard({
       <div className={`relative w-full border-r-2 bg-gray-50/50 px-3 py-1 text-right ${jobTypeBorderColor(shift.jobType)}`}>
         <CardHeader shift={shift} />
         <CardMeta shift={shift} />
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           <span className="inline-flex items-center rounded-full border border-primary-200 bg-primary-50 px-2 py-0.5 text-[11px] font-medium text-primary-700">
             {shift.openSpots} מקומות פנויים
           </span>
-          <AssignedNames workers={shift.assignedWorkers} />
         </div>
         <button
           type="button"
           onClick={onAskToJoin}
-          className="mt-3 border border-primary-700 px-3 py-1.5 text-xs font-semibold text-primary-800 hover:bg-primary-50"
+          className="mt-1.5 border border-primary-700 px-3 py-1.5 text-xs font-semibold text-primary-800 hover:bg-primary-50"
         >
           בקשת הצטרפות
         </button>
@@ -993,11 +1011,8 @@ function ShiftCard({
       <div className={`border-r-2 pr-4 ${jobTypeBorderColor(shift.jobType)}`}>
         <CardHeader shift={shift} />
         <CardMeta shift={shift} />
-        <div className="mt-2">
-          <AssignedNames workers={shift.assignedWorkers} />
-        </div>
-        <p className="mt-2 text-xs font-medium text-amber-800">שובצת למשמרת זו – יש לאשר או לדחות.</p>
-        <div className="mt-2 flex gap-2">
+        <p className="mt-1.5 text-xs font-medium text-amber-800">ממתין לאישורך.</p>
+        <div className="mt-1.5 flex gap-2">
           <button
             type="button"
             onClick={() => onRespond(true)}
@@ -1035,10 +1050,7 @@ function ShiftCard({
           </div>
         </div>
         <CardMeta shift={shift} />
-        <div className="mt-2">
-          <AssignedNames workers={shift.assignedWorkers} />
-        </div>
-        <div className="mt-2 flex gap-2">
+        <div className="mt-1.5 flex gap-2">
           <button
             type="button"
             onClick={onReplacement}
@@ -1056,10 +1068,7 @@ function ShiftCard({
     <div className="relative block border-r-2 border-amber-300 pr-4">
       <CardHeader shift={shift} />
       <CardMeta shift={shift} />
-      <div className="mt-2">
-        <AssignedNames workers={shift.assignedWorkers} />
-      </div>
-      <div className="mt-2 flex items-center justify-between gap-2">
+      <div className="mt-1.5 flex items-center justify-between gap-2">
         <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
           ממתין לאישור
         </span>

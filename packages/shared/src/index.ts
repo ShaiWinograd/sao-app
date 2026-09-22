@@ -40,3 +40,4 @@ export * from './audit-labels';
 export * from './worker-report-status';
 export * from './worker-report-math';
 export * from './geocode-status';
+export * from './israeli-calendar';

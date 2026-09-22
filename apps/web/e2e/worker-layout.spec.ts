@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { israeliNonWorkingDayName } from '@workforce/shared';
 
 test.describe('Worker desktop layout', () => {
   test('creates availability like a calendar event and guides shift conflicts to replacement', async ({ page }) => {
@@ -302,11 +303,24 @@ test.describe('Worker desktop layout', () => {
     const calendarEnd = new Date(today);
     calendarEnd.setMonth(calendarEnd.getMonth() + 2);
     const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const availabilityDate = new Date(today);
+    while (israeliNonWorkingDayName(availabilityDate)) {
+      availabilityDate.setDate(availabilityDate.getDate() + 1);
+    }
+    const availabilityDateKey = `${availabilityDate.getFullYear()}-${String(availabilityDate.getMonth() + 1).padStart(2, '0')}-${String(availabilityDate.getDate()).padStart(2, '0')}`;
     const calendarEndKey = `${calendarEnd.getFullYear()}-${String(calendarEnd.getMonth() + 1).padStart(2, '0')}-${String(calendarEnd.getDate()).padStart(2, '0')}`;
     const nextDateKey = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
     const openDateKey = `${openDate.getFullYear()}-${String(openDate.getMonth() + 1).padStart(2, '0')}-${String(openDate.getDate()).padStart(2, '0')}`;
+    const nextSaturday = new Date(today);
+    nextSaturday.setDate(today.getDate() + ((6 - today.getDay() + 7) % 7));
+    const nextSaturdayKey = `${nextSaturday.getFullYear()}-${String(nextSaturday.getMonth() + 1).padStart(2, '0')}-${String(nextSaturday.getDate()).padStart(2, '0')}`;
     await expect(page.locator('[data-worker-date]').first()).toHaveAttribute('data-worker-date', todayKey);
     await expect(page.locator('[data-worker-date]').last()).toHaveAttribute('data-worker-date', calendarEndKey);
+    await expect(page.locator(`[data-worker-date="${nextSaturdayKey}"]`)).toHaveAttribute('data-non-working', 'true');
+    await expect(page.locator(`#worker-day-${nextSaturdayKey}`)).toHaveAttribute('data-non-working', 'true');
+    await expect(page.locator(`#worker-day-${nextSaturdayKey}`).getByRole('button', { name: 'זמינות' })).toHaveCount(0);
+    await expect(page.locator('[data-worker-indicator="shift"]').first()).toHaveClass(/h-1\.5 w-1\.5/);
+    await expect(page.locator('[data-worker-indicator="availability"]').first()).toHaveClass(/h-1\.5 w-1\.5/);
     await expect(page.locator(`#worker-day-${nextDateKey}`)).toBeInViewport();
     await expect(page.locator(`[data-worker-date="${nextDateKey}"]`)).toBeInViewport();
     await expect(page.getByRole('heading', { name: 'יומן' })).toBeVisible();
@@ -319,7 +333,7 @@ test.describe('Worker desktop layout', () => {
     await expect(page.getByTitle('מפה של תל אביב')).toBeVisible();
     await expect(page.getByText('היומן של כולן')).toBeVisible();
     await page.getByRole('button', { name: 'חזרה להיום' }).click();
-    const availableDay = page.locator(`#worker-day-${todayKey}`).getByRole('button', { name: 'זמינות' });
+    const availableDay = page.locator(`#worker-day-${availabilityDateKey}`).getByRole('button', { name: 'זמינות' });
     await expect(availableDay).toBeVisible();
     await availableDay.click();
     const availabilityDialog = page.getByRole('dialog', { name: 'עדכון זמינות' });
