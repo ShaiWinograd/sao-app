@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { JoinRequestSchema, CustomerSchema, CreateJobSchema, CreateWorkerSchema, CreateWorkerAvailabilitySchema } from './schemas';
+import {
+  JoinRequestSchema,
+  CustomerSchema,
+  CreateJobSchema,
+  CreateWorkerSchema,
+  CreateWorkerAvailabilitySchema,
+  WorkerReplacementRequestSchema,
+} from './schemas';
 
 describe('JoinRequestSchema (§ join-request 500 fix)', () => {
   it('accepts a body WITHOUT workerId (worker is derived from the session)', () => {
@@ -77,6 +84,21 @@ describe('CustomerSchema (email optional)', () => {
     it('rejects negative trainee pay or hours', () => {
       expect(() => CreateJobSchema.parse({ ...validJob, traineeHourlyWage: -1 })).toThrow();
       expect(() => CreateJobSchema.parse({ ...validJob, traineeApprovedHours: -0.25 })).toThrow();
+    });
+  });
+
+  describe('WorkerReplacementRequestSchema', () => {
+    it('allows an empty optional reason and multiple suggested workers', () => {
+      expect(WorkerReplacementRequestSchema.parse({
+        suggestedWorkerIds: ['worker-1', 'worker-2'],
+      })).toEqual({
+        reason: '',
+        suggestedWorkerIds: ['worker-1', 'worker-2'],
+      });
+    });
+
+    it('limits the optional reason to 100 characters', () => {
+      expect(() => WorkerReplacementRequestSchema.parse({ reason: 'א'.repeat(101) })).toThrow();
     });
   });
 

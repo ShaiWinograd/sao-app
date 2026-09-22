@@ -206,8 +206,9 @@ export const ApproveReplacementSchema = z.object({
 
 // Worker asks to leave / be replaced on their own shift (owner approves later).
 export const WorkerReplacementRequestSchema = z.object({
-  reason: z.string().min(1).max(300),
+  reason: z.string().trim().max(100).optional().default(''),
   suggestedWorkerId: z.string().optional(),
+  suggestedWorkerIds: z.array(z.string()).max(20).optional(),
 });
 
 // Worker proposes a two-way swap: my fromShift <-> a colleague's toShift.

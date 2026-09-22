@@ -587,6 +587,7 @@ model ReplacementRequest {
   requestedByWorkerId String
   reason              String
   suggestedWorkerId   String?
+  suggestedWorkerIds  String[]          @default([])
   approvedWorkerId    String?
   status              ReplacementStatus @default(PENDING)
   adminNote           String?

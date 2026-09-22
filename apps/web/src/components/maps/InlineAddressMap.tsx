@@ -18,10 +18,10 @@ export function InlineAddressMap({
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
-        className="max-w-full text-right text-xs font-medium text-primary-800 underline decoration-primary-300 underline-offset-4 hover:text-primary-950"
+        aria-label={`${address}, ${open ? 'סגירת מפה' : 'פתיחת מפה'}`}
+        className="max-w-full text-right text-sm font-medium text-primary-800 underline decoration-primary-300 underline-offset-4 hover:text-primary-950"
       >
         {address}
-        <span className="mr-1 text-[10px] text-[var(--color-text-muted)]">{open ? 'סגירת מפה' : 'הצגה במפה'}</span>
       </button>
       {open && (
         <div className="mt-3 overflow-hidden border border-[var(--color-border-strong)] bg-[var(--color-surface)]">
