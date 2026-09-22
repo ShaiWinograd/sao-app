@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { api, authHeaders } from '../../lib/api';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -9,6 +10,7 @@ import { InlineAddressMap } from '../../components/maps/InlineAddressMap';
 import {
   jobTypeLabel,
   jobTypeBorderColor,
+  jobTypeSolidClasses,
   jobTypeStripColor,
   formatScheduledTime,
 } from '../../lib/worker';
@@ -28,6 +30,7 @@ type BoardShift = {
   openSpots: number;
   myStatus: MyStatus;
   myShiftId: string | null;
+  replacementStatus?: string;
   blockedSameDay?: boolean;
 };
 
@@ -101,6 +104,7 @@ function availabilityForDate(blocks: AvailabilityBlock[], dateKey: string): Avai
 
 export default function WorkerShiftsPage() {
   const { getToken } = useAuth();
+  const searchParams = useSearchParams();
   const [board, setBoard] = useState<BoardShift[]>([]);
   const [swaps, setSwaps] = useState<SwapMine[]>([]);
   const [replacements, setReplacements] = useState<OpenReplacement[]>([]);
@@ -109,12 +113,14 @@ export default function WorkerShiftsPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [joinTarget, setJoinTarget] = useState<BoardShift | null>(null);
+  const [replacementTarget, setReplacementTarget] = useState<BoardShift | null>(null);
+  const [colleagues, setColleagues] = useState<{ id: string; name: string }[]>([]);
   const [availabilityTarget, setAvailabilityTarget] = useState<string | null>(null);
   const [shiftFilter, setShiftFilter] = useState<'ALL' | 'MINE'>('ALL');
   const [nextShiftExpanded, setNextShiftExpanded] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => toDateKey(new Date()));
-  const selectedInitialDate = useRef(false);
   const initialCalendarPositioned = useRef(false);
+  const queryReplacementOpened = useRef(false);
 
   const loadBoard = useCallback(async () => {
     try {
@@ -162,19 +168,6 @@ export default function WorkerShiftsPage() {
       setLoading(false);
     })();
   }, [loadAvailability, loadBoard, loadSwaps, loadReplacements]);
-
-  useEffect(() => {
-    if (selectedInitialDate.current || board.length === 0) return;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const nextShift = [...board]
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .find((shift) => new Date(shift.date).getTime() >= today.getTime());
-    if (nextShift) {
-      setSelectedDate(toDateKey(nextShift.date));
-    }
-    selectedInitialDate.current = true;
-  }, [board]);
 
   const volunteer = useCallback(
     async (requestId: string, has: boolean) => {
@@ -255,6 +248,70 @@ export default function WorkerShiftsPage() {
     [getToken, loadBoard],
   );
 
+  const openReplacement = useCallback(async (shift: BoardShift) => {
+    setMessage(null);
+    setReplacementTarget(shift);
+    if (shift.replacementStatus === 'PENDING' || colleagues.length > 0) return;
+    try {
+      const auth = await authHeaders(getToken);
+      const res = await api.get<{ id: string; name: string }[]>('/workers/colleagues', auth);
+      setColleagues(res.data ?? []);
+    } catch {
+      setColleagues([]);
+    }
+  }, [colleagues.length, getToken]);
+
+  const requestReplacement = useCallback(async (reason: string, suggestedWorkerId: string) => {
+    if (!replacementTarget?.myShiftId) return;
+    setBusy(replacementTarget.myShiftId);
+    setMessage(null);
+    try {
+      const auth = await authHeaders(getToken);
+      const response = await api.post<{ released?: boolean }>(
+        `/shifts/${replacementTarget.myShiftId}/replacement`,
+        { reason, suggestedWorkerId: suggestedWorkerId || undefined },
+        auth,
+      );
+      setMessage(
+        response.data.released
+          ? 'המשמרת הועברה לגיבוי הזמין.'
+          : 'בקשת המחליפה נשלחה. את נשארת משובצת עד לאישור.',
+      );
+      setReplacementTarget(null);
+      await loadBoard();
+    } catch (err) {
+      const data = (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
+      setMessage(data?.message ?? (data?.error ? `שליחת הבקשה נכשלה: ${data.error}` : 'שליחת הבקשה נכשלה. נסי שוב.'));
+    } finally {
+      setBusy(null);
+    }
+  }, [getToken, loadBoard, replacementTarget]);
+
+  const cancelReplacement = useCallback(async () => {
+    if (!replacementTarget?.myShiftId) return;
+    setBusy(replacementTarget.myShiftId);
+    setMessage(null);
+    try {
+      const auth = await authHeaders(getToken);
+      await api.delete(`/shifts/${replacementTarget.myShiftId}/replacement`, auth);
+      setMessage('בקשת המחליפה בוטלה.');
+      setReplacementTarget(null);
+      await loadBoard();
+    } catch {
+      setMessage('ביטול בקשת המחליפה נכשל.');
+    } finally {
+      setBusy(null);
+    }
+  }, [getToken, loadBoard, replacementTarget]);
+
+  useEffect(() => {
+    const shiftId = searchParams.get('replacementShiftId');
+    if (loading || queryReplacementOpened.current || !shiftId) return;
+    queryReplacementOpened.current = true;
+    const shift = board.find((candidate) => candidate.myShiftId === shiftId);
+    if (shift) void openReplacement(shift);
+  }, [board, loading, openReplacement, searchParams]);
+
   const respondSwap = useCallback(
     async (id: string, approved: boolean) => {
       setBusy(id);
@@ -305,16 +362,13 @@ export default function WorkerShiftsPage() {
   const calendarDays = useMemo(() => {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
-    start.setMonth(start.getMonth() - 2);
-    const end = new Date();
-    end.setHours(0, 0, 0, 0);
+    const end = new Date(start);
     end.setMonth(end.getMonth() + 2);
-    const dayCount = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
-    return Array.from({ length: dayCount }, (_, index) => {
-      const date = new Date(start);
-      date.setDate(start.getDate() + index);
-      return date;
-    });
+    const days: Date[] = [];
+    for (const date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
+      days.push(new Date(date));
+    }
+    return days;
   }, []);
   const shiftsByDate = useMemo(
     () =>
@@ -327,11 +381,7 @@ export default function WorkerShiftsPage() {
   );
 
   useEffect(() => {
-    if (
-      loading ||
-      initialCalendarPositioned.current ||
-      (board.length > 0 && !selectedInitialDate.current)
-    ) {
+    if (loading || initialCalendarPositioned.current) {
       return;
     }
     const frame = window.requestAnimationFrame(() => {
@@ -346,6 +396,43 @@ export default function WorkerShiftsPage() {
     });
     return () => window.cancelAnimationFrame(frame);
   }, [board.length, loading, selectedDate]);
+
+  useEffect(() => {
+    const scrollContainer = document.querySelector<HTMLElement>('.app-main');
+    if (!scrollContainer) return;
+    let frame = 0;
+    const updateSelectedDate = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const sections = Array.from(document.querySelectorAll<HTMLElement>('[data-worker-day]'));
+        if (sections.length === 0) return;
+        const stickyOffset = scrollContainer.getBoundingClientRect().top + 220;
+        let visibleDate = sections[0].dataset.workerDay;
+        for (const section of sections) {
+          if (section.getBoundingClientRect().top <= stickyOffset) {
+            visibleDate = section.dataset.workerDay;
+          } else {
+            break;
+          }
+        }
+        if (visibleDate) setSelectedDate((current) => current === visibleDate ? current : visibleDate);
+      });
+    };
+    scrollContainer.addEventListener('scroll', updateSelectedDate, { passive: true });
+    updateSelectedDate();
+    return () => {
+      scrollContainer.removeEventListener('scroll', updateSelectedDate);
+      window.cancelAnimationFrame(frame);
+    };
+  }, [calendarDays]);
+
+  useEffect(() => {
+    document.querySelector<HTMLElement>(`[data-worker-date="${selectedDate}"]`)?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'center',
+    });
+  }, [selectedDate]);
 
   const selectDate = useCallback((dateKey: string) => {
     setSelectedDate(dateKey);
@@ -425,7 +512,7 @@ export default function WorkerShiftsPage() {
     <div className="mx-auto w-full max-w-[1120px] space-y-6">
       <PageHeader
         eyebrow="YOUR WORK, BEAUTIFULLY ARRANGED"
-        title="המשמרות שלי"
+        title="יומן"
         description="כל מה שצריך לדעת ולעשות לקראת העבודה הבאה."
       />
 
@@ -440,52 +527,42 @@ export default function WorkerShiftsPage() {
       </div>
 
       {nextMyShift && (
-        <section className="grid gap-4 border-t-2 border-primary-700 bg-primary-100/70 p-4 sm:grid-cols-[minmax(0,1fr)_6rem] sm:p-5">
-          <div>
-            <p className="text-[11px] font-semibold tracking-[0.12em] text-primary-700">המשמרת הבאה</p>
-            <h2 className="font-display mt-1 text-2xl font-medium leading-tight text-[#292724]">
-              {jobTypeLabel(nextMyShift.jobType)}
-            </h2>
-            <p className="mt-1 text-sm font-semibold text-[#292724]">{nextMyShift.customerName}</p>
-            <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-              <bdi>{formatScheduledTime(nextMyShift.plannedStart)}–{formatScheduledTime(nextMyShift.plannedEnd)}</bdi>
-            </p>
-            {nextMyShift.address && <InlineAddressMap address={nextMyShift.address} compact />}
-            <div className="mt-3 border-t border-primary-200 pt-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">הצוות במשמרת</p>
-              <div className="mt-1"><AssignedNames workers={nextMyShift.assignedWorkers} /></div>
+        <section>
+          <div className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3 ${jobTypeSolidClasses(nextMyShift.jobType)}`}>
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="text-[10px] font-semibold tracking-[0.12em] text-white/75">העבודה הבאה</span>
+              <span className="font-display text-lg font-semibold">{jobTypeLabel(nextMyShift.jobType)}</span>
+              <span className="truncate text-sm font-semibold">{nextMyShift.customerName}</span>
+              <span className="text-xs text-white/85">
+                {shortDate(nextMyShift.date)} · <bdi>{formatScheduledTime(nextMyShift.plannedStart)}–{formatScheduledTime(nextMyShift.plannedEnd)}</bdi>
+              </span>
             </div>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <span className="text-xs font-semibold text-[#53644b]">● השיבוץ שלך מאושר</span>
-              <button
-                type="button"
-                aria-expanded={nextShiftExpanded}
-                onClick={() => setNextShiftExpanded((value) => !value)}
-                className="border border-primary-700 px-4 py-2 text-xs font-semibold text-primary-800 transition-colors hover:bg-primary-700 hover:text-white"
-              >
-                {nextShiftExpanded ? 'סגירת הפרטים' : 'כל פרטי המשמרת'}
-              </button>
+            <button
+              type="button"
+              aria-expanded={nextShiftExpanded}
+              onClick={() => setNextShiftExpanded((value) => !value)}
+              className="shrink-0 border border-white/70 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/15"
+            >
+              {nextShiftExpanded ? 'סגירת הפרטים' : 'פרטים'}
+            </button>
+          </div>
+          {nextShiftExpanded && (
+            <div className="border-x border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+              {nextMyShift.address && (
+                <div className="mb-3">
+                  <InlineAddressMap address={nextMyShift.address} compact />
+                </div>
+              )}
+              <ShiftCard
+                shift={nextMyShift}
+                busy={Boolean(nextMyShift.myShiftId && busy === nextMyShift.myShiftId)}
+                onAskToJoin={() => setJoinTarget(nextMyShift)}
+                onRespond={(accepted) => nextMyShift.myShiftId && void respondAssignment(nextMyShift.myShiftId, accepted)}
+                onCancelRequest={() => nextMyShift.myShiftId && void cancelRequest(nextMyShift.myShiftId)}
+                onReplacement={() => void openReplacement(nextMyShift)}
+              />
             </div>
-            {nextShiftExpanded && (
-              <div className="mt-4 border-t border-primary-200 pt-4">
-                <ShiftCard
-                  shift={nextMyShift}
-                  busy={Boolean(nextMyShift.myShiftId && busy === nextMyShift.myShiftId)}
-                  onAskToJoin={() => setJoinTarget(nextMyShift)}
-                  onRespond={(accepted) => nextMyShift.myShiftId && void respondAssignment(nextMyShift.myShiftId, accepted)}
-                  onCancelRequest={() => nextMyShift.myShiftId && void cancelRequest(nextMyShift.myShiftId)}
-                />
-              </div>
-            )}
-          </div>
-          <div className="hidden border-r border-[var(--color-border-strong)] pr-4 text-center sm:block">
-            <span className="font-display block text-4xl leading-none text-primary-700">
-              {new Date(nextMyShift.date).getDate()}
-            </span>
-            <span className="mt-2 block text-xs text-[var(--color-text-secondary)]">
-              {new Date(nextMyShift.date).toLocaleDateString('he-IL', { month: 'long', weekday: 'long' })}
-            </span>
-          </div>
+          )}
         </section>
       )}
 
@@ -543,13 +620,15 @@ export default function WorkerShiftsPage() {
                 <span className={`text-[11px] ${active ? 'text-white/75' : 'text-gray-400'}`}>
                   {date.toLocaleDateString('he-IL', { weekday: 'long' })}
                 </span>
-                <span className="font-display mt-1 text-2xl font-semibold leading-none">{date.getDate()}</span>
-                <span className="mt-1 flex h-1.5 items-center gap-1">
-                  <span className={`h-1 w-1 rounded-full ${hasShift ? (active ? 'bg-white' : 'bg-primary-500') : 'bg-transparent'}`} />
-                  <span
-                    aria-label={hasAvailability ? 'הוגדרה זמינות' : undefined}
-                    className={`h-1.5 w-1.5 rounded-full ${hasAvailability ? (active ? 'bg-rose-200' : 'bg-rose-500') : 'bg-transparent'}`}
-                  />
+                <span className="relative mt-1 inline-flex pb-3">
+                  <span className="font-display text-2xl font-semibold leading-none">{date.getDate()}</span>
+                  <span className="absolute bottom-0 left-1/2 flex h-1.5 -translate-x-1/2 items-center gap-1">
+                    <span className={`h-1 w-1 rounded-full ${hasShift ? (active ? 'bg-white' : 'bg-primary-500') : 'bg-transparent'}`} />
+                    <span
+                      aria-label={hasAvailability ? 'הוגדרה זמינות' : undefined}
+                      className={`h-1.5 w-1.5 rounded-full ${hasAvailability ? (active ? 'bg-rose-200' : 'bg-rose-500') : 'bg-transparent'}`}
+                    />
+                  </span>
                 </span>
               </button>
             );
@@ -598,6 +677,7 @@ export default function WorkerShiftsPage() {
               <section
                 key={dateKey}
                 id={`worker-day-${dateKey}`}
+                data-worker-day={dateKey}
                 className={`scroll-mt-44 border-b border-[var(--color-border)] ${
                   selectedDate === dateKey ? 'bg-primary-50/35' : ''
                 }`}
@@ -607,7 +687,7 @@ export default function WorkerShiftsPage() {
                 </div>
                 {shifts.length === 0 ? (
                   <div className="flex min-h-12 items-center justify-between gap-3 px-1 py-2">
-                    <span className="text-xs text-[var(--color-text-muted)]">אין משמרות</span>
+                    <span className="text-xs text-[var(--color-text-muted)]">אין עבודות</span>
                     <button
                       type="button"
                       onClick={() => setAvailabilityTarget(dateKey)}
@@ -635,6 +715,7 @@ export default function WorkerShiftsPage() {
                     onAskToJoin={() => setJoinTarget(s)}
                     onRespond={(accepted) => s.myShiftId && void respondAssignment(s.myShiftId, accepted)}
                     onCancelRequest={() => s.myShiftId && void cancelRequest(s.myShiftId)}
+                    onReplacement={() => void openReplacement(s)}
                   />
                 </div>
                 ))}
@@ -695,6 +776,17 @@ export default function WorkerShiftsPage() {
           onClose={() => setAvailabilityTarget(null)}
         />
       )}
+      {replacementTarget && (
+        <ReplacementModal
+          shift={replacementTarget}
+          colleagues={colleagues}
+          busy={busy === replacementTarget.myShiftId}
+          message={message}
+          onSubmit={(reason, suggestedWorkerId) => void requestReplacement(reason, suggestedWorkerId)}
+          onCancel={() => void cancelReplacement()}
+          onClose={() => setReplacementTarget(null)}
+        />
+      )}
     </div>
   );
 }
@@ -734,12 +826,14 @@ function ShiftCard({
   onAskToJoin,
   onRespond,
   onCancelRequest,
+  onReplacement,
 }: {
   shift: BoardShift;
   busy: boolean;
   onAskToJoin: () => void;
   onRespond: (accepted: boolean) => void;
   onCancelRequest: () => void;
+  onReplacement: () => void;
 }) {
   // 1) Fully assigned (not mine).
   if (shift.myStatus === 'NONE' && shift.openSpots === 0) {
@@ -839,12 +933,13 @@ function ShiftCard({
           <AssignedNames workers={shift.assignedWorkers} />
         </div>
         <div className="mt-2 flex gap-2">
-          <Link
-            href={`/worker/shifts/${shift.myShiftId}`}
+          <button
+            type="button"
+            onClick={onReplacement}
             className="inline-flex items-center rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
           >
-            החלפה או בקשת מחליפה
-          </Link>
+            {shift.replacementStatus === 'PENDING' ? 'בקשת מחליפה ממתינה' : 'בקשת מחליפה'}
+          </button>
         </div>
       </div>
     );
@@ -872,6 +967,117 @@ function ShiftCard({
         >
           ביטול בקשה
         </button>
+      </div>
+    </div>
+  );
+}
+
+function ReplacementModal({
+  shift,
+  colleagues,
+  busy,
+  message,
+  onSubmit,
+  onCancel,
+  onClose,
+}: {
+  shift: BoardShift;
+  colleagues: { id: string; name: string }[];
+  busy: boolean;
+  message: string | null;
+  onSubmit: (reason: string, suggestedWorkerId: string) => void;
+  onCancel: () => void;
+  onClose: () => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [suggestedWorkerId, setSuggestedWorkerId] = useState('');
+  const pending = shift.replacementStatus === 'PENDING';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 p-3 sm:items-center" dir="rtl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="בקשת מחליפה"
+        className="w-full max-w-lg border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-5 shadow-xl"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold tracking-[0.12em] text-primary-700">בקשת מחליפה</p>
+            <h2 className="font-display mt-1 text-2xl text-[#292724]">{jobTypeLabel(shift.jobType)}</h2>
+            <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+              {shortDate(shift.date)} · {formatScheduledTime(shift.plannedStart)}–{formatScheduledTime(shift.plannedEnd)}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="text-sm font-semibold text-gray-500 hover:text-gray-800">
+            סגירה
+          </button>
+        </div>
+
+        {message && (
+          <p className="mt-4 border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{message}</p>
+        )}
+
+        {pending ? (
+          <div className="mt-5 space-y-4">
+            <p className="border border-[var(--color-calendar-sand-border)] bg-[var(--color-calendar-sand-soft)] p-3 text-sm text-[var(--color-calendar-sand)]">
+              הבקשה ממתינה לאישור. עד לאישור את נשארת משובצת למשמרת.
+            </p>
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={busy}
+              className="w-full border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              ביטול בקשת המחליפה
+            </button>
+          </div>
+        ) : (
+          <form
+            className="mt-5 space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (reason.trim()) onSubmit(reason.trim(), suggestedWorkerId);
+            }}
+          >
+            <label className="block text-sm font-medium text-gray-700">
+              למה את צריכה מחליפה?
+              <textarea
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                rows={3}
+                autoFocus
+                required
+                className="mt-1 block w-full border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
+              />
+            </label>
+            {colleagues.length > 0 && (
+              <label className="block text-sm font-medium text-gray-700">
+                יש לך מחליפה מתאימה? (רשות)
+                <select
+                  value={suggestedWorkerId}
+                  onChange={(event) => setSuggestedWorkerId(event.target.value)}
+                  className="mt-1 block w-full border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
+                >
+                  <option value="">פרסום לכל העובדות</option>
+                  {colleagues.map((colleague) => (
+                    <option key={colleague.id} value={colleague.id}>{colleague.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <p className="text-xs text-[var(--color-text-secondary)]">
+              הבקשה תישלח לבעלת העסק. עד לאישור את נשארת משובצת למשמרת.
+            </p>
+            <button
+              type="submit"
+              disabled={busy || !reason.trim()}
+              className="w-full bg-primary-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-800 disabled:opacity-50"
+            >
+              שליחת בקשת מחליפה
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );

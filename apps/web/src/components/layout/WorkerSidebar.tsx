@@ -6,10 +6,10 @@ import { UserButton } from '@clerk/nextjs';
 import RoleSwitcher from './RoleSwitcher';
 import { BrandLockup } from './BrandLockup';
 
-// Worker navigation (worker_web_spec §1). "משמרות" is the consolidated board
+// Worker navigation (worker_web_spec §1). "יומן" is the consolidated board
 // (general + my shifts as tabs).
 const navItems = [
-  { href: '/worker', label: 'משמרות', exact: true },
+  { href: '/worker', label: 'יומן', exact: true },
   { href: '/worker/history', label: 'היסטוריית עבודות' },
   { href: '/worker/availability', label: 'הזמינות שלי' },
   { href: '/worker/reports', label: 'הדוחות שלי' },

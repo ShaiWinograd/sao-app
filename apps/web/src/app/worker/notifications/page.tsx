@@ -2,12 +2,20 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
 import { Bell, Check } from 'lucide-react';
 import { api, authHeaders } from '../../../lib/api';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { PageHeader } from '../../../components/ui/PageHeader';
 
-type Notification = { id: string; title: string; body: string; isRead: boolean; sentAt: string };
+type Notification = {
+  id: string;
+  title: string;
+  body: string;
+  isRead: boolean;
+  sentAt: string;
+  data?: { shiftId?: string; jobId?: string } | null;
+};
 
 function formatWhen(iso: string): string {
   try {
@@ -19,6 +27,7 @@ function formatWhen(iso: string): string {
 
 export default function WorkerNotificationsPage() {
   const { getToken } = useAuth();
+  const router = useRouter();
   const [items, setItems] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -63,6 +72,15 @@ export default function WorkerNotificationsPage() {
 
   const hasUnread = items.some((n) => !n.isRead);
 
+  const openNotification = useCallback(async (notification: Notification) => {
+    if (!notification.isRead) await markRead(notification.id);
+    if (notification.data?.shiftId) {
+      router.push(`/worker/shifts/${notification.data.shiftId}`);
+    } else if (notification.data?.jobId) {
+      router.push('/worker');
+    }
+  }, [markRead, router]);
+
   if (loading) return <p className="text-sm text-gray-400">טוען…</p>;
 
   return (
@@ -96,7 +114,7 @@ export default function WorkerNotificationsPage() {
             <button
               key={n.id}
               type="button"
-              onClick={() => !n.isRead && void markRead(n.id)}
+              onClick={() => void openNotification(n)}
               className={`grid w-full grid-cols-[0.75rem_minmax(0,1fr)_auto] items-start gap-4 px-2 py-5 text-right transition-colors hover:bg-primary-50/50 ${
                 n.isRead ? '' : 'bg-primary-50/40'
               }`}
@@ -105,6 +123,11 @@ export default function WorkerNotificationsPage() {
               <div>
                 <p className="text-sm font-semibold text-gray-900">{n.title}</p>
                 <p className="mt-1 text-sm leading-6 text-[var(--color-text-secondary)]">{n.body}</p>
+                {(n.data?.shiftId || n.data?.jobId) && (
+                  <p className="mt-2 text-xs font-semibold text-primary-700">
+                    {n.data.shiftId ? 'פתיחת המשמרת' : 'פתיחת היומן'} ←
+                  </p>
+                )}
               </div>
               <p className="text-[11px] text-[var(--color-text-muted)]">{formatWhen(n.sentAt)}</p>
             </button>
