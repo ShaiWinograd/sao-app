@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { ArrowRight, RefreshCw } from 'lucide-react';
 import { api, authHeaders } from '../../../lib/api';
+import { canViewSensitiveFinancials } from '../../../lib/viewer-access';
+import { useViewerRole } from '../../../lib/use-viewer-role';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 
 type WorkerShift = {
@@ -39,6 +41,12 @@ type WorkerDetail = {
   skills: string[];
   isActive: boolean;
   homeArea?: string | null;
+  homeAddress?: string | null;
+  birthday?: string | null;
+  bankNumber?: string | null;
+  bankBranch?: string | null;
+  bankAccountNumber?: string | null;
+  bankAccountHolder?: string | null;
   notes?: string | null;
   shifts: WorkerShift[];
   adjustments: WorkerAdjustment[];
@@ -78,6 +86,8 @@ export default function WorkerDetailPage() {
   const params = useParams<{ id: string }>();
   const workerId = params?.id;
   const { getToken } = useAuth();
+  const viewerRole = useViewerRole();
+  const canViewBankDetails = canViewSensitiveFinancials(viewerRole);
 
   const [tab, setTab] = useState<WorkerTab>('details');
   const [worker, setWorker] = useState<WorkerDetail | null>(null);
@@ -179,7 +189,19 @@ export default function WorkerDetailPage() {
             <div><dt className="text-gray-500">טלפון</dt><dd className="text-gray-900">{worker.phone}</dd></div>
             <div><dt className="text-gray-500">אימייל</dt><dd className="text-gray-900">{worker.email}</dd></div>
             <div><dt className="text-gray-500">אזור מגורים</dt><dd className="text-gray-900">{worker.homeArea || '—'}</dd></div>
+            <div><dt className="text-gray-500">כתובת מגורים</dt><dd className="text-gray-900">{worker.homeAddress || '—'}</dd></div>
+            <div><dt className="text-gray-500">תאריך לידה</dt><dd className="text-gray-900">{formatDate(worker.birthday)}</dd></div>
             <div><dt className="text-gray-500">אופן תשלום</dt><dd className="text-gray-900">{worker.paymentMethod}</dd></div>
+            {canViewBankDetails && (
+              <div className="col-span-2">
+                <dt className="text-gray-500">חשבון בנק</dt>
+                <dd className="text-gray-900">
+                  {worker.bankAccountNumber
+                    ? `${worker.bankAccountHolder || '—'} · בנק ${worker.bankNumber || '—'} · סניף ${worker.bankBranch || '—'} · חשבון ${worker.bankAccountNumber}`
+                    : '—'}
+                </dd>
+              </div>
+            )}
             <div className="col-span-2">
               <dt className="text-gray-500 mb-1">תפקיד</dt>
               <dd>

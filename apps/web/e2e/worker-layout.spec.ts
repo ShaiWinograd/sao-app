@@ -82,6 +82,9 @@ test.describe('Worker desktop layout', () => {
 
     await page.goto('/worker');
     await expect(page.locator(`#worker-day-${endDateKey}`).getByText('ציוד ליום העבודה')).toBeVisible();
+    await page.getByRole('button', { name: 'פעולות מהירות', exact: true }).click();
+    await expect(page.getByRole('link', { name: 'עדכון פרטים אישיים' })).toHaveAttribute('href', '/worker/profile?action=edit');
+    await page.getByRole('button', { name: 'פעולות מהירות', exact: true }).click();
     await page.locator(`#worker-day-${dateKey}`).getByRole('button', { name: 'זמינות' }).click();
     const availabilityDialog = page.getByRole('dialog', { name: 'עדכון זמינות' });
     await availabilityDialog.getByLabel('התחלה').fill(dateKey);
@@ -100,6 +103,51 @@ test.describe('Worker desktop layout', () => {
     await expect(conflictDialog.getByText('משפחת לוי')).toBeVisible();
     await conflictDialog.getByRole('button', { name: 'בקשת מחליפה' }).click();
     await expect(page.getByRole('dialog', { name: 'בקשת מחליפה' })).toBeVisible();
+  });
+
+  test('lets a worker update personal and bank details from the quick profile action', async ({ page }) => {
+    let updated: Record<string, unknown> | null = null;
+    const profile = {
+      id: 'worker-1',
+      firstName: 'שי',
+      lastName: 'וינוגרד',
+      phone: '0546626125',
+      email: 'shai@example.com',
+      homeArea: 'תל אביב',
+      homeAddress: 'הרצל 10, תל אביב',
+      birthday: '1990-05-12T00:00:00.000Z',
+      bankNumber: '10',
+      bankBranch: '123',
+      bankAccountNumber: '456789',
+      bankAccountHolder: 'שי וינוגרד',
+      skills: ['GENERAL_WORKER'],
+    };
+    await page.route('**/api/v1/workers/me', async (route) => {
+      if (route.request().method() === 'PATCH') {
+        updated = route.request().postDataJSON() as Record<string, unknown>;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ...profile, ...updated }),
+        });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(profile) });
+    });
+
+    await page.goto('/worker/profile?action=edit');
+
+    await expect(page.getByLabel('כתובת מגורים')).toHaveValue('הרצל 10, תל אביב');
+    await expect(page.getByLabel('תאריך לידה')).toHaveValue('1990-05-12');
+    await page.getByPlaceholder('מספר חשבון').fill('987654');
+    await page.getByRole('button', { name: 'שמירה' }).click();
+
+    await expect.poll(() => updated).toMatchObject({
+      homeAddress: 'הרצל 10, תל אביב',
+      birthday: '1990-05-12',
+      bankAccountNumber: '987654',
+    });
+    await expect(page.getByRole('button', { name: 'עריכה' })).toBeVisible();
   });
 
   test('shows exact notification details and opens the affected shift', async ({ page }) => {
@@ -226,10 +274,19 @@ test.describe('Worker desktop layout', () => {
     const nextDate = new Date();
     nextDate.setDate(nextDate.getDate() + 1);
     nextDate.setHours(0, 0, 0, 0);
+    while (israeliNonWorkingDayName(nextDate)) {
+      nextDate.setDate(nextDate.getDate() + 1);
+    }
     const invitedDate = new Date(nextDate);
     invitedDate.setDate(invitedDate.getDate() + 1);
+    while (israeliNonWorkingDayName(invitedDate)) {
+      invitedDate.setDate(invitedDate.getDate() + 1);
+    }
     const openDate = new Date(invitedDate);
     openDate.setDate(openDate.getDate() + 1);
+    while (israeliNonWorkingDayName(openDate)) {
+      openDate.setDate(openDate.getDate() + 1);
+    }
 
     await page.route('**/api/v1/jobs/board', (route) =>
       route.fulfill({

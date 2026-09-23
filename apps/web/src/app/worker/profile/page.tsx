@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
-import { Phone, Mail, Briefcase, MapPin, Pencil, Check, X } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { Phone, Mail, Briefcase, MapPin, Pencil, Check, X, CalendarDays, Landmark, Home } from 'lucide-react';
 import { api, authHeaders } from '../../../lib/api';
 import { PageHeader } from '../../../components/ui/PageHeader';
 
@@ -14,6 +15,12 @@ type WorkerProfile = {
   email?: string;
   skills?: string[];
   homeArea?: string | null;
+  homeAddress?: string | null;
+  birthday?: string | null;
+  bankNumber?: string | null;
+  bankBranch?: string | null;
+  bankAccountNumber?: string | null;
+  bankAccountHolder?: string | null;
 };
 
 const SKILL_LABEL: Record<string, string> = {
@@ -27,6 +34,8 @@ const SKILL_LABEL: Record<string, string> = {
 
 export default function WorkerProfilePage() {
   const { getToken } = useAuth();
+  const searchParams = useSearchParams();
+  const editQueryHandled = useRef(false);
   const [profile, setProfile] = useState<WorkerProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -37,6 +46,12 @@ export default function WorkerProfilePage() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [homeArea, setHomeArea] = useState('');
+  const [homeAddress, setHomeAddress] = useState('');
+  const [birthday, setBirthday] = useState('');
+  const [bankNumber, setBankNumber] = useState('');
+  const [bankBranch, setBankBranch] = useState('');
+  const [bankAccountNumber, setBankAccountNumber] = useState('');
+  const [bankAccountHolder, setBankAccountHolder] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -57,6 +72,12 @@ export default function WorkerProfilePage() {
     setPhone(profile.phone ?? '');
     setEmail(profile.email ?? '');
     setHomeArea(profile.homeArea ?? '');
+    setHomeAddress(profile.homeAddress ?? '');
+    setBirthday(profile.birthday?.slice(0, 10) ?? '');
+    setBankNumber(profile.bankNumber ?? '');
+    setBankBranch(profile.bankBranch ?? '');
+    setBankAccountNumber(profile.bankAccountNumber ?? '');
+    setBankAccountHolder(profile.bankAccountHolder ?? '');
     setMsg(null);
     setEditing(true);
   }, [profile]);
@@ -73,7 +94,17 @@ export default function WorkerProfilePage() {
       const auth = await authHeaders(getToken);
       const res = await api.patch<WorkerProfile>(
         '/workers/me',
-        { phone: phone.trim(), email: email.trim(), homeArea: homeArea.trim() },
+        {
+          phone: phone.trim(),
+          email: email.trim(),
+          homeArea: homeArea.trim(),
+          homeAddress: homeAddress.trim(),
+          birthday,
+          bankNumber: bankNumber.trim(),
+          bankBranch: bankBranch.trim(),
+          bankAccountNumber: bankAccountNumber.trim(),
+          bankAccountHolder: bankAccountHolder.trim(),
+        },
         auth,
       );
       setProfile(res.data);
@@ -84,7 +115,14 @@ export default function WorkerProfilePage() {
     } finally {
       setSaving(false);
     }
-  }, [profile, phone, email, homeArea, getToken]);
+  }, [profile, phone, email, homeArea, homeAddress, birthday, bankNumber, bankBranch, bankAccountNumber, bankAccountHolder, getToken]);
+
+  useEffect(() => {
+    if (profile && searchParams.get('action') === 'edit' && !editQueryHandled.current) {
+      editQueryHandled.current = true;
+      startEdit();
+    }
+  }, [profile, searchParams, startEdit]);
 
   if (loading) return <p className="text-sm text-gray-400">טוען…</p>;
 
@@ -118,7 +156,7 @@ export default function WorkerProfilePage() {
               {(profile.firstName?.[0] ?? '') + (profile.lastName?.[0] ?? '') || 'S&O'}
             </div>
             <div>
-              <p className="font-display text-3xl font-medium text-gray-900">
+              <p className="font-display text-2xl font-medium text-gray-900">
               {`${profile.firstName ?? ''} ${profile.lastName ?? ''}`.trim() || 'עובד/ת'}
               </p>
               {!editing && profile.homeArea && <p className="mt-1 text-sm text-[var(--color-text-secondary)]">{profile.homeArea}</p>}
@@ -154,6 +192,21 @@ export default function WorkerProfilePage() {
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 />
               </label>
+              <label className="block text-xs text-gray-600">
+                כתובת מגורים
+                <input type="text" value={homeAddress} onChange={(e) => setHomeAddress(e.target.value)} className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              </label>
+              <label className="block text-xs text-gray-600">
+                תאריך לידה
+                <input type="date" value={birthday} onChange={(e) => setBirthday(e.target.value)} className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              </label>
+              <fieldset className="grid grid-cols-2 gap-3 border-y border-[var(--color-border)] py-3">
+                <legend className="px-2 text-xs font-semibold text-gray-700">חשבון בנק</legend>
+                <input value={bankAccountHolder} onChange={(e) => setBankAccountHolder(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="שם בעלת החשבון" />
+                <input value={bankNumber} onChange={(e) => setBankNumber(e.target.value.replace(/\D/g, '').slice(0, 3))} inputMode="numeric" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="מספר בנק" />
+                <input value={bankBranch} onChange={(e) => setBankBranch(e.target.value.replace(/\D/g, '').slice(0, 5))} inputMode="numeric" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="מספר סניף" />
+                <input value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value.replace(/\D/g, '').slice(0, 20))} inputMode="numeric" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="מספר חשבון" />
+              </fieldset>
               {msg && <p className="text-xs text-rose-600">{msg}</p>}
               <div className="flex items-center gap-2 pt-1">
                 <button
@@ -194,6 +247,24 @@ export default function WorkerProfilePage() {
                 <p className="flex items-center justify-between gap-4 py-4">
                   <span className="text-[var(--color-text-secondary)]">אזור עבודה</span>
                   <span className="flex items-center gap-2"><MapPin className="w-4 h-4 text-gray-400" />{profile.homeArea}</span>
+                </p>
+              )}
+              {profile.homeAddress && (
+                <p className="flex items-center justify-between gap-4 py-4">
+                  <span className="text-[var(--color-text-secondary)]">כתובת מגורים</span>
+                  <span className="flex items-center gap-2"><Home className="h-4 w-4 text-gray-400" />{profile.homeAddress}</span>
+                </p>
+              )}
+              {profile.birthday && (
+                <p className="flex items-center justify-between gap-4 py-4">
+                  <span className="text-[var(--color-text-secondary)]">תאריך לידה</span>
+                  <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-gray-400" />{new Date(profile.birthday).toLocaleDateString('he-IL')}</span>
+                </p>
+              )}
+              {profile.bankAccountNumber && (
+                <p className="flex items-center justify-between gap-4 py-4">
+                  <span className="text-[var(--color-text-secondary)]">חשבון בנק</span>
+                  <span className="flex items-center gap-2 text-left"><Landmark className="h-4 w-4 text-gray-400" />בנק {profile.bankNumber} · סניף {profile.bankBranch} · {profile.bankAccountNumber}</span>
                 </p>
               )}
             </div>
