@@ -62,17 +62,19 @@ export function SidePanel({
         className={`flex h-full w-full ${widthClassName} flex-col overflow-y-auto border-r border-[var(--color-border-strong)] bg-[var(--color-background)] shadow-[0_18px_45px_rgba(41,39,36,0.16)]`}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-background)]/95 px-6 py-5 backdrop-blur">
-          <button
-            type="button"
-            onClick={requestClose}
-            className="min-h-10 border border-[var(--color-border-strong)] bg-transparent px-4 py-2 text-sm font-medium text-gray-700 hover:bg-[var(--color-surface-muted)]"
-          >
-            סגירה
-          </button>
+        <div className="sticky top-0 z-10 flex shrink-0 items-center justify-start border-b border-[var(--color-border)] bg-[var(--color-background)]/95 px-6 py-5 backdrop-blur">
           {title ? <h3 className="font-display text-xl font-medium text-gray-900">{title}</h3> : <span />}
         </div>
         <div className="flex-1">{children}</div>
+        <div className="sticky bottom-0 z-10 shrink-0 border-t border-[var(--color-border)] bg-[var(--color-background)]/95 px-6 py-4 backdrop-blur">
+          <button
+            type="button"
+            onClick={requestClose}
+            className="min-h-11 w-full border border-[var(--color-border-strong)] bg-transparent px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-[var(--color-surface-muted)]"
+          >
+            {hasUnsavedChanges ? 'סגירה ללא שמירה' : 'סגירה'}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -369,6 +369,7 @@ export default function DashboardPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   // Job-first Quick Create is opened from a date-level action.
   const [quickCreateDate, setQuickCreateDate] = useState<string | null>(null);
+  const [quickCreateDirty, setQuickCreateDirty] = useState(false);
   const redirectedCreateHandled = useRef(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [joinPanelOpen, setJoinPanelOpen] = useState(false);
@@ -1634,7 +1635,11 @@ export default function DashboardPage() {
 
       <SidePanel
         open={quickCreateDate !== null}
-        onClose={() => setQuickCreateDate(null)}
+        onClose={() => {
+          setQuickCreateDate(null);
+          setQuickCreateDirty(false);
+        }}
+        hasUnsavedChanges={quickCreateDirty}
         title={
           <span>יצירת עבודה</span>
         }
@@ -1645,9 +1650,10 @@ export default function DashboardPage() {
             initialDate={quickCreateDate ?? undefined}
             onCreated={() => {
               setQuickCreateDate(null);
+              setQuickCreateDirty(false);
               setReloadKey((k) => k + 1);
             }}
-            onCancel={() => setQuickCreateDate(null)}
+            onDirtyChange={setQuickCreateDirty}
           />
         </div>
       </SidePanel>

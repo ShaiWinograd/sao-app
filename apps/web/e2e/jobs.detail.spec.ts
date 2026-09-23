@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test';
 
+const futureDate = new Date();
+futureDate.setDate(futureDate.getDate() + 30);
+futureDate.setUTCHours(8, 0, 0, 0);
+const futureEnd = new Date(futureDate);
+futureEnd.setUTCHours(13, 0, 0, 0);
+
 // Production-representative case (job cms0bntts…): an APPROVED REGULAR shift whose
 // slotId is null. Before PR-1 it was invisible in the slot-based Workers tab while
 // visible in the shift-based Attendance tab. The shared derivation fixes this.
@@ -7,9 +13,9 @@ const jobSlotlessApproved = {
   id: 'job-slotless',
   caseId: 'case-1',
   jobType: 'PACKING',
-  date: '2026-08-01T08:00:00.000Z',
-  plannedStart: '2026-08-01T08:00:00.000Z',
-  plannedEnd: '2026-08-01T13:00:00.000Z',
+  date: futureDate.toISOString(),
+  plannedStart: futureDate.toISOString(),
+  plannedEnd: futureEnd.toISOString(),
   status: 'RESERVATION',
   requiredWorkerCount: 1,
   addressId: 'addr-1',
@@ -157,6 +163,42 @@ test.describe('Job detail page', () => {
     await expect.poll(() => patchBody).toEqual({ requiresTeamLeader: true });
     await expect(page.getByText('נדרש ראש צוות')).toBeVisible();
     await expect(page.getByText('חסר ראש צוות').first()).toBeVisible();
+  });
+
+  test('warns the owner and marks edits to a past job as explicitly confirmed', async ({ page }) => {
+    let patchBody: Record<string, unknown> | null = null;
+    const pastDate = new Date();
+    pastDate.setDate(pastDate.getDate() - 2);
+    pastDate.setHours(9, 0, 0, 0);
+    const pastEnd = new Date(pastDate);
+    pastEnd.setHours(14, 0, 0, 0);
+    await page.addInitScript(() => window.localStorage.setItem('sao-role-override', 'OWNER'));
+    await page.route('**/api/v1/jobs/job-past', async (route) => {
+      if (route.request().method() === 'PATCH') {
+        patchBody = route.request().postDataJSON() as Record<string, unknown>;
+        await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...jobSlotlessApproved,
+          id: 'job-past',
+          date: pastDate.toISOString(),
+          plannedStart: pastDate.toISOString(),
+          plannedEnd: pastEnd.toISOString(),
+        }),
+      });
+    });
+    page.once('dialog', (dialog) => dialog.accept());
+
+    await page.goto('/jobs/job-past');
+
+    await expect(page.getByText(/העבודה נעולה משום שהושלמה או שמועדה עבר/)).toBeVisible();
+    await page.getByRole('button', { name: 'עריכת תאריך ושעות' }).click();
+    await page.getByRole('button', { name: 'שמירת תאריך ושעות' }).click();
+    await expect.poll(() => patchBody).toMatchObject({ confirmLockedEdit: true });
   });
 });
 

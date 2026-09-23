@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { ArrowRight, CheckCircle2, UserCheck, XCircle, Repeat, AlertTriangle, ArrowUpCircle } from 'lucide-react';
-import { evaluateJobPublishReadiness, MANAGER_SKILL, deriveJobStatusBadge, formatAuditEvent, deriveJobStaffing, formatJobTime } from '@workforce/shared';
+import { businessDateKey, evaluateJobPublishReadiness, MANAGER_SKILL, deriveJobStatusBadge, formatAuditEvent, deriveJobStaffing, formatJobTime } from '@workforce/shared';
 import { api, authHeaders } from '../../lib/api';
+import { useViewerRole } from '../../lib/use-viewer-role';
 import { StatusBadge } from '../ui/StatusBadge';
 import AddressGeocodeState from '../geocode/AddressGeocodeState';
 import { StaffingStateSummary } from './StaffingStateSummary';
@@ -111,6 +112,7 @@ function formatTime(value: string | null | undefined): string {
 
 export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; embedded?: boolean }) {
   const { getToken } = useAuth();
+  const viewerRole = useViewerRole();
 
   const [job, setJob] = useState<ApiJobDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -156,6 +158,7 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
   const [dateDraft, setDateDraft] = useState('');
   const [startDraft, setStartDraft] = useState('');
   const [endDraft, setEndDraft] = useState('');
+  const [lockedEditConfirmed, setLockedEditConfirmed] = useState(false);
 
   const load = useCallback(async () => {
     if (!jobId) return;
@@ -180,6 +183,34 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    setLockedEditConfirmed(false);
+  }, [jobId]);
+
+  const isLockedJob = Boolean(
+    job &&
+    (job.status === 'COMPLETED' || businessDateKey(new Date(job.date)) < businessDateKey(new Date())),
+  );
+
+  const prepareJobUpdate = useCallback(
+    (updates: Record<string, unknown>): Record<string, unknown> | null => {
+      if (!isLockedJob) return updates;
+      if (viewerRole !== 'OWNER') {
+        setError('רק בעלת העסק יכולה לשנות עבודה שהושלמה או שמועדה עבר.');
+        return null;
+      }
+      if (
+        !lockedEditConfirmed &&
+        !window.confirm('העבודה נעולה משום שהושלמה או שמועדה עבר. לשנות אותה בכל זאת?')
+      ) {
+        return null;
+      }
+      setLockedEditConfirmed(true);
+      return { ...updates, confirmLockedEdit: true };
+    },
+    [isLockedJob, lockedEditConfirmed, viewerRole],
+  );
 
   // §10.1 assign-customer: live-search existing (non-system) customers.
   const searchCustomers = useCallback(
@@ -341,16 +372,18 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
 
   const saveNotes = useCallback(async () => {
     if (!jobId) return;
+    const update = prepareJobUpdate({
+      jobNotes: jobNotesDraft.trim() || null,
+      workerVisibleNotes: workerNotesDraft.trim() || null,
+    });
+    if (!update) return;
     setBusy(true);
     setError(null);
     try {
       const auth = await authHeaders(getToken);
       await api.patch(
         `/jobs/${jobId}`,
-        {
-          jobNotes: jobNotesDraft.trim() || null,
-          workerVisibleNotes: workerNotesDraft.trim() || null,
-        },
+        update,
         auth,
       );
       setNotesEditing(false);
@@ -360,17 +393,21 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
     } finally {
       setBusy(false);
     }
-  }, [jobId, jobNotesDraft, workerNotesDraft, getToken, load]);
+  }, [jobId, jobNotesDraft, workerNotesDraft, getToken, load, prepareJobUpdate]);
 
   const saveTraineeHours = useCallback(async () => {
     if (!jobId || !job?.traineeName) return;
+    const update = prepareJobUpdate({
+      traineeApprovedHours: traineeHoursDraft === '' ? null : Number(traineeHoursDraft),
+    });
+    if (!update) return;
     setBusy(true);
     setError(null);
     try {
       const auth = await authHeaders(getToken);
       await api.patch(
         `/jobs/${jobId}`,
-        { traineeApprovedHours: traineeHoursDraft === '' ? null : Number(traineeHoursDraft) },
+        update,
         auth,
       );
       await load();
@@ -380,21 +417,23 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
     } finally {
       setBusy(false);
     }
-  }, [jobId, job, traineeHoursDraft, getToken, load]);
+  }, [jobId, job, traineeHoursDraft, getToken, load, prepareJobUpdate]);
 
   const saveSchedule = useCallback(async () => {
     if (!jobId || !dateDraft || !startDraft || !endDraft) return;
+    const update = prepareJobUpdate({
+      date: `${dateDraft}T00:00:00.000Z`,
+      plannedStart: `${dateDraft}T${startDraft}:00.000Z`,
+      plannedEnd: `${dateDraft}T${endDraft}:00.000Z`,
+    });
+    if (!update) return;
     setBusy(true);
     setError(null);
     try {
       const auth = await authHeaders(getToken);
       await api.patch(
         `/jobs/${jobId}`,
-        {
-          date: `${dateDraft}T00:00:00.000Z`,
-          plannedStart: `${dateDraft}T${startDraft}:00.000Z`,
-          plannedEnd: `${dateDraft}T${endDraft}:00.000Z`,
-        },
+        update,
         auth,
       );
       setScheduleEditing(false);
@@ -405,7 +444,7 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
     } finally {
       setBusy(false);
     }
-  }, [jobId, dateDraft, startDraft, endDraft, getToken, load]);
+  }, [jobId, dateDraft, startDraft, endDraft, getToken, load, prepareJobUpdate]);
 
   const decideJoinRequest = useCallback(
     async (shiftId: string, approved: boolean, confirmBackup = false) => {
@@ -515,11 +554,13 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
   const submitCapacity = useCallback(
     async (newCount: number, demoteToBackupIds: string[] = []) => {
       if (!jobId) return;
+      const update = prepareJobUpdate({ requiredWorkerCount: newCount, demoteToBackupIds });
+      if (!update) return;
       setBusy(true);
       setError(null);
       try {
         const auth = await authHeaders(getToken);
-        await api.patch(`/jobs/${jobId}`, { requiredWorkerCount: newCount, demoteToBackupIds }, auth);
+        await api.patch(`/jobs/${jobId}`, update, auth);
         setCapacityOpen(false);
         setCapacityPicker(null);
         setCapacitySelected({});
@@ -543,17 +584,19 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
         setBusy(false);
       }
     },
-    [jobId, getToken, load],
+    [jobId, getToken, load, prepareJobUpdate],
   );
 
   const updateTeamLeaderRequirement = useCallback(
     async (required: boolean) => {
       if (!jobId) return;
+      const update = prepareJobUpdate({ requiresTeamLeader: required });
+      if (!update) return;
       setBusy(true);
       setError(null);
       try {
         const auth = await authHeaders(getToken);
-        await api.patch(`/jobs/${jobId}`, { requiresTeamLeader: required }, auth);
+        await api.patch(`/jobs/${jobId}`, update, auth);
         setNotice(required ? 'נוספה דרישת ראש צוות.' : 'דרישת ראש הצוות הוסרה.');
         await load();
       } catch (err) {
@@ -563,7 +606,7 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
         setBusy(false);
       }
     },
-    [jobId, getToken, load],
+    [jobId, getToken, load, prepareJobUpdate],
   );
 
   const changeRole = useCallback(
@@ -978,6 +1021,11 @@ export function OwnerJobDetail({ jobId, embedded = false }: { jobId: string; emb
         </div>
       </header>
 
+      {isLockedJob && (
+        <div className="mb-4 border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          העבודה נעולה משום שהושלמה או שמועדה עבר. שינוי יתאפשר רק לבעלת העסק ולאחר אישור מפורש.
+        </div>
+      )}
       {error && (
         <div className="mb-4 rounded-lg bg-danger-bg border border-danger/30 text-danger text-sm px-4 py-3">{error}</div>
       )}

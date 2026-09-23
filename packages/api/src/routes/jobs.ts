@@ -19,6 +19,8 @@ import { createQuickJob } from '../domain/quickCreateJob.js';
 import { AppError } from '../lib/errors.js';
 import { lockJob } from '../lib/commitment.js';
 import { assignRealCustomerToJob } from '../domain/assignCustomer.js';
+import { getJobCompletenessIssues } from '../domain/jobCompleteness.js';
+import { evaluateJobEditLock } from '../domain/jobEditLock.js';
 import { syncJobSlots } from '../domain/jobSlots.js';
 import { getCaseReadiness } from '../domain/customerReport.js';
 import {
@@ -622,6 +624,7 @@ export async function jobsRoutes(app: FastifyInstance) {
 
   app.patch('/:id', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
+    const confirmLockedEdit = (req.body as { confirmLockedEdit?: boolean } | null)?.confirmLockedEdit === true;
     const body = UpdateJobSchema.parse(req.body);
     const { requiresTeamLeader, workerSlots: _workerSlots, ...jobUpdates } = body;
     // Owner's chosen shifts to demote to backup when capacity is reduced (§13).
@@ -642,15 +645,54 @@ export async function jobsRoutes(app: FastifyInstance) {
         status: true,
         requiredWorkerCount: true,
         workerVisibleNotes: true,
+        customer: { select: { firstName: true, isSystem: true } },
+        address: { select: { fullAddress: true } },
         slots: { select: { requiredSkill: true } },
       },
     });
     if (!existingJob) {
       return reply.status(404).send({ error: 'Job not found' });
     }
+    const editLock = evaluateJobEditLock({
+      status: existingJob.status,
+      date: existingJob.date,
+      now: new Date(),
+      role: (req as any).user.role,
+      confirmed: confirmLockedEdit,
+    });
+    if (!editLock.allowed) {
+      return reply.status(editLock.statusCode).send({
+        error: editLock.error,
+        message: editLock.message,
+      });
+    }
 
     const nextJobType = (body.jobType ?? existingJob.jobType) as 'PACKING' | 'UNPACKING' | 'HOME_ORGANIZATION';
     const nextDate = body.date ? new Date(body.date) : existingJob.date;
+    const nextStart = body.plannedStart ? new Date(body.plannedStart) : existingJob.plannedStart;
+    const nextEnd = body.plannedEnd ? new Date(body.plannedEnd) : existingJob.plannedEnd;
+    const nextAddress =
+      body.addressId !== undefined && body.addressId !== existingJob.addressId
+        ? await prisma.address.findUnique({ where: { id: body.addressId }, select: { fullAddress: true } })
+        : existingJob.address;
+
+    if (existingJob.status === 'COMPLETED') {
+      const completenessIssues = getJobCompletenessIssues({
+        date: nextDate,
+        plannedStart: nextStart,
+        plannedEnd: nextEnd,
+        requiredWorkerCount: body.requiredWorkerCount ?? existingJob.requiredWorkerCount,
+        customer: existingJob.customer,
+        address: nextAddress,
+      });
+      if (completenessIssues.length > 0) {
+        return reply.status(409).send({
+          error: 'JOB_DETAILS_INCOMPLETE',
+          message: `לא ניתן להשאיר עבודה כבוצעה לאחר השינוי. חסרים: ${completenessIssues.join(', ')}.`,
+          missingFields: completenessIssues,
+        });
+      }
+    }
 
     const validationResult = await validateProjectJobRules({
       caseId: existingJob.caseId,
@@ -750,19 +792,8 @@ export async function jobsRoutes(app: FastifyInstance) {
 
     // Determine whether the change requires worker reapproval (spec §13):
     // a city/street change or a schedule shift of at least 3 hours.
-    const nextStart = body.plannedStart ? new Date(body.plannedStart) : existingJob.plannedStart;
-    const nextEnd = body.plannedEnd ? new Date(body.plannedEnd) : existingJob.plannedEnd;
-    const nextAddressId = body.addressId ?? existingJob.addressId;
-    let oldAddress: string | null = null;
-    if (existingJob.addressId) {
-      const a = await prisma.address.findUnique({ where: { id: existingJob.addressId }, select: { fullAddress: true } });
-      oldAddress = a?.fullAddress ?? null;
-    }
-    let newAddress: string | null = oldAddress;
-    if (nextAddressId !== existingJob.addressId && nextAddressId) {
-      const a = await prisma.address.findUnique({ where: { id: nextAddressId }, select: { fullAddress: true } });
-      newAddress = a?.fullAddress ?? null;
-    }
+    const oldAddress = existingJob.address?.fullAddress ?? null;
+    const newAddress = nextAddress?.fullAddress ?? null;
     const needsReapproval = requiresReapproval({
       oldAddress,
       newAddress,
@@ -976,10 +1007,30 @@ export async function jobsRoutes(app: FastifyInstance) {
       resolutions?: Array<{ shiftId: string; outcome: 'WORKED' | 'DID_NOT_WORK'; clockIn?: string; clockOut?: string }>;
     };
 
-    const job = await prisma.job.findUnique({ where: { id }, select: { id: true, status: true } });
+    const job = await prisma.job.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        date: true,
+        plannedStart: true,
+        plannedEnd: true,
+        requiredWorkerCount: true,
+        customer: { select: { firstName: true, isSystem: true } },
+        address: { select: { fullAddress: true } },
+      },
+    });
     if (!job) return reply.status(404).send({ error: 'Job not found' });
     if (job.status === 'COMPLETED') return reply.status(409).send({ error: 'העבודה כבר הושלמה.' });
     if (job.status === 'ARCHIVED') return reply.status(409).send({ error: 'לא ניתן להשלים עבודה שהוסרה.' });
+    const completenessIssues = getJobCompletenessIssues(job);
+    if (completenessIssues.length > 0) {
+      return reply.status(409).send({
+        error: 'JOB_DETAILS_INCOMPLETE',
+        message: `לא ניתן לסמן את העבודה כבוצעה. חסרים: ${completenessIssues.join(', ')}.`,
+        missingFields: completenessIssues,
+      });
+    }
 
     const completed = await prisma.$transaction(async (tx) => {
       for (const r of resolutions ?? []) {
