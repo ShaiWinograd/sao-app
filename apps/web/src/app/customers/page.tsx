@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, ChevronsUpDown, Contact, Mail, MessageCircle, Plus, Search } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronsUpDown, Contact, FileText, Mail, MessageCircle, MoreHorizontal, Plus, Search } from 'lucide-react';
 import Link from 'next/link';
 import AzureMapsAddressInput, { type AddressSelection } from '../../components/forms/AzureMapsAddressInput';
 import { SidePanel } from '../../components/ui/SidePanel';
@@ -33,7 +33,7 @@ type Customer = {
 };
 
 type CustomerCaseFilter = 'all' | Customer['caseStatus'] | 'not_executed';
-type CustomerSortColumn = 'name' | 'contact' | 'address' | 'project' | 'status' | 'updated';
+type CustomerSortColumn = 'name' | 'contact' | 'address' | 'status' | 'updated';
 type SortDirection = 'asc' | 'desc';
 
 type DeletedCaseHistoryEntry = {
@@ -74,8 +74,38 @@ type ApiCustomer = {
   email: string | null;
   internalNotes?: string | null;
   updatedAt?: string;
+  identifierType?: 'ISRAELI_ID' | 'COMPANY_NUMBER' | null;
+  identifierNumber?: string | null;
   cases?: ApiCase[];
   addresses?: ApiAddress[];
+};
+
+type QuoteContext = {
+  customerName: string;
+  email: string | null;
+  phone: string;
+  address: string;
+  identifierType: 'ISRAELI_ID' | 'COMPANY_NUMBER' | null;
+  identifierNumber: string | null;
+  jobs: Array<{
+    id: string;
+    date: string;
+    jobType: ApiJob['jobType'];
+    status: ApiJob['status'];
+    address: { fullAddress: string };
+  }>;
+};
+
+type CustomerQuote = {
+  id: string;
+  customerName: string;
+  customerAddress: string;
+  identifierType: 'ISRAELI_ID' | 'COMPANY_NUMBER';
+  identifierNumber: string;
+  jobIds: string[];
+  totalAmount: string | number;
+  notes?: string | null;
+  createdAt: string;
 };
 
 type ApiJob = {
@@ -259,6 +289,17 @@ export default function CustomersPage() {
     closed: { caseId: string; latestVersion: number; finalAmount: number | null }[];
   }>({ ready: [], closed: [] });
   const [isLoadingReports, setIsLoadingReports] = useState(false);
+  const [customerQuotes, setCustomerQuotes] = useState<CustomerQuote[]>([]);
+  const [documentsOpen, setDocumentsOpen] = useState(false);
+  const [addressesOpen, setAddressesOpen] = useState(false);
+  const [quoteFormOpen, setQuoteFormOpen] = useState(false);
+  const [quoteContext, setQuoteContext] = useState<QuoteContext | null>(null);
+  const [quoteIdentifierType, setQuoteIdentifierType] = useState<'ISRAELI_ID' | 'COMPANY_NUMBER'>('ISRAELI_ID');
+  const [quoteIdentifierNumber, setQuoteIdentifierNumber] = useState('');
+  const [quoteJobIds, setQuoteJobIds] = useState<string[]>([]);
+  const [quoteTotalAmount, setQuoteTotalAmount] = useState('');
+  const [quoteNotes, setQuoteNotes] = useState('');
+  const [quoteSaving, setQuoteSaving] = useState(false);
   const [savingCustomer, setSavingCustomer] = useState(false);
 
   const [cardFirstName, setCardFirstName] = useState('');
@@ -282,7 +323,10 @@ export default function CustomersPage() {
   }, []);
 
   useEffect(() => {
-    if (openedCustomerId) void loadCustomerReports(openedCustomerId);
+    if (openedCustomerId) {
+      void loadCustomerReports(openedCustomerId);
+      void loadCustomerQuotes(openedCustomerId);
+    }
   }, [openedCustomerId]);
 
   // Load the customer's jobs when the עבודות tab opens. Jobs are queried directly
@@ -356,6 +400,73 @@ export default function CustomersPage() {
     }
   }
 
+  async function loadCustomerQuotes(customerId: string) {
+    try {
+      const res = await api.get<CustomerQuote[]>(`/customers/${customerId}/quotes`);
+      setCustomerQuotes(res.data);
+    } catch {
+      setCustomerQuotes([]);
+    }
+  }
+
+  async function openQuoteForm(customerId: string) {
+    setCardMessage('');
+    try {
+      const res = await api.get<QuoteContext>(`/customers/${customerId}/quote-context`);
+      if (res.data.jobs.length === 0) {
+        setCardMessage('אפשר ליצור הצעת מחיר לאחר שנוצרה לפחות עבודה אחת ללקוחה.');
+        return;
+      }
+      setQuoteContext(res.data);
+      setQuoteIdentifierType(res.data.identifierType ?? 'ISRAELI_ID');
+      setQuoteIdentifierNumber(res.data.identifierNumber ?? '');
+      setQuoteJobIds(res.data.jobs.map((job) => job.id));
+      setQuoteTotalAmount('');
+      setQuoteNotes('');
+      setQuoteFormOpen(true);
+      setDocumentsOpen(false);
+    } catch {
+      setCardMessage('לא ניתן לטעון את פרטי הצעת המחיר.');
+    }
+  }
+
+  async function saveQuote() {
+    if (!openedCustomerId || !quoteContext) return;
+    if (!/^\d{9}$/.test(quoteIdentifierNumber)) {
+      setCardMessage('יש להזין מספר בן 9 ספרות.');
+      return;
+    }
+    const totalAmount = Number(quoteTotalAmount);
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+      setCardMessage('יש להזין סכום הצעה תקין.');
+      return;
+    }
+    if (quoteJobIds.length === 0) {
+      setCardMessage('יש לבחור לפחות עבודה אחת להצעה.');
+      return;
+    }
+
+    setQuoteSaving(true);
+    setCardMessage('');
+    try {
+      await api.post(`/customers/${openedCustomerId}/quotes`, {
+        identifierType: quoteIdentifierType,
+        identifierNumber: quoteIdentifierNumber,
+        jobIds: quoteJobIds,
+        totalAmount,
+        ...(quoteNotes.trim() ? { notes: quoteNotes.trim() } : {}),
+      });
+      await loadCustomerQuotes(openedCustomerId);
+      setQuoteFormOpen(false);
+      setDocumentsOpen(true);
+      setCardMessage('הצעת המחיר נשמרה במסמכי הלקוחה.');
+    } catch {
+      setCardMessage('שמירת הצעת המחיר נכשלה.');
+    } finally {
+      setQuoteSaving(false);
+    }
+  }
+
   const getCustomerFullName = (customer: Customer) => `${customer.firstName} ${customer.lastName}`.trim();
 
   const openedCustomer = useMemo(
@@ -396,7 +507,6 @@ export default function CustomersPage() {
         fullName.includes(term) ||
         (isPhoneSearch && normalizePhone(customer.phone).includes(phoneTerm)) ||
         normalizeSearchText(customer.email).includes(term) ||
-        normalizeSearchText(customer.caseName).includes(term) ||
         customer.addresses.some((address) => normalizeSearchText(address.fullAddress).includes(term))
       );
     });
@@ -409,8 +519,6 @@ export default function CustomersPage() {
         if (result === 0) result = a.email.localeCompare(b.email, 'he');
       } else if (sortColumn === 'address') {
         result = (a.addresses[0]?.fullAddress ?? '').localeCompare(b.addresses[0]?.fullAddress ?? '', 'he');
-      } else if (sortColumn === 'project') {
-        result = a.caseName.localeCompare(b.caseName, 'he');
       } else if (sortColumn === 'status') {
         result = caseStatusMeta[a.caseStatus].label.localeCompare(caseStatusMeta[b.caseStatus].label, 'he');
       } else {
@@ -455,6 +563,10 @@ export default function CustomersPage() {
     setIsCreatingNew(false);
     setCustomerEditing(false);
     setCardMessage('');
+    setDocumentsOpen(false);
+    setAddressesOpen(false);
+    setQuoteFormOpen(false);
+    setQuoteContext(null);
     setCardFirstName(customer.firstName);
     setCardLastName(customer.lastName);
     setCardPhone(customer.phone);
@@ -628,7 +740,7 @@ export default function CustomersPage() {
       <PageHeader
         eyebrow="HOMES, STORIES, RELATIONSHIPS"
         title="הלקוחות שלנו"
-        description="כל בית, פרויקט ושיחה — מסודרים במקום אחד ונעים לחזור אליהם."
+        description="פרטי קשר, כתובת עדכנית ומסמכים במקום אחד."
         icon={<Contact className="h-6 w-6" />}
         action={
           <button
@@ -645,14 +757,13 @@ export default function CustomersPage() {
       <div className="overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface-muted)]">
         <div className="border-b border-[var(--color-border)] px-5 py-5">
           <h3 className="font-display text-2xl font-medium text-gray-900">ספר הלקוחות</h3>
-          <p className="mt-1 text-xs text-gray-500">חיפוש חופשי בכל פרטי הלקוח. מיון וסינון זמינים ישירות בכותרות הטבלה.</p>
           <div className="relative mt-4 max-w-2xl">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full border-0 border-b border-[var(--color-border-strong)] bg-transparent py-2.5 pl-3 pr-9 text-sm text-right outline-none transition-colors placeholder:text-gray-400 focus:border-primary-600"
-                placeholder="חיפוש לפי שם, טלפון, אימייל, פרויקט או כתובת"
+                placeholder="חיפוש לפי שם, טלפון, אימייל או כתובת"
                 aria-label="חיפוש לקוחות"
               />
           </div>
@@ -665,7 +776,6 @@ export default function CustomersPage() {
                 <th className="px-5 py-3">{sortableHeader('name', 'לקוחה')}</th>
                 <th className="px-4 py-3">{sortableHeader('contact', 'טלפון ואימייל')}</th>
                 <th className="px-4 py-3">{sortableHeader('address', 'כתובת')}</th>
-                <th className="px-4 py-3">{sortableHeader('project', 'פרויקט')}</th>
                 <th className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     {sortableHeader('status', 'סטטוס')}
@@ -715,7 +825,6 @@ export default function CustomersPage() {
                       <span className="line-clamp-2">{primaryAddress}</span>
                       {customer.addresses.length > 1 && <span className="mt-1 block text-xs text-gray-500">ועוד {customer.addresses.length - 1}</span>}
                     </td>
-                    <td className="max-w-56 px-4 py-4 text-gray-700"><span className="line-clamp-2">{customer.caseName}</span></td>
                     <td className="px-4 py-4">
                       <StatusBadge tone={isNotExecuted ? 'error' : statusMeta.tone} label={isNotExecuted ? 'עבודה לא בוצעה' : statusMeta.label} />
                     </td>
@@ -753,24 +862,68 @@ export default function CustomersPage() {
                       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary-700">WORK CARD</p>
                       <h2 className="mt-1 font-display text-2xl font-medium text-gray-900">{openedCustomer.firstName} {openedCustomer.lastName}</h2>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (customerEditing) openCustomerCard(openedCustomer);
-                        else setCustomerEditing(true);
-                      }}
-                      className="border-b border-gray-700 px-1 py-1 text-xs font-semibold text-gray-700 hover:text-primary-700"
-                    >
-                      {customerEditing ? 'ביטול עריכה' : 'עריכת פרטים'}
-                    </button>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDocumentsOpen((open) => !open);
+                          setQuoteFormOpen(false);
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-[var(--color-border)] px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:border-primary-500"
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                        מסמכים
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void openQuoteForm(openedCustomer.id)}
+                        className="rounded-md bg-primary-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-primary-700"
+                      >
+                        הצעת מחיר חדשה
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (customerEditing) openCustomerCard(openedCustomer);
+                          else setCustomerEditing(true);
+                        }}
+                        className="border-b border-gray-700 px-1 py-1 text-xs font-semibold text-gray-700 hover:text-primary-700"
+                      >
+                        {customerEditing ? 'ביטול עריכה' : 'עריכת פרטים'}
+                      </button>
+                    </div>
                   </div>
                   <dl className="mt-4 grid grid-cols-2 gap-x-5 gap-y-3 border-t border-[var(--color-border)] pt-4 text-xs sm:grid-cols-3">
                     <div><dt className="text-gray-400">טלפון</dt><dd className="mt-1 font-medium text-gray-800">{openedCustomer.phone}</dd></div>
                     <div><dt className="text-gray-400">אימייל</dt><dd className="mt-1 truncate font-medium text-gray-800">{openedCustomer.email || 'ללא אימייל'}</dd></div>
                     <div><dt className="text-gray-400">סטטוס</dt><dd className="mt-1"><StatusBadge tone={caseStatusMeta[openedCustomer.caseStatus].tone} label={caseStatusMeta[openedCustomer.caseStatus].label} /></dd></div>
-                    <div><dt className="text-gray-400">פרויקט</dt><dd className="mt-1 font-medium text-gray-800">{openedCustomer.caseName}</dd></div>
+                    <div className="relative sm:col-span-2">
+                      <dt className="flex items-center gap-1 text-gray-400">
+                        כתובת עדכנית
+                        {openedCustomer.addresses.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setAddressesOpen((open) => !open)}
+                            aria-label="הצגת כתובות נוספות"
+                            className="inline-flex h-5 w-5 items-center justify-center rounded-full hover:bg-[var(--color-background)]"
+                          >
+                            <MoreHorizontal className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </dt>
+                      <dd className="mt-1 font-medium text-gray-800">{openedCustomer.addresses[0]?.fullAddress ?? 'אין כתובת שמורה'}</dd>
+                      {addressesOpen && openedCustomer.addresses.length > 1 && (
+                        <div className="absolute right-0 top-11 z-20 w-full max-w-sm rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-lg">
+                          {openedCustomer.addresses.slice(1).map((address) => (
+                            <div key={address.id} className="border-b border-[var(--color-border)] px-1 py-2 last:border-0">
+                              <p className="text-[10px] text-gray-400">{address.label}</p>
+                              <p className="mt-0.5 text-xs text-gray-800">{address.fullAddress}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <div><dt className="text-gray-400">עדכון אחרון</dt><dd className="mt-1 font-medium text-gray-800">{openedCustomer.updatedAt ? new Date(openedCustomer.updatedAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</dd></div>
-                    <div><dt className="text-gray-400">כתובות</dt><dd className="mt-1 font-medium text-gray-800">{openedCustomer.addresses.length} שמורות</dd></div>
                   </dl>
                 </section>
               )}
@@ -847,26 +1000,120 @@ export default function CustomersPage() {
                 </section>
               )}
 
-              {openedCustomer && (
-                <section className="border-b border-[var(--color-border)] py-5">
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <p className="text-xs font-semibold text-gray-700">כתובות שמורות</p>
-                    <span className="text-xs text-gray-400">{openedCustomer.addresses.length}</span>
+              {openedCustomer && quoteFormOpen && quoteContext && (
+                <section className="space-y-4 border-b border-[var(--color-border)] py-5">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-gray-900">הצעת מחיר חדשה</h3>
+                    <button type="button" onClick={() => setQuoteFormOpen(false)} className="text-xs text-gray-500 hover:text-gray-900">
+                      ביטול
+                    </button>
                   </div>
-                  {openedCustomer.addresses.length === 0 ? (
-                    <p className="text-sm text-gray-400">אין כתובות שמורות.</p>
+                  <dl className="grid grid-cols-2 gap-3 rounded-md bg-[var(--color-surface-muted)] p-3 text-xs">
+                    <div><dt className="text-gray-400">לקוחה</dt><dd className="mt-1 font-medium text-gray-900">{quoteContext.customerName}</dd></div>
+                    <div><dt className="text-gray-400">טלפון</dt><dd className="mt-1 font-medium text-gray-900">{quoteContext.phone}</dd></div>
+                    <div><dt className="text-gray-400">אימייל</dt><dd className="mt-1 font-medium text-gray-900">{quoteContext.email || 'ללא אימייל'}</dd></div>
+                    <div><dt className="text-gray-400">כתובת</dt><dd className="mt-1 font-medium text-gray-900">{quoteContext.address || 'ללא כתובת'}</dd></div>
+                  </dl>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label className="text-xs text-gray-600">
+                      סוג מזהה
+                      <select
+                        value={quoteIdentifierType}
+                        onChange={(event) => setQuoteIdentifierType(event.target.value as 'ISRAELI_ID' | 'COMPANY_NUMBER')}
+                        className="mt-1 w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+                      >
+                        <option value="ISRAELI_ID">תעודת זהות</option>
+                        <option value="COMPANY_NUMBER">ח.פ.</option>
+                      </select>
+                    </label>
+                    <label className="text-xs text-gray-600">
+                      {quoteIdentifierType === 'ISRAELI_ID' ? 'מספר תעודת זהות' : 'מספר חברה'}
+                      <input
+                        value={quoteIdentifierNumber}
+                        onChange={(event) => setQuoteIdentifierNumber(event.target.value.replace(/\D/g, '').slice(0, 9))}
+                        inputMode="numeric"
+                        className="mt-1 w-full rounded-md border border-[var(--color-border-strong)] px-3 py-2 text-sm"
+                      />
+                    </label>
+                  </div>
+                  <div>
+                    <p className="mb-2 text-xs font-medium text-gray-700">עבודות בהצעה</p>
+                    <div className="space-y-1.5">
+                      {quoteContext.jobs.map((job) => (
+                        <label key={job.id} className="flex items-center gap-2 rounded-md border border-[var(--color-border)] px-3 py-2 text-xs text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={quoteJobIds.includes(job.id)}
+                            onChange={(event) => setQuoteJobIds((current) => (
+                              event.target.checked ? [...current, job.id] : current.filter((id) => id !== job.id)
+                            ))}
+                          />
+                          <span>{new Date(job.date).toLocaleDateString('he-IL')} · {mapApiJobTypeToUi(job.jobType)} · {job.address.fullAddress}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <label className="block text-xs text-gray-600">
+                    סכום הצעה
+                    <input
+                      value={quoteTotalAmount}
+                      onChange={(event) => setQuoteTotalAmount(event.target.value)}
+                      type="number"
+                      min="1"
+                      step="0.01"
+                      className="mt-1 w-full rounded-md border border-[var(--color-border-strong)] px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="block text-xs text-gray-600">
+                    הערות
+                    <textarea
+                      value={quoteNotes}
+                      onChange={(event) => setQuoteNotes(event.target.value)}
+                      maxLength={2000}
+                      className="mt-1 min-h-20 w-full rounded-md border border-[var(--color-border-strong)] px-3 py-2 text-sm"
+                    />
+                  </label>
+                  {cardMessage && <p className="text-xs text-rose-700">{cardMessage}</p>}
+                  <button
+                    type="button"
+                    onClick={() => void saveQuote()}
+                    disabled={quoteSaving}
+                    className="w-full rounded-md bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+                  >
+                    {quoteSaving ? 'שומרת…' : 'שמירת הצעת מחיר'}
+                  </button>
+                </section>
+              )}
+
+              {openedCustomer && documentsOpen && (
+                <section className="space-y-3 border-b border-[var(--color-border)] py-5">
+                  <h3 className="text-sm font-semibold text-gray-900">מסמכי הלקוחה</h3>
+                  {isLoadingReports ? (
+                    <p className="text-xs text-gray-400">טוענת מסמכים…</p>
+                  ) : customerQuotes.length === 0 && customerReports.ready.length === 0 && customerReports.closed.length === 0 ? (
+                    <p className="text-xs text-gray-400">אין מסמכים שמורים.</p>
                   ) : (
-                    <div className="divide-y divide-[var(--color-border)]">
-                      {openedCustomer.addresses.map((address) => (
-                        <div key={address.id} className="py-3">
-                          <p className="text-xs text-gray-500">{address.label}</p>
-                          <p className="mt-1 text-sm text-gray-900">{address.fullAddress}</p>
-                          {(address.floor || address.apartment) && (
-                            <p className="mt-1 text-[11px] text-gray-500">
-                              {address.floor ? `קומה ${address.floor}` : ''}{address.floor && address.apartment ? ' • ' : ''}{address.apartment ? `דירה ${address.apartment}` : ''}
-                            </p>
-                          )}
-                        </div>
+                    <div className="space-y-2">
+                      {customerQuotes.map((quote) => (
+                        <article key={quote.id} className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-xs font-semibold text-gray-900">הצעת מחיר</p>
+                            <span className="text-[10px] text-gray-400">{new Date(quote.createdAt).toLocaleDateString('he-IL')}</span>
+                          </div>
+                          <p className="mt-1 text-xs text-gray-600">
+                            {Number(quote.totalAmount).toLocaleString('he-IL')} ₪ · {quote.jobIds.length} עבודות
+                          </p>
+                        </article>
+                      ))}
+                      {customerReports.ready.map((report) => (
+                        <Link key={report.caseId} href={`/cases/${report.caseId}/customer-report`} className="block rounded-md border border-[var(--color-border)] px-3 py-2 text-xs text-gray-800 hover:border-primary-400">
+                          דוח לקוחה להכנה · {report.jobCount} עבודות
+                        </Link>
+                      ))}
+                      {customerReports.closed.map((report) => (
+                        <Link key={report.caseId} href={`/cases/${report.caseId}/customer-report`} className="block rounded-md border border-[var(--color-border)] px-3 py-2 text-xs text-gray-800 hover:border-primary-400">
+                          דוח לקוחה גרסה {report.latestVersion}
+                        </Link>
                       ))}
                     </div>
                   )}
@@ -874,42 +1121,44 @@ export default function CustomersPage() {
               )}
 
               {openedCustomer && (
-                <section className="space-y-4 border-b border-[var(--color-border)] py-5">
-                  {isLoadingWorks ? (
-                    <p className="text-sm text-gray-500">טוען עבודות…</p>
-                  ) : relatedWorks.length === 0 ? (
-                    <p className="text-sm text-gray-500">אין עבודות ללקוח זה כרגע.</p>
-                  ) : (
-                    ([
-                      ['עבודות עתידיות', relatedWorks.filter((w) => w.rawStatus === 'APPROVED')],
-                      ['שריונים', relatedWorks.filter((w) => w.rawStatus === 'RESERVATION')],
-                      ['עבודות שהושלמו', relatedWorks.filter((w) => w.rawStatus === 'COMPLETED' || w.rawStatus === 'ARCHIVED')],
-                    ] as Array<[string, RelatedWork[]]>).map(([heading, items]) => (
-                      <div key={heading} className="space-y-2">
-                        <p className="text-xs font-semibold text-gray-700">{heading} ({items.length})</p>
-                        {items.length === 0 ? (
-                          <p className="text-xs text-gray-400">—</p>
-                        ) : (
-                          items.map((work) => (
+                <details className="border-b border-[var(--color-border)] py-4">
+                  <summary className="cursor-pointer text-xs font-semibold text-gray-700">
+                    עבודות ({relatedWorks.length})
+                  </summary>
+                  <div className="mt-4 space-y-4">
+                    {isLoadingWorks ? (
+                      <p className="text-sm text-gray-500">טוען עבודות…</p>
+                    ) : relatedWorks.length === 0 ? (
+                      <p className="text-sm text-gray-500">אין עבודות ללקוח זה כרגע.</p>
+                    ) : (
+                      ([
+                        ['עבודות עתידיות', relatedWorks.filter((w) => w.rawStatus === 'APPROVED')],
+                        ['שריונים', relatedWorks.filter((w) => w.rawStatus === 'RESERVATION')],
+                        ['עבודות שהושלמו', relatedWorks.filter((w) => w.rawStatus === 'COMPLETED' || w.rawStatus === 'ARCHIVED')],
+                      ] as Array<[string, RelatedWork[]]>).map(([heading, items]) => (
+                        <div key={heading} className="space-y-2">
+                          <p className="text-xs font-semibold text-gray-700">{heading} ({items.length})</p>
+                          {items.map((work) => (
                             <Link
                               key={work.id}
                               href={`/jobs/${work.id}`}
-                              className="block border-b border-[var(--color-border)] px-1 py-3 hover:border-primary-400"
+                              className="block border-b border-[var(--color-border)] px-1 py-2 hover:border-primary-400"
                             >
                               <p className="text-sm font-semibold text-gray-900">{work.jobType} • {work.date}</p>
-                              {work.address && <p className="text-xs text-gray-600 mt-1">{work.address}</p>}
-                              <p className="text-xs text-primary-700 mt-1">סטטוס: {work.status}</p>
+                              {work.address && <p className="mt-1 text-xs text-gray-600">{work.address}</p>}
                             </Link>
-                          ))
-                        )}
-                      </div>
-                    ))
-                  )}
-                </section>
+                          ))}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </details>
               )}
 
               {!isCreatingNew && (
-                <section className="space-y-3 border-b border-[var(--color-border)] py-5">
+                <details className="border-b border-[var(--color-border)] py-4">
+                  <summary className="cursor-pointer text-xs font-semibold text-gray-700">תקשורת עם הלקוחה</summary>
+                  <div className="mt-4 space-y-3">
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -935,7 +1184,6 @@ export default function CustomersPage() {
                       <option value="summary">תבנית: סיכום עבודה</option>
                       <option value="custom">תבנית: הודעה חופשית</option>
                     </select>
-                    <div className="md:col-span-2 text-xs text-gray-500 flex items-center">בחירת תבנית תטען נוסח מובנה שניתן לעריכה</div>
                   </div>
 
                   {channel === 'email' && (
@@ -961,7 +1209,8 @@ export default function CustomersPage() {
                   >
                     {channel === 'email' ? 'שליחת אימייל' : 'שליחה בוואטסאפ'}
                   </button>
-                </section>
+                  </div>
+                </details>
               )}
 
               {!isCreatingNew && openedCustomer && !customerEditing && (
@@ -971,54 +1220,8 @@ export default function CustomersPage() {
                 </section>
               )}
 
-              {openedCustomer && (
-                <div className="space-y-4">
-                  {isLoadingReports ? (
-                    <p className="text-sm text-gray-500">טוען דוחות…</p>
-                  ) : (
-                    <>
-                      <div>
-                        <h4 className="mb-1 text-xs font-semibold text-gray-700">מוכנים לדוח</h4>
-                        {customerReports.ready.length === 0 ? (
-                          <p className="text-sm text-gray-400">אין פרויקטים מוכנים לדוח.</p>
-                        ) : (
-                          <ul className="space-y-2">
-                            {customerReports.ready.map((c) => (
-                              <li key={c.caseId}>
-                                <Link href={`/cases/${c.caseId}/customer-report`} className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800 hover:border-green-300">
-                                  <span className="font-medium">יצירת דוח לקוחה</span>
-                                  <span className="text-xs">{c.jobCount} עבודות · עד {c.latestJobDate ?? '—'}</span>
-                                </Link>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                      <div>
-                        <h4 className="mb-1 text-xs font-semibold text-gray-700">דוחות שהופקו</h4>
-                        {customerReports.closed.length === 0 ? (
-                          <p className="text-sm text-gray-400">עדיין לא הופקו דוחות.</p>
-                        ) : (
-                          <ul className="space-y-2">
-                            {customerReports.closed.map((c) => (
-                              <li key={c.caseId}>
-                                <Link href={`/cases/${c.caseId}/customer-report`} className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-gray-800 hover:border-primary-300">
-                                  <span className="font-medium">גרסה {c.latestVersion} · היסטוריה והורדה</span>
-                                  <span className="text-xs text-gray-500">{c.finalAmount == null ? '—' : `${Number(c.finalAmount).toLocaleString('he-IL')} ₪`}</span>
-                                </Link>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-gray-400">כל גרסה סופית זמינה להורדה ולצפייה בהיסטוריית הגרסאות בתוך מסך הדוח.</p>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {cardMessage && (
-                <p className={`text-sm ${cardMessage.includes('בהצלחה') || cardMessage.includes('נשלח') || cardMessage.includes('נפתח') ? 'text-emerald-700' : 'text-rose-700'}`}>
+              {!quoteFormOpen && cardMessage && (
+                <p className={`text-sm ${cardMessage.includes('בהצלחה') || cardMessage.includes('נשמר') || cardMessage.includes('נשלח') || cardMessage.includes('נפתח') ? 'text-emerald-700' : 'text-rose-700'}`}>
                   {cardMessage}
                 </p>
               )}
