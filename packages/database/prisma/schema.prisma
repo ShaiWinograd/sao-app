@@ -23,6 +23,11 @@ enum AdminPermission {
   FINANCE
 }
 
+enum CustomerIdentifierType {
+  ISRAELI_ID
+  COMPANY_NUMBER
+}
+
 enum CaseStatus {
   DRAFT
   ACTIVE
@@ -335,6 +340,8 @@ model Customer {
   petInfo             String?
   specialRequests     String?
   internalNotes       String?
+  identifierType      CustomerIdentifierType?
+  identifierNumber    String?
   isActive            Boolean  @default(true)
   // System customers (e.g. "General Reservation" / שריון כללי) cannot be deleted
   // and are used to reserve workforce before a real customer exists (spec §3.2).
@@ -346,8 +353,30 @@ model Customer {
   addresses Address[]
   cases     CustomerCase[]
   jobs      Job[]
+  quotes    CustomerQuote[]
 
   @@map("customers")
+}
+
+model CustomerQuote {
+  id                   String                 @id @default(cuid())
+  customerId           String
+  customerName         String
+  customerEmail        String?
+  customerPhone        String
+  customerAddress      String
+  identifierType       CustomerIdentifierType
+  identifierNumber     String
+  jobIds               String[]
+  totalAmount          Decimal                @db.Decimal(10, 2)
+  notes                String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([customerId, createdAt])
+  @@map("customer_quotes")
 }
 
 // ─── Address ──────────────────────────────────────────────────────────────────
