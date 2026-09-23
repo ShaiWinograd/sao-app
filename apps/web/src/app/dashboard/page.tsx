@@ -7,6 +7,7 @@ import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLa
 import {
   AlertTriangle,
   BriefcaseBusiness,
+  Bell,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -15,6 +16,9 @@ import {
   MoreHorizontal,
   Plus,
   Repeat2,
+  Settings,
+  UserPlus,
+  Users,
   UsersRound,
   WandSparkles,
 } from 'lucide-react';
@@ -91,8 +95,10 @@ type OwnerTasks = {
   // Priority-1 operational items (§7.4): counts + directly-linkable job rows.
   todayInReservation: number;
   pastNotCompleted: number;
+  missingExactAddress: number;
   todayInReservationJobs: AttentionJobView[];
   pastNotCompletedJobs: AttentionJobView[];
+  missingExactAddressJobs: Array<AttentionJobView & { address: string }>;
 };
 
 const MOM_OWNER_NAME = 'אורית';
@@ -381,6 +387,7 @@ export default function DashboardPage() {
   const [dailyInfoBusy, setDailyInfoBusy] = useState(false);
   const [dailyInfoError, setDailyInfoError] = useState<string | null>(null);
   const [dateMenuKey, setDateMenuKey] = useState<string | null>(null);
+  const [ownerToolsOpen, setOwnerToolsOpen] = useState(false);
   const [assignmentTarget, setAssignmentTarget] = useState<{
     workerId: string;
     workerName: string;
@@ -602,15 +609,15 @@ export default function DashboardPage() {
   }, [getToken, reloadKey]);
 
   const attentionItems = useMemo(() => {
-    if (!attention) return [] as Array<{ key: string; label: string; count: number; href: string }>;
+    if (!attention) return [] as Array<{ key: string; title: string; count: number; href: string }>;
     return [
-      { key: 'joinRequests', label: 'בקשות הצטרפות — לבדיקה ואישור', count: attention.joinRequests, href: '/jobs' },
-      { key: 'pendingAcceptance', label: 'ממתין לאישור העובד/ת', count: attention.pendingAcceptance, href: '/jobs' },
-      { key: 'replacementRequests', label: 'בקשות החלפה', count: attention.replacementRequests, href: '/shifts/swaps' },
-      { key: 'swapApprovals', label: 'אישורי החלפת משמרות', count: attention.swapApprovals, href: '/shifts/swaps' },
-      { key: 'attendanceReview', label: 'נוכחות לבדיקה', count: attention.attendanceReview, href: '/attendance' },
-      { key: 'reportCorrections', label: 'בקשות תיקון דוח', count: attention.reportCorrections, href: '/payroll' },
-      { key: 'customerReportReady', label: 'הפרויקט מוכן לדוח לקוחה', count: attention.customerReportReady, href: '/reports/customer' },
+      { key: 'joinRequests', title: 'אישור בקשות הצטרפות', count: attention.joinRequests, href: '/jobs' },
+      { key: 'pendingAcceptance', title: 'מעקב אישורי עובדות', count: attention.pendingAcceptance, href: '/jobs' },
+      { key: 'replacementRequests', title: 'טיפול בבקשות החלפה', count: attention.replacementRequests, href: '/shifts/swaps' },
+      { key: 'swapApprovals', title: 'אישור החלפות משמרות', count: attention.swapApprovals, href: '/shifts/swaps' },
+      { key: 'attendanceReview', title: 'בדיקת חריגות נוכחות', count: attention.attendanceReview, href: '/attendance' },
+      { key: 'reportCorrections', title: 'טיפול בתיקוני דוחות', count: attention.reportCorrections, href: '/payroll' },
+      { key: 'customerReportReady', title: 'הכנת דוח ללקוחה', count: attention.customerReportReady, href: '/reports/customer' },
     ].filter((i) => i.count > 0);
   }, [attention]);
 
@@ -620,10 +627,11 @@ export default function DashboardPage() {
   // server-side and disappear on the next fetch once a job's status/date no longer
   // matches (no done/snooze state).
   const priorityAttention = useMemo(() => {
-    if (!attention) return [] as Array<{ key: string; label: string; jobs: AttentionJobView[] }>;
+    if (!attention) return [] as Array<{ key: string; title: string; jobs: AttentionJobView[] }>;
     return [
-      { key: 'pastNotCompleted', label: 'עבודה מהעבר לא הושלמה', jobs: attention.pastNotCompletedJobs ?? [] },
-      { key: 'todayInReservation', label: 'עבודה של היום עדיין בהזמנה', jobs: attention.todayInReservationJobs ?? [] },
+      { key: 'pastNotCompleted', title: 'סגירת עבודות מהעבר', jobs: attention.pastNotCompletedJobs ?? [] },
+      { key: 'todayInReservation', title: 'אישור עבודות של היום', jobs: attention.todayInReservationJobs ?? [] },
+      { key: 'missingExactAddress', title: 'השלמת כתובת לפני העבודה', jobs: attention.missingExactAddressJobs ?? [] },
     ].filter((g) => g.jobs.length > 0);
   }, [attention]);
 
@@ -1086,75 +1094,74 @@ export default function DashboardPage() {
       />
 
       {(priorityAttention.length > 0 || attentionItems.length > 0) && (
-        <div className="flex flex-wrap items-center gap-3 border-y border-[var(--color-border)] py-3" data-testid="requires-attention">
-          <span className="text-xs font-semibold text-[var(--color-calendar-sand)]">
-            דורש טיפול
-          </span>
-          {/* Priority-1 operational items (§7.4) — rendered first, expand to
-              direct links to every affected job. */}
-          {priorityAttention.map((group) => (
-            <div key={group.key} className="relative" data-testid={`attention-${group.key}`}>
-              <button
-                type="button"
-                onClick={() => setOpenAttentionKey((prev) => (prev === group.key ? null : group.key))}
-                aria-expanded={openAttentionKey === group.key}
-                className="inline-flex items-center gap-1.5 bg-[var(--color-calendar-sand-soft)] px-3 py-1.5 text-[11px] font-medium text-[var(--color-calendar-sand)] hover:bg-[var(--color-calendar-sand-border)]"
-              >
-                {group.label}
-                <span aria-hidden="true">·</span>
-                <span>{group.jobs.length}</span>
-              </button>
-              {openAttentionKey === group.key && (
-                <div className="absolute right-0 z-30 mt-1 max-h-64 w-64 overflow-auto border border-[var(--color-border)] bg-[var(--color-surface)] p-1 shadow-lg">
-                  {group.jobs.map((job) => (
-                    <button
-                      key={job.jobId}
-                      type="button"
-                      onClick={() => {
-                        setOpenAttentionKey(null);
-                        setSelectedJobId(job.jobId);
-                      }}
-                      className="block w-full px-2.5 py-1.5 text-right text-[11px] text-gray-700 hover:bg-[var(--color-calendar-sand-soft)]"
-                    >
-                      <span className="font-medium text-gray-900">
-                        {/* §22.1: render the job's service date in the business timezone. */}
-                        {formatBusinessDate(job.date)}
-                      </span>
-                      {' · '}
-                      {job.customerName || 'שריון כללי'}
-                      {' · '}
-                      <span className="text-gray-500">{job.status === 'APPROVED' ? 'אושר' : 'שריון'}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-          {attentionItems.map((item) =>
-            item.key === 'joinRequests' ? (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => setJoinPanelOpen(true)}
-                className="inline-flex items-center gap-2 border border-[var(--color-calendar-sand-border)] bg-[var(--color-calendar-sand-soft)] px-4 py-2 text-xs font-semibold text-[var(--color-calendar-sand)] hover:bg-[var(--color-calendar-sand-border)]"
-              >
-                {item.label}
-                <span aria-hidden="true">·</span>
-                <span>{item.count}</span>
-              </button>
-            ) : (
-              <Link
-                key={item.key}
-                href={item.href}
-                className="inline-flex items-center gap-1.5 bg-[var(--color-calendar-sand-soft)] px-3 py-1.5 text-[11px] font-medium text-[var(--color-calendar-sand)] hover:bg-[var(--color-calendar-sand-border)]"
-              >
-                {item.label}
-                <span aria-hidden="true">·</span>
-                <span>{item.count}</span>
-              </Link>
-            ),
-          )}
-        </div>
+        <section className="border-y border-[var(--color-border)] py-2.5" data-testid="requires-attention">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-900">פעולות ניהול</span>
+            <span className="text-[10px] text-[var(--color-text-muted)]">הנושאים שמחכים לטיפולך</span>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {priorityAttention.map((group) => (
+              <div key={group.key} className="relative shrink-0" data-testid={`attention-${group.key}`}>
+                <button
+                  type="button"
+                  onClick={() => setOpenAttentionKey((prev) => (prev === group.key ? null : group.key))}
+                  aria-expanded={openAttentionKey === group.key}
+                  className="flex min-w-48 items-center justify-between gap-3 rounded-md border border-[var(--color-calendar-sand-border)] bg-[var(--color-calendar-sand-soft)] px-3 py-2 text-right hover:border-[var(--color-calendar-sand)]"
+                >
+                  <span>
+                    <span className="block text-[10px] font-medium text-[var(--color-calendar-sand)]">פעולה נדרשת</span>
+                    <span className="block text-xs font-semibold text-gray-900">{group.title}</span>
+                  </span>
+                  <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-[var(--color-calendar-sand)] px-2 text-xs font-bold text-white">
+                    {group.jobs.length}
+                  </span>
+                </button>
+                {openAttentionKey === group.key && (
+                  <div className="absolute right-0 z-30 mt-1 max-h-64 w-72 overflow-auto border border-[var(--color-border)] bg-[var(--color-surface)] p-1 shadow-lg">
+                    {group.jobs.map((job) => (
+                      <button
+                        key={job.jobId}
+                        type="button"
+                        onClick={() => {
+                          setOpenAttentionKey(null);
+                          setSelectedJobId(job.jobId);
+                        }}
+                        className="block w-full px-2.5 py-2 text-right text-[11px] text-gray-700 hover:bg-[var(--color-calendar-sand-soft)]"
+                      >
+                        <span className="font-medium text-gray-900">{formatBusinessDate(job.date)}</span>
+                        {' · '}
+                        {job.customerName || 'שריון כללי'}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            {attentionItems.map((item) => {
+              const content = (
+                <>
+                  <span>
+                    <span className="block text-[10px] font-medium text-[var(--color-calendar-sage)]">ממתין להחלטה</span>
+                    <span className="block text-xs font-semibold text-gray-900">{item.title}</span>
+                  </span>
+                  <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-[var(--color-calendar-sage)] px-2 text-xs font-bold text-white">
+                    {item.count}
+                  </span>
+                </>
+              );
+              const className = 'flex min-w-48 shrink-0 items-center justify-between gap-3 rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-muted)] px-3 py-2 text-right hover:border-[var(--color-calendar-sage)]';
+              return item.key === 'joinRequests' ? (
+                <button key={item.key} type="button" onClick={() => setJoinPanelOpen(true)} className={className}>
+                  {content}
+                </button>
+              ) : (
+                <Link key={item.key} href={item.href} className={className}>
+                  {content}
+                </Link>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       {/* Owner KPI Bar */}
@@ -1343,8 +1350,8 @@ export default function DashboardPage() {
                 })}
               </div>
 
-              <div className="grid border-b border-[var(--color-border)] bg-[var(--color-surface)]" style={shiftGridStyle}>
-                <div className="sticky right-0 z-20 flex items-center gap-1.5 border-l border-gray-200 bg-[var(--color-surface)] p-2.5 text-xs font-semibold text-gray-700">
+              <div className="grid border-b border-[var(--color-border)] bg-[var(--color-calendar-sage-soft)]/40" style={shiftGridStyle}>
+                <div className="sticky right-0 z-20 flex items-center gap-1.5 border-l border-[var(--color-border)] bg-[var(--color-calendar-sage-soft)] p-2.5 text-xs font-semibold text-gray-700">
                   <FileText className="h-3.5 w-3.5 text-[var(--color-calendar-sage)]" />
                   מידע יומי
                 </div>
@@ -1353,7 +1360,7 @@ export default function DashboardPage() {
                   const entry = dailyInfoByDate.get(dateKey);
                   const isNonWorkingDay = isWorkCreationBlockedDay(dateKey);
                   return (
-                    <div key={`daily-info-${dateKey}`} className="group/daily min-h-11 border-l border-[var(--color-border)] p-1.5">
+                    <div key={`daily-info-${dateKey}`} className="group/daily min-h-11 border-l border-[var(--color-border)] bg-[var(--color-calendar-sage-soft)]/40 p-1.5">
                       {!isNonWorkingDay && (
                         <button
                           type="button"
@@ -1361,8 +1368,8 @@ export default function DashboardPage() {
                           aria-label={`${entry ? 'עריכת' : 'הוספת'} מידע יומי לתאריך ${dateKey}`}
                           className={`flex h-full min-h-8 w-full items-center justify-center gap-1.5 rounded-md px-2 text-[10px] transition-colors ${
                             entry
-                              ? 'bg-[var(--color-calendar-sage-soft)] font-medium text-[var(--color-calendar-sage)]'
-                              : 'text-gray-300 hover:bg-primary-50 hover:text-primary-600'
+                              ? 'border border-[var(--color-calendar-sage)]/20 bg-[var(--color-background)]/60 font-medium text-[var(--color-calendar-sage)]'
+                              : 'text-gray-400 hover:bg-[var(--color-background)]/60 hover:text-[var(--color-calendar-sage)]'
                           }`}
                         >
                           {entry ? (
@@ -1380,7 +1387,7 @@ export default function DashboardPage() {
               <div className="sticky top-[88px] z-20 grid border-b border-[var(--color-border)] bg-[var(--color-calendar-sand-soft)] shadow-sm" style={shiftGridStyle}>
                 <div className="sticky right-0 z-30 flex items-center gap-1.5 border-l border-gray-200 bg-[var(--color-calendar-sand-soft)] p-2.5 text-xs font-semibold text-gray-700">
                   <WandSparkles className="h-3.5 w-3.5 text-[var(--color-calendar-sand)]" />
-                  פערי איוש
+                  סטטוס עבודות
                 </div>
                 {visibleShiftDates.map((date) => {
                   const dateKey = toDateKeyFromDate(date);
@@ -1714,6 +1721,65 @@ export default function DashboardPage() {
         onClose={() => setJoinPanelOpen(false)}
         onChanged={() => setReloadKey((k) => k + 1)}
       />
+
+      {!quickCreateDate && ownerToolsOpen && (
+        <button
+          type="button"
+          aria-label="סגירת פעולות מהירות"
+          className="fixed inset-0 z-40 cursor-default bg-transparent"
+          onClick={() => setOwnerToolsOpen(false)}
+        />
+      )}
+      {!quickCreateDate && <div className="fixed bottom-5 left-5 z-50 flex flex-col items-end gap-2" dir="rtl">
+        {ownerToolsOpen && (
+          <div className="w-56 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1.5 shadow-xl">
+            <button
+              type="button"
+              onClick={() => {
+                setOwnerToolsOpen(false);
+                setQuickCreateDate(todayDateKey);
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-right text-xs font-medium text-gray-800 hover:bg-[var(--color-calendar-sage-soft)]"
+            >
+              <BriefcaseBusiness className="h-4 w-4 text-[var(--color-calendar-sage)]" />
+              יצירת עבודה
+            </button>
+            <Link
+              href="/workers?action=invite"
+              onClick={() => setOwnerToolsOpen(false)}
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-gray-800 hover:bg-[var(--color-calendar-sage-soft)]"
+            >
+              <UserPlus className="h-4 w-4 text-[var(--color-calendar-sage)]" />
+              הזמנת עובדת
+            </Link>
+            <Link
+              href="/workers"
+              onClick={() => setOwnerToolsOpen(false)}
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-gray-800 hover:bg-[var(--color-calendar-sage-soft)]"
+            >
+              <Users className="h-4 w-4 text-[var(--color-calendar-sage)]" />
+              ניהול עובדות וארכיון
+            </Link>
+            <Link
+              href="/settings?section=notifications"
+              onClick={() => setOwnerToolsOpen(false)}
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-gray-800 hover:bg-[var(--color-calendar-sage-soft)]"
+            >
+              <Bell className="h-4 w-4 text-[var(--color-calendar-sage)]" />
+              הגדרות התראות
+            </Link>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setOwnerToolsOpen((open) => !open)}
+          aria-label="פעולות מהירות"
+          aria-expanded={ownerToolsOpen}
+          className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--color-calendar-sage)] text-white shadow-lg transition-transform hover:scale-105"
+        >
+          {ownerToolsOpen ? <Settings className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+        </button>
+      </div>}
 
     </div>
   );

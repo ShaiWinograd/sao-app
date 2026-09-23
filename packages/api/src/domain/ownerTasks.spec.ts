@@ -27,7 +27,32 @@ const CANDIDATE_JOBS = [
   { id: 'past-completed', date: d('2026-07-24T00:00:00.000Z'), status: 'COMPLETED', plannedStart: d('2026-07-24T09:00:00.000Z'), jobType: 'PACKING', customer: { firstName: 'a', lastName: 'b' } },
 ];
 
-function makeClient(capture: { where?: any }) {
+const MISSING_ADDRESS_JOBS = [
+  {
+    id: 'soon-no-exact-address',
+    date: d('2026-07-26T00:00:00.000Z'),
+    status: 'APPROVED',
+    plannedStart: d('2026-07-26T08:00:00.000Z'),
+    jobType: 'PACKING',
+    customer: { firstName: 'יעל', lastName: 'אדרי' },
+    address: { fullAddress: 'תל אביב', normalizedAddress: 'תל אביב', geocodeStatus: 'RESOLVED' },
+  },
+  {
+    id: 'soon-exact-address',
+    date: d('2026-07-26T00:00:00.000Z'),
+    status: 'APPROVED',
+    plannedStart: d('2026-07-26T09:00:00.000Z'),
+    jobType: 'PACKING',
+    customer: { firstName: 'רוני', lastName: 'בר' },
+    address: {
+      fullAddress: 'דיזנגוף 10, תל אביב',
+      normalizedAddress: 'דיזנגוף 10, תל אביב',
+      geocodeStatus: 'RESOLVED',
+    },
+  },
+];
+
+function makeClient(capture: { where?: any; missingAddressWhere?: any }) {
   return {
     shift: {
       count: async ({ where }: any) => {
@@ -44,6 +69,10 @@ function makeClient(capture: { where?: any }) {
     customerCase: { findMany: async () => [] },
     job: {
       findMany: async ({ where }: any) => {
+        if (where.plannedStart) {
+          capture.missingAddressWhere = where;
+          return MISSING_ADDRESS_JOBS;
+        }
         capture.where = where;
         return CANDIDATE_JOBS;
       },
@@ -67,8 +96,26 @@ describe('computeOwnerTasks', () => {
     const tasks = await computeOwnerTasks(makeClient({}), NOW);
     expect(tasks.todayInReservation).toBe(2);
     expect(tasks.pastNotCompleted).toBe(2);
+    expect(tasks.missingExactAddress).toBe(1);
     expect(tasks.todayInReservationJobs.map((j) => j.jobId)).toEqual(['today-morning', 'today-noon']);
     expect(tasks.pastNotCompletedJobs.map((j) => j.jobId)).toEqual(['past-23', 'past-24']);
+  });
+
+  it('returns jobs in the next 72 hours without a resolved exact address', async () => {
+    const capture: { missingAddressWhere?: any } = {};
+    const tasks = await computeOwnerTasks(makeClient(capture), NOW);
+    expect(tasks.missingExactAddressJobs).toEqual([
+      expect.objectContaining({
+        jobId: 'soon-no-exact-address',
+        customerName: 'יעל אדרי',
+        address: 'תל אביב',
+      }),
+    ]);
+    expect(capture.missingAddressWhere.plannedStart.gte).toEqual(NOW);
+    expect(capture.missingAddressWhere.plannedStart.lte).toEqual(
+      new Date(NOW.getTime() + 72 * 60 * 60 * 1000),
+    );
+    expect(capture.missingAddressWhere.address).toBeUndefined();
   });
 
   it('excludes APPROVED-today and COMPLETED jobs from the lists', async () => {

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { canViewSensitiveFinancials } from '../../lib/viewer-access';
 import { useViewerRole } from '../../lib/use-viewer-role';
 import { api } from '../../lib/api';
@@ -109,6 +110,7 @@ function formatActivityTimestamp(timestamp: string) {
 }
 
 export default function WorkersPage() {
+  const searchParams = useSearchParams();
   const viewerRole = useViewerRole();
   const canEditWages = canViewSensitiveFinancials(viewerRole);
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -146,6 +148,12 @@ export default function WorkersPage() {
   useEffect(() => {
     void loadData();
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get('action') === 'invite') {
+      setIsCreateModalOpen(true);
+    }
+  }, [searchParams]);
 
   async function loadData() {
     setIsLoading(true);

@@ -30,6 +30,10 @@ export type AttentionJobView = {
   jobType: string | null;
 };
 
+export type AddressAttentionJobView = AttentionJobView & {
+  address: string;
+};
+
 export type OwnerTasks = {
   joinRequests: number;
   pendingAcceptance: number;
@@ -41,8 +45,10 @@ export type OwnerTasks = {
   // Priority-1 operational items (§7.4): counts + directly-linkable job rows.
   todayInReservation: number;
   pastNotCompleted: number;
+  missingExactAddress: number;
   todayInReservationJobs: AttentionJobView[];
   pastNotCompletedJobs: AttentionJobView[];
+  missingExactAddressJobs: AddressAttentionJobView[];
 };
 
 function toView(job: AttentionJob): AttentionJobView {
@@ -56,6 +62,15 @@ function toView(job: AttentionJob): AttentionJobView {
   };
 }
 
+function hasExactAddress(address: {
+  fullAddress: string;
+  normalizedAddress: string | null;
+  geocodeStatus: string;
+}): boolean {
+  const resolvedAddress = address.normalizedAddress?.trim() || address.fullAddress.trim();
+  return address.geocodeStatus === 'RESOLVED' && /\d/.test(resolvedAddress);
+}
+
 /**
  * Compute all owner attention tasks. `now` is injectable for deterministic tests;
  * defaults to the current instant. Only today + past active jobs are read (bounded
@@ -64,6 +79,7 @@ function toView(job: AttentionJob): AttentionJobView {
  */
 export async function computeOwnerTasks(client: DbClient = prisma, now: Date = new Date()): Promise<OwnerTasks> {
   const tomorrowStart = businessTomorrowStartUtc(now);
+  const in72Hours = new Date(now.getTime() + 72 * 60 * 60 * 1000);
 
   const [
     joinRequests,
@@ -74,6 +90,7 @@ export async function computeOwnerTasks(client: DbClient = prisma, now: Date = n
     reportCorrections,
     customerReportReady,
     candidateJobs,
+    missingAddressJobs,
   ] = await Promise.all([
     client.shift.count({ where: { joinRequestStatus: 'PENDING' } }),
     client.shift.count({ where: { joinRequestStatus: 'AWAITING_WORKER' } }),
@@ -98,6 +115,22 @@ export async function computeOwnerTasks(client: DbClient = prisma, now: Date = n
         customer: { select: { firstName: true, lastName: true } },
       },
     }),
+    client.job.findMany({
+      where: {
+        status: { in: ['RESERVATION', 'APPROVED'] },
+        plannedStart: { gte: now, lte: in72Hours },
+      },
+      select: {
+        id: true,
+        date: true,
+        status: true,
+        plannedStart: true,
+        jobType: true,
+        customer: { select: { firstName: true, lastName: true } },
+        address: { select: { fullAddress: true, normalizedAddress: true, geocodeStatus: true } },
+      },
+      orderBy: { plannedStart: 'asc' },
+    }),
   ]);
 
   const inputs: AttentionJobInput[] = candidateJobs.map((j) => ({
@@ -121,7 +154,17 @@ export async function computeOwnerTasks(client: DbClient = prisma, now: Date = n
     customerReportReady,
     todayInReservation: groups.todayInReservation.length,
     pastNotCompleted: groups.pastNotCompleted.length,
+    missingExactAddress: missingAddressJobs.filter((job) => !hasExactAddress(job.address)).length,
     todayInReservationJobs: groups.todayInReservation.map(toView),
     pastNotCompletedJobs: groups.pastNotCompleted.map(toView),
+    missingExactAddressJobs: missingAddressJobs.filter((job) => !hasExactAddress(job.address)).map((job) => ({
+      jobId: job.id,
+      date: job.date.toISOString(),
+      plannedStart: job.plannedStart.toISOString(),
+      status: job.status as AttentionJobStatus,
+      customerName: `${job.customer?.firstName ?? ''} ${job.customer?.lastName ?? ''}`.trim(),
+      jobType: job.jobType,
+      address: job.address?.fullAddress?.trim() ?? '',
+    })),
   };
 }
