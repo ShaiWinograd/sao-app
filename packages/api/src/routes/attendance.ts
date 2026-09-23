@@ -7,13 +7,27 @@ import { evaluateJobCompletion } from '@workforce/shared';
 import { endOfNextDayDeadline, areaExitDeadline } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
 import { flagWorkerReportStale } from '../lib/workerReport.js';
+import { getJobCompletenessIssues } from '../domain/jobCompleteness.js';
 
 // Auto-complete a job once all regular workers have clocked out with no
 // unresolved attendance issues (spec §4.3). No-op unless the job is currently a
 // reservation or approved.
 async function maybeAutoCompleteJob(jobId: string, actor: unknown): Promise<void> {
-  const job = await prisma.job.findUnique({ where: { id: jobId }, select: { id: true, status: true } });
+  const job = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: {
+      id: true,
+      status: true,
+      date: true,
+      plannedStart: true,
+      plannedEnd: true,
+      requiredWorkerCount: true,
+      customer: { select: { firstName: true, isSystem: true } },
+      address: { select: { fullAddress: true } },
+    },
+  });
   if (!job || (job.status !== 'RESERVATION' && job.status !== 'APPROVED')) return;
+  if (getJobCompletenessIssues(job).length > 0) return;
 
   const shifts = await prisma.shift.findMany({
     where: { jobId },

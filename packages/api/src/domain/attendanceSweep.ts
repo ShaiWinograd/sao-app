@@ -22,6 +22,7 @@ import {
   MISSING_CLOCK_IN_GRACE_MINUTES,
 } from '@workforce/shared';
 import { logAudit } from '../lib/audit.js';
+import { getJobCompletenessIssues } from './jobCompleteness.js';
 
 type DbClient = PrismaClient;
 
@@ -323,8 +324,21 @@ export async function markEndFormsOverdue(
 
 // Local copy of the auto-completion check (kept dependency-light for the sweep).
 async function maybeAutoCompleteJob(client: DbClient, jobId: string): Promise<void> {
-  const job = await client.job.findUnique({ where: { id: jobId }, select: { id: true, status: true } });
+  const job = await client.job.findUnique({
+    where: { id: jobId },
+    select: {
+      id: true,
+      status: true,
+      date: true,
+      plannedStart: true,
+      plannedEnd: true,
+      requiredWorkerCount: true,
+      customer: { select: { firstName: true, isSystem: true } },
+      address: { select: { fullAddress: true } },
+    },
+  });
   if (!job || (job.status !== 'RESERVATION' && job.status !== 'APPROVED')) return;
+  if (getJobCompletenessIssues(job).length > 0) return;
   const shifts = await client.shift.findMany({
     where: { jobId },
     select: { joinRequestStatus: true, assignmentRole: true, attendanceStatus: true, actualStart: true, actualEnd: true, requiresReview: true },

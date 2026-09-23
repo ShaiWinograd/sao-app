@@ -295,7 +295,11 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await dateActions.click();
     await page.getByRole('button', { name: 'יצירת עבודה', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'יצירת עבודה' })).toBeVisible();
-    await page.getByRole('button', { name: 'סגירה' }).click();
+    await expect(page.getByRole('dialog').locator('input[type="date"]')).toHaveValue(tomorrow);
+    await expect(page.getByText('בחירה מהירה מהיומן')).toHaveCount(0);
+    await page.getByPlaceholder('שם פרטי').fill('נועה');
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.getByRole('button', { name: 'סגירה ללא שמירה' }).click();
     await expect(page.getByText('סיכום שיבוץ לעבודות')).toHaveCount(0);
 
     await page.getByRole('button', { name: `שיבוץ מיכל כהן בתאריך ${tomorrow}` }).click();

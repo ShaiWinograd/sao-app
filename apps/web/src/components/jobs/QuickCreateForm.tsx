@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react';
@@ -43,13 +43,14 @@ export function todayKey(): string {
 export function QuickCreateForm({
   initialDate,
   onCreated,
-  onCancel,
+  onDirtyChange,
 }: {
   initialDate?: string;
   onCreated: (jobId: string, capacity: QuickCreateCapacity) => void;
-  onCancel: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const { getToken } = useAuth();
+  const initialDateKey = useRef(initialDate || todayKey());
 
   // Job-first customer form: a normal customer-details form (no existing/new mode
   // switch). As the owner types any field we surface matching existing customers;
@@ -65,7 +66,7 @@ export function QuickCreateForm({
   const [generalReservation, setGeneralReservation] = useState(false);
 
   const [jobType, setJobType] = useState('PACKING');
-  const [date, setDate] = useState(initialDate || todayKey());
+  const [date, setDate] = useState(initialDateKey.current);
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('14:00');
   const [cityOrAddress, setCityOrAddress] = useState('');
@@ -88,14 +89,21 @@ export function QuickCreateForm({
   const idemKeyRef = useRef<string>(makeIdemKey());
   const [createdJobId, setCreatedJobId] = useState<string | null>(null);
 
-  const calendarDays = useMemo(() => {
-    const anchor = new Date(`${date}T00:00:00`);
-    return Array.from({ length: 14 }, (_, index) => {
-      const value = new Date(anchor);
-      value.setDate(anchor.getDate() + index - 3);
-      return value;
-    });
-  }, [date]);
+  const isDirty =
+    Boolean(custFirst || custLast || custPhone || custEmail || selectedCustomerId || generalReservation) ||
+    jobType !== 'PACKING' ||
+    date !== initialDateKey.current ||
+    startTime !== '09:00' ||
+    endTime !== '14:00' ||
+    Boolean(cityOrAddress || addressSelection || manualAddressConfirmed) ||
+    workerCount !== '2' ||
+    !requiresTeamLeader ||
+    Boolean(notes || selectedWorkerIds.length || hasTrainee || traineeName) ||
+    traineeHourlyWage !== '50';
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   useEffect(() => {
     void (async () => {
@@ -384,37 +392,14 @@ export function QuickCreateForm({
           />
           {fieldErrors.date && <span className="mt-1 block text-xs text-danger">{fieldErrors.date}</span>}
         </label>
-        <div className="sm:col-span-2">
-          <p className="mb-2 text-xs font-medium text-gray-600">בחירה מהירה מהיומן</p>
-          <div className="flex gap-2 overflow-x-auto border-y border-[var(--color-border)] py-2">
-            {calendarDays.map((calendarDate) => {
-              const key = calendarDate.toLocaleDateString('en-CA');
-              const active = key === date;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => {
-                    clearFieldError('date');
-                    setDate(key);
-                  }}
-                  className={`min-w-14 px-2 py-2 text-center ${active ? 'bg-primary-700 text-white' : 'text-gray-600 hover:bg-primary-50'}`}
-                >
-                  <span className="block text-[10px]">{calendarDate.toLocaleDateString('he-IL', { weekday: 'short' })}</span>
-                  <span className="font-display block text-xl">{calendarDate.getDate()}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
         <label className="text-sm">
           <span className="block text-gray-600 mb-1">שעת התחלה</span>
-          <input type="time" value={startTime} onChange={(e) => { clearFieldError('time'); setStartTime(e.target.value); }} aria-invalid={Boolean(fieldErrors.time)} className={`w-full rounded-lg border px-2.5 py-2 ${fieldErrors.time ? 'border-danger' : 'border-gray-300'}`} />
+          <input type="time" value={startTime} onClick={(event) => event.currentTarget.showPicker?.()} onChange={(e) => { clearFieldError('time'); setStartTime(e.target.value); }} aria-invalid={Boolean(fieldErrors.time)} className={`w-full cursor-pointer rounded-lg border px-2.5 py-2 ${fieldErrors.time ? 'border-danger' : 'border-gray-300'}`} />
           {fieldErrors.time && <span className="mt-1 block text-xs text-danger">{fieldErrors.time}</span>}
         </label>
         <label className="text-sm">
           <span className="block text-gray-600 mb-1">שעת סיום</span>
-          <input type="time" value={endTime} onChange={(e) => { clearFieldError('time'); setEndTime(e.target.value); }} aria-invalid={Boolean(fieldErrors.time)} className={`w-full rounded-lg border px-2.5 py-2 ${fieldErrors.time ? 'border-danger' : 'border-gray-300'}`} />
+          <input type="time" value={endTime} onClick={(event) => event.currentTarget.showPicker?.()} onChange={(e) => { clearFieldError('time'); setEndTime(e.target.value); }} aria-invalid={Boolean(fieldErrors.time)} className={`w-full cursor-pointer rounded-lg border px-2.5 py-2 ${fieldErrors.time ? 'border-danger' : 'border-gray-300'}`} />
         </label>
         <label className="text-sm sm:col-span-2">
           <span className="mb-1 block text-gray-600">כתובת מלאה</span>
@@ -542,15 +527,12 @@ export function QuickCreateForm({
             {error}
           </div>
         )}
-        <div className="flex flex-wrap justify-end gap-3">
-          <button type="button" onClick={onCancel} className="px-2 py-2 text-sm text-[var(--color-calendar-sage)] underline decoration-[var(--color-border-strong)] underline-offset-4 hover:decoration-[var(--color-calendar-sage)]">
-            ביטול
-          </button>
+        <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
             onClick={() => void submit('RESERVATION')}
             disabled={busy}
-            className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 border border-[var(--color-calendar-sage)] px-5 py-2.5 text-sm font-medium text-[var(--color-calendar-sage)] hover:bg-[var(--color-calendar-sage-soft)] disabled:opacity-50 sm:flex-none"
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 border border-[var(--color-calendar-sage)] px-5 py-2.5 text-sm font-medium text-[var(--color-calendar-sage)] hover:bg-[var(--color-calendar-sage-soft)] disabled:opacity-50"
           >
             {busy && <Loader2 className="h-4 w-4 animate-spin" />}
             שריון
@@ -560,7 +542,7 @@ export function QuickCreateForm({
             onClick={() => void submit('APPROVED')}
             disabled={busy || generalReservation}
             title={generalReservation ? 'לא ניתן לאשר עבודה בשריון כללי' : ''}
-            className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 bg-[var(--color-calendar-sage)] px-5 py-2.5 text-sm font-medium text-[var(--color-background)] hover:bg-primary-700 disabled:opacity-40 sm:flex-none"
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 border border-[var(--color-calendar-sage)] bg-[var(--color-calendar-sage)] px-5 py-2.5 text-sm font-medium text-[var(--color-background)] hover:bg-primary-700 disabled:opacity-40"
           >
             {busy && <Loader2 className="h-4 w-4 animate-spin" />}
             אושר
