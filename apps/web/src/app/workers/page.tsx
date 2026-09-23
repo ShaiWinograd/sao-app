@@ -20,6 +20,13 @@ type Worker = {
   vatIncluded: boolean;
   phone: string;
   email: string;
+  isActive: boolean;
+  homeAddress: string;
+  birthday: string;
+  bankNumber: string;
+  bankBranch: string;
+  bankAccountNumber: string;
+  bankAccountHolder: string;
   lastActivityAt: string;
   skills: string[];
   pendingUpdate?: {
@@ -41,6 +48,12 @@ type ApiWorker = {
   skills: string[];
   isActive: boolean;
   paymentMethod: string;
+  homeAddress?: string | null;
+  birthday?: string | null;
+  bankNumber?: string | null;
+  bankBranch?: string | null;
+  bankAccountNumber?: string | null;
+  bankAccountHolder?: string | null;
   hourlyWage?: number;
   createdAt?: string;
 };
@@ -67,6 +80,13 @@ function mapApiWorker(worker: ApiWorker): Worker {
     vatIncluded: false,
     phone: worker.phone,
     email: worker.email,
+    isActive: worker.isActive,
+    homeAddress: worker.homeAddress ?? '',
+    birthday: worker.birthday?.slice(0, 10) ?? '',
+    bankNumber: worker.bankNumber ?? '',
+    bankBranch: worker.bankBranch ?? '',
+    bankAccountNumber: worker.bankAccountNumber ?? '',
+    bankAccountHolder: worker.bankAccountHolder ?? '',
     lastActivityAt: worker.createdAt ?? new Date().toISOString(),
     skills: worker.skills,
   };
@@ -138,12 +158,19 @@ export default function WorkersPage() {
   const [editVatIncluded, setEditVatIncluded] = useState(false);
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
+  const [editHomeAddress, setEditHomeAddress] = useState('');
+  const [editBirthday, setEditBirthday] = useState('');
+  const [editBankNumber, setEditBankNumber] = useState('');
+  const [editBankBranch, setEditBankBranch] = useState('');
+  const [editBankAccountNumber, setEditBankAccountNumber] = useState('');
+  const [editBankAccountHolder, setEditBankAccountHolder] = useState('');
   const [editApplyImmediately, setEditApplyImmediately] = useState(false);
   const [editEffectiveFrom, setEditEffectiveFrom] = useState(firstDayOfNextMonthDateKey());
-  const [linkEmail, setLinkEmail] = useState('');
-  const [linkMsg, setLinkMsg] = useState<string | null>(null);
-  const [linkOk, setLinkOk] = useState<boolean | null>(null);
-  const [linkBusy, setLinkBusy] = useState(false);
+  const [teamMenuOpen, setTeamMenuOpen] = useState(false);
+  const [teamAction, setTeamAction] = useState<'reinvite' | 'archive' | 'restore' | null>(null);
+  const [teamWorkerId, setTeamWorkerId] = useState('');
+  const [teamEmail, setTeamEmail] = useState('');
+  const [teamBusy, setTeamBusy] = useState(false);
 
   useEffect(() => {
     void loadData();
@@ -159,8 +186,10 @@ export default function WorkersPage() {
     setIsLoading(true);
     setDataError('');
     try {
-      const res = await api.get<ApiWorker[]>('/workers');
-      setWorkers(res.data.map(mapApiWorker));
+      const res = await api.get<ApiWorker[]>('/workers?status=all');
+      const mapped = res.data.map(mapApiWorker);
+      setWorkers(mapped.filter((worker) => worker.isActive));
+      setArchivedWorkers(mapped.filter((worker) => !worker.isActive));
     } catch {
       setDataError('לא ניתן לטעון את רשימת העובדים. בדקי שה-API זמין.');
     } finally {
@@ -217,7 +246,7 @@ export default function WorkersPage() {
     }
     const wage = newHourlyWage;
     try {
-      await api.post('/workers', {
+      const created = await api.post<{ id: string }>('/workers', {
         firstName,
         lastName,
         phone: newPhone.trim(),
@@ -227,6 +256,12 @@ export default function WorkersPage() {
         paymentMethod: 'BANK_TRANSFER',
         skills: mapRoleToSkills(newRole, []),
       });
+      let inviteSent = true;
+      try {
+        await api.post(`/workers/${created.data.id}/link-login`, { email });
+      } catch {
+        inviteSent = false;
+      }
       setIsCreateModalOpen(false);
       setNewName('');
       setNewLastName('');
@@ -234,7 +269,7 @@ export default function WorkersPage() {
       setNewEmail('');
       setNewRole('עובדת');
       setNewHourlyWage(70);
-      setMessage('העובדת נוספה בהצלחה.');
+      setMessage(inviteSent ? 'העובדת נוספה ונשלחה אליה הזמנה.' : 'העובדת נוספה, אך שליחת ההזמנה נכשלה. אפשר לנסות שוב מניהול הצוות.');
       await loadData();
     } catch {
       setMessage('הוספת העובדת נכשלה. ייתכן שהאימייל כבר קיים במערכת.');
@@ -250,10 +285,14 @@ export default function WorkersPage() {
     setEditVatIncluded(worker.vatIncluded);
     setEditPhone(worker.phone);
     setEditEmail(worker.email);
+    setEditHomeAddress(worker.homeAddress);
+    setEditBirthday(worker.birthday);
+    setEditBankNumber(worker.bankNumber);
+    setEditBankBranch(worker.bankBranch);
+    setEditBankAccountNumber(worker.bankAccountNumber);
+    setEditBankAccountHolder(worker.bankAccountHolder);
     setEditApplyImmediately(false);
     setEditEffectiveFrom(firstDayOfNextMonthDateKey());
-    setLinkEmail(worker.email);
-    setLinkMsg(null);
     setMessage('');
   };
 
@@ -284,10 +323,16 @@ export default function WorkersPage() {
       lastName: editLastName.trim(),
       phone: editPhone.trim(),
       email: editEmail.trim(),
+      homeAddress: editHomeAddress.trim(),
+      birthday: editBirthday,
       skills: updatedSkills,
     };
     if (canEditWages) {
       patchBody.hourlyWage = editHourlyWage;
+      patchBody.bankNumber = editBankNumber.trim();
+      patchBody.bankBranch = editBankBranch.trim();
+      patchBody.bankAccountNumber = editBankAccountNumber.trim();
+      patchBody.bankAccountHolder = editBankAccountHolder.trim();
     }
 
     try {
@@ -307,6 +352,12 @@ export default function WorkersPage() {
               vatIncluded: editVatIncluded,
               phone: editPhone.trim(),
               email: editEmail.trim(),
+              homeAddress: editHomeAddress.trim(),
+              birthday: editBirthday,
+              bankNumber: editBankNumber.trim(),
+              bankBranch: editBankBranch.trim(),
+              bankAccountNumber: editBankAccountNumber.trim(),
+              bankAccountHolder: editBankAccountHolder.trim(),
               skills: updatedSkills,
               lastActivityAt: new Date().toISOString(),
               pendingUpdate: undefined,
@@ -339,61 +390,44 @@ export default function WorkersPage() {
     setEditingWorkerId(null);
   };
 
-  const linkLogin = async () => {
-    if (!editingWorkerId) return;
-    const email = linkEmail.trim();
-    if (!isValidEmail(email)) {
-      setLinkOk(false);
-      setLinkMsg('כתובת האימייל לא תקינה.');
-      return;
-    }
-    setLinkBusy(true);
-    setLinkMsg(null);
-    setLinkOk(null);
-    try {
-      const res = await api.post<{ linked?: boolean; invited?: boolean; pendingFirstLogin?: boolean }>(
-        `/workers/${editingWorkerId}/link-login`,
-        { email },
-      );
-      setLinkOk(true);
-      setLinkMsg(
-        res.data.linked
-          ? 'קיים כבר חשבון עם אימייל זה — קושר כעובדת.'
-          : res.data.invited
-            ? 'נשלחה הזמנה לאימייל. לאחר ההרשמה העובדת תתחבר לאזור העובדות.'
-            : 'האימייל עודכן. אם כבר יש לעובדת חשבון, הקישור יתבצע אוטומטית בהתחברות.',
-      );
-      void loadData();
-    } catch (err) {
-      const status = (err as { response?: { status?: number } })?.response?.status;
-      setLinkOk(false);
-      setLinkMsg(status === 409 ? 'האימייל כבר משויך לעובדת אחרת.' : 'השליחה נכשלה. נסי שוב.');
-    } finally {
-      setLinkBusy(false);
-    }
+  const openTeamAction = (action: 'reinvite' | 'archive' | 'restore') => {
+    const candidates = action === 'restore' ? archivedWorkers : workers;
+    setTeamAction(action);
+    setTeamWorkerId(candidates[0]?.id ?? '');
+    setTeamEmail(candidates[0]?.email ?? '');
+    setTeamMenuOpen(false);
+    setMessage('');
   };
 
-  const moveWorkerToArchive = async (workerId: string) => {
-    const workerToArchive = workers.find((worker) => worker.id === workerId);
-    if (!workerToArchive) return;
-    if (!window.confirm(`להעביר את ${workerToArchive.name} לארכיון עובדים?`)) return;
+  const runTeamAction = async () => {
+    const candidates = teamAction === 'restore' ? archivedWorkers : workers;
+    const selected = candidates.find((worker) => worker.id === teamWorkerId);
+    if (!selected || !teamAction) return;
+    setTeamBusy(true);
     try {
-      await api.delete(`/workers/${workerId}`);
-      setWorkers((prev) => prev.filter((worker) => worker.id !== workerId));
-      setArchivedWorkers((prev) => [workerToArchive, ...prev]);
-      setMessage(`${workerToArchive.name} הועברה לארכיון עובדים.`);
+      if (teamAction === 'reinvite') {
+        const email = teamEmail.trim();
+        if (!isValidEmail(email)) {
+          setMessage('כתובת האימייל לא תקינה.');
+          return;
+        }
+        await api.post(`/workers/${selected.id}/link-login`, { email });
+        setMessage(`נשלחה הזמנה ל-${selected.name}.`);
+      } else if (teamAction === 'archive') {
+        if (!window.confirm(`להעביר את ${selected.name} לארכיון עובדים?`)) return;
+        await api.delete(`/workers/${selected.id}`);
+        setMessage(`${selected.name} הועברה לארכיון עובדים.`);
+      } else {
+        await api.patch(`/workers/${selected.id}`, { isActive: true });
+        setMessage(`${selected.name} חזרה לרשימת העובדים הפעילים.`);
+      }
+      setTeamAction(null);
+      await loadData();
     } catch {
-      setMessage('ביצוע הפעולה נכשל. ודאי שה-API זמין.');
+      setMessage('ביצוע הפעולה נכשל. נסי שוב.');
+    } finally {
+      setTeamBusy(false);
     }
-  };
-
-  const restoreWorkerFromArchive = (workerId: string) => {
-    const workerToRestore = archivedWorkers.find((worker) => worker.id === workerId);
-    if (!workerToRestore) return;
-    if (!window.confirm(`להחזיר את ${workerToRestore.name} מארכיון עובדים לרשימה הפעילה?`)) return;
-    setArchivedWorkers((prev) => prev.filter((worker) => worker.id !== workerId));
-    setWorkers((prev) => [{ ...workerToRestore, lastActivityAt: new Date().toISOString() }, ...prev]);
-    setMessage(`${workerToRestore.name} חזרה לרשימת העובדים הפעילים.`);
   };
 
   return (
@@ -406,30 +440,54 @@ export default function WorkersPage() {
         title="הצוות"
         description="האנשים, התפקידים והפרטים שמחזיקים את העבודה יחד."
         action={
-        <button
-          type="button"
-          onClick={() => {
-            setMessage('');
-            setIsCreateModalOpen(true);
-          }}
-          className="inline-flex min-h-11 items-center bg-primary-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-800"
-        >
-          עובדת חדשה
-        </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setTeamMenuOpen((open) => !open)}
+              aria-expanded={teamMenuOpen}
+              className="inline-flex min-h-10 items-center bg-primary-700 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-800"
+            >
+              ניהול צוות
+            </button>
+            {teamMenuOpen && (
+              <div className="absolute left-0 top-12 z-30 w-52 border border-[var(--color-border)] bg-[var(--color-surface)] p-1.5 text-right shadow-xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTeamMenuOpen(false);
+                    setMessage('');
+                    setIsCreateModalOpen(true);
+                  }}
+                  className="block w-full px-3 py-2 text-right text-xs hover:bg-[var(--color-surface-muted)]"
+                >
+                  הוספת והזמנת עובדת
+                </button>
+                <button type="button" onClick={() => openTeamAction('reinvite')} className="block w-full px-3 py-2 text-right text-xs hover:bg-[var(--color-surface-muted)]">
+                  שליחת הזמנה מחדש
+                </button>
+                <button type="button" onClick={() => openTeamAction('archive')} className="block w-full px-3 py-2 text-right text-xs hover:bg-[var(--color-surface-muted)]">
+                  העברה לארכיון
+                </button>
+                <button type="button" onClick={() => openTeamAction('restore')} className="block w-full px-3 py-2 text-right text-xs hover:bg-[var(--color-surface-muted)]">
+                  שחזור מהארכיון
+                </button>
+              </div>
+            )}
+          </div>
         }
       />
 
       <div className="grid grid-cols-3 divide-x divide-x-reverse divide-[var(--color-border)] border-y border-[var(--color-border)]">
-        <div className="px-4 py-5">
-          <p className="font-display text-3xl font-medium text-[var(--color-calendar-sage)]">{workers.length}</p>
+        <div className="px-4 py-3">
+          <p className="font-display text-2xl font-medium text-[var(--color-calendar-sage)]">{workers.length}</p>
           <p className="mt-1 text-xs text-gray-500">סה״כ עובדים</p>
         </div>
-        <div className="px-4 py-5">
-          <p className="font-display text-3xl font-medium text-[var(--color-calendar-sage)]">{stats.teamLeads}</p>
+        <div className="px-4 py-3">
+          <p className="font-display text-2xl font-medium text-[var(--color-calendar-sage)]">{stats.teamLeads}</p>
           <p className="mt-1 text-xs text-gray-500">ראשי צוות</p>
         </div>
-        <div className="px-4 py-5">
-          <p className="font-display text-3xl font-medium text-[var(--color-calendar-sage)]">{canEditWages ? `₪${stats.averageWage}` : 'מוסתר'}</p>
+        <div className="px-4 py-3">
+          <p className="font-display text-2xl font-medium text-[var(--color-calendar-sage)]">{canEditWages ? `₪${stats.averageWage}` : 'מוסתר'}</p>
           <p className="mt-1 text-xs text-gray-500">שכר שעתי ממוצע</p>
           <p className="text-xs text-gray-500 mt-1">פעילות כרגע: {workers.length}</p>
         </div>
@@ -488,13 +546,12 @@ export default function WorkersPage() {
                 <th className="px-4 py-3 text-xs font-semibold text-gray-600">טלפון</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-600">אימייל</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-600">פעילות אחרונה</th>
-                <th className="px-4 py-3 text-xs font-semibold text-gray-600">פעולה</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-sm text-gray-500">טוען עובדים...</td>
+                  <td colSpan={7} className="px-4 py-6 text-center text-sm text-gray-500">טוען עובדים...</td>
                 </tr>
               ) : (workersView === 'active' ? filteredWorkers : filteredArchivedWorkers).map((worker) => (
                 <tr key={worker.id} className="hover:bg-primary-50/40">
@@ -534,30 +591,11 @@ export default function WorkersPage() {
                       </p>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-sm">
-                    {workersView === 'active' ? (
-                      <button
-                        type="button"
-                        onClick={() => void moveWorkerToArchive(worker.id)}
-                        className="rounded-md border border-gray-300 px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
-                      >
-                        העברה לארכיון
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => restoreWorkerFromArchive(worker.id)}
-                        className="rounded-md border border-emerald-300 px-2.5 py-1.5 text-xs text-emerald-700 hover:bg-emerald-50"
-                      >
-                        החזרה לרשימה
-                      </button>
-                    )}
-                  </td>
                 </tr>
               ))}
               {!isLoading && (workersView === 'active' ? filteredWorkers.length : filteredArchivedWorkers.length) === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-sm text-gray-500">
+                  <td colSpan={7} className="px-4 py-6 text-center text-sm text-gray-500">
                     {workersView === 'active'
                       ? 'לא נמצאו עובדים פעילים לפי החיפוש/סינון.'
                       : 'ארכיון העובדים ריק או שלא נמצאו תוצאות לפי החיפוש/סינון.'}
@@ -614,6 +652,23 @@ export default function WorkersPage() {
                   className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-right"
                   placeholder="אימייל"
                 />
+                <label className="text-xs text-gray-600">
+                  כתובת מגורים
+                  <input
+                    value={editHomeAddress}
+                    onChange={(e) => setEditHomeAddress(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right"
+                  />
+                </label>
+                <label className="text-xs text-gray-600">
+                  תאריך לידה
+                  <input
+                    type="date"
+                    value={editBirthday}
+                    onChange={(e) => setEditBirthday(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </label>
                 <select value={editRole} onChange={(e) => setEditRole(e.target.value as WorkerRole)} className="rounded-lg border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm">
                   <option value="ראש צוות">ראש צוות</option>
                   <option value="עובדת">עובדת</option>
@@ -638,6 +693,15 @@ export default function WorkersPage() {
                   כולל מע״מ
                 </label>
               </div>
+              {canEditWages && (
+                <fieldset className="grid grid-cols-2 gap-3 border-y border-[var(--color-border)] py-3">
+                  <legend className="px-2 text-xs font-semibold text-gray-700">חשבון בנק</legend>
+                  <input value={editBankAccountHolder} onChange={(e) => setEditBankAccountHolder(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="שם בעלת החשבון" />
+                  <input value={editBankNumber} onChange={(e) => setEditBankNumber(e.target.value.replace(/\D/g, '').slice(0, 3))} inputMode="numeric" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="מספר בנק" />
+                  <input value={editBankBranch} onChange={(e) => setEditBankBranch(e.target.value.replace(/\D/g, '').slice(0, 5))} inputMode="numeric" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="מספר סניף" />
+                  <input value={editBankAccountNumber} onChange={(e) => setEditBankAccountNumber(e.target.value.replace(/\D/g, '').slice(0, 20))} inputMode="numeric" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="מספר חשבון" />
+                </fieldset>
+              )}
               <div className="rounded-lg border border-gray-200 p-3 bg-gray-50 space-y-2">
                 <label className="inline-flex items-center gap-2 text-sm text-gray-700">
                   <input
@@ -659,35 +723,6 @@ export default function WorkersPage() {
                   />
                 </label>
               </div>
-              <div className="rounded-lg border border-gray-200 p-3 space-y-2">
-                <p className="text-xs font-semibold text-gray-700">הזמנת העובדת להתחברות</p>
-                <p className="text-[11px] text-gray-500">שולח לעובדת אימייל עם קישור הרשמה. לאחר ההרשמה היא תתחבר לאזור העובדות. אם כבר יש לה חשבון — הוא יקושר כעובדת.</p>
-                <div className="flex items-center gap-2">
-                  <input
-                    value={linkEmail}
-                    onChange={(e) => setLinkEmail(e.target.value)}
-                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-right"
-                    placeholder="אימייל ההתחברות"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void linkLogin()}
-                    disabled={linkBusy}
-                    className="rounded-lg border border-primary-200 text-primary-700 px-3 py-2 text-xs font-medium hover:bg-primary-50 disabled:opacity-50 whitespace-nowrap"
-                  >
-                    {linkBusy ? 'שולח…' : 'שליחת הזמנה'}
-                  </button>
-                </div>
-                {linkMsg && (
-                  <p
-                    className={`rounded-md px-2.5 py-1.5 text-[11px] ${
-                      linkOk ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
-                    }`}
-                  >
-                    {linkMsg}
-                  </p>
-                )}
-              </div>
               <button
                 type="button"
                 onClick={() => void saveWorkerUpdate()}
@@ -696,6 +731,50 @@ export default function WorkersPage() {
                 שמירת שינוי
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {teamAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setTeamAction(null)}>
+          <div className="w-full max-w-md rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900">
+                {teamAction === 'reinvite' ? 'שליחת הזמנה מחדש' : teamAction === 'archive' ? 'העברה לארכיון' : 'שחזור מהארכיון'}
+              </h3>
+              <button type="button" onClick={() => setTeamAction(null)} className="text-xs text-gray-500">סגירה</button>
+            </div>
+            <label className="block text-xs text-gray-600">
+              עובדת
+              <select
+                value={teamWorkerId}
+                onChange={(event) => {
+                  const nextId = event.target.value;
+                  const source = teamAction === 'restore' ? archivedWorkers : workers;
+                  setTeamWorkerId(nextId);
+                  setTeamEmail(source.find((worker) => worker.id === nextId)?.email ?? '');
+                }}
+                className="mt-1 w-full rounded-lg border border-gray-300 bg-[var(--color-surface)] px-3 py-2 text-sm"
+              >
+                {(teamAction === 'restore' ? archivedWorkers : workers).map((worker) => (
+                  <option key={worker.id} value={worker.id}>{worker.name}</option>
+                ))}
+              </select>
+            </label>
+            {teamAction === 'reinvite' && (
+              <label className="mt-3 block text-xs text-gray-600">
+                אימייל להזמנה
+                <input value={teamEmail} onChange={(e) => setTeamEmail(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              </label>
+            )}
+            <button
+              type="button"
+              onClick={() => void runTeamAction()}
+              disabled={teamBusy || !teamWorkerId}
+              className="mt-4 w-full rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+            >
+              {teamBusy ? 'מבצעת…' : 'אישור'}
+            </button>
           </div>
         </div>
       )}
@@ -786,9 +865,7 @@ export default function WorkersPage() {
                   </label>
                 )}
               </div>
-              <p className="text-xs text-gray-400">
-                העובדת נוספת לניהול הצוות. חשבון התחברות לאפליקציה יופק בהמשך.
-              </p>
+              <p className="text-xs text-gray-400">לאחר השמירה תישלח לעובדת הזמנה להתחברות.</p>
               <div className="flex gap-2 pt-1">
                 <button
                   type="button"

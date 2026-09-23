@@ -300,6 +300,12 @@ export const WorkerProfileSchema = z.object({
   ),
   isActive: z.boolean().optional(),
   homeArea: z.string().optional(),
+  homeAddress: z.string().max(200).optional(),
+  birthday: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal('')]).optional(),
+  bankNumber: z.string().max(3).optional(),
+  bankBranch: z.string().max(5).optional(),
+  bankAccountNumber: z.string().max(20).optional(),
+  bankAccountHolder: z.string().max(100).optional(),
   notes: z.string().optional(),
   internalNotes: z.string().optional(),
 });
@@ -307,12 +313,18 @@ export const WorkerProfileSchema = z.object({
 export const CreateWorkerSchema = WorkerProfileSchema;
 export const UpdateWorkerSchema = WorkerProfileSchema.partial();
 
-// Fields a worker may edit on their own profile (contact details only).
+// Fields a worker may edit on their own profile.
 export const UpdateWorkerProfileSchema = z
   .object({
     phone: z.string().min(9),
     email: z.string().email(),
     homeArea: z.string().max(100),
+    homeAddress: z.string().max(200),
+    birthday: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal('')]),
+    bankNumber: z.string().max(3),
+    bankBranch: z.string().max(5),
+    bankAccountNumber: z.string().max(20),
+    bankAccountHolder: z.string().max(100),
   })
   .partial();
 

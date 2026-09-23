@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { israeliNonWorkingDayName } from '@workforce/shared';
 import { api, authHeaders } from '../../lib/api';
@@ -141,6 +142,7 @@ export default function WorkerShiftsPage() {
   const [focusedShiftId, setFocusedShiftId] = useState<string | null>(null);
   const [shiftFilter, setShiftFilter] = useState<'ALL' | 'MINE'>('ALL');
   const [nextShiftExpanded, setNextShiftExpanded] = useState(false);
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => toDateKey(new Date()));
   const initialCalendarPositioned = useRef(false);
   const queryReplacementOpened = useRef(false);
@@ -915,6 +917,29 @@ export default function WorkerShiftsPage() {
           onCancel={() => void cancelReplacement()}
           onClose={() => setReplacementTarget(null)}
         />
+      )}
+      {!joinTarget && !availabilityTarget && availabilityConflicts.length === 0 && !replacementTarget && quickActionsOpen && (
+        <button type="button" aria-label="סגירת פעולות מהירות" className="fixed inset-0 z-40 bg-transparent" onClick={() => setQuickActionsOpen(false)} />
+      )}
+      {!joinTarget && !availabilityTarget && availabilityConflicts.length === 0 && !replacementTarget && (
+      <div className="fixed bottom-5 left-5 z-50 flex flex-col items-end gap-2">
+        {quickActionsOpen && (
+          <div className="w-48 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1.5 shadow-xl">
+            <Link href="/worker/profile?action=edit" className="block rounded-md px-3 py-2 text-right text-xs font-medium text-gray-800 hover:bg-[var(--color-surface-muted)]">
+              עדכון פרטים אישיים
+            </Link>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setQuickActionsOpen((open) => !open)}
+          aria-label="פעולות מהירות"
+          aria-expanded={quickActionsOpen}
+          className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-primary-700 text-lg font-medium text-white shadow-lg"
+        >
+          {quickActionsOpen ? '×' : '+'}
+        </button>
+      </div>
       )}
     </div>
   );

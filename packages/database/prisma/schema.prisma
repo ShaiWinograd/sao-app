@@ -275,6 +275,12 @@ model Worker {
   skills             WorkerSkill[]
   isActive           Boolean       @default(true)
   homeArea           String?
+  homeAddress        String?
+  birthday           DateTime?
+  bankNumber         String?
+  bankBranch         String?
+  bankAccountNumber  String?
+  bankAccountHolder  String?
   notes              String?
   internalNotes      String?
   expoPushToken      String?

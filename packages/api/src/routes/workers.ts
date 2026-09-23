@@ -17,6 +17,23 @@ type AvailabilityInput = {
   endTime?: string;
 };
 
+function normalizeWorkerData<T extends { birthday?: string }>(body: T) {
+  return {
+    ...body,
+    ...(body.birthday !== undefined
+      ? { birthday: body.birthday ? new Date(`${body.birthday}T00:00:00.000Z`) : null }
+      : {}),
+  };
+}
+
+function omitSensitiveWorkerFinancials<T extends Record<string, unknown>>(worker: T) {
+  const safe = { ...worker } as Record<string, unknown>;
+  for (const field of ['hourlyWage', 'dailyPaymentAmount', 'bankNumber', 'bankBranch', 'bankAccountNumber', 'bankAccountHolder']) {
+    delete safe[field];
+  }
+  return safe;
+}
+
 async function findAvailabilityConflicts(workerId: string, body: AvailabilityInput) {
   if (body.type === 'WEEKLY') return [];
   const startKey = body.startDate!.slice(0, 10);
@@ -74,16 +91,21 @@ async function findAvailabilityConflicts(workerId: string, body: AvailabilityInp
 
 export async function workersRoutes(app: FastifyInstance) {
   app.get('/', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
-    return prisma.worker.findMany({
-      where: { isActive: true },
+    const { status = 'active' } = req.query as { status?: 'active' | 'archived' | 'all' };
+    const workers = await prisma.worker.findMany({
+      where: status === 'all' ? undefined : { isActive: status !== 'archived' },
       select: {
         id: true, firstName: true, lastName: true, phone: true, email: true,
         skills: true, isActive: true, paymentMethod: true,
-        // Wages are owner/admin-only; this route is admin-guarded so they are safe to return.
+        homeAddress: true, birthday: true, bankNumber: true, bankBranch: true,
+        bankAccountNumber: true, bankAccountHolder: true, createdAt: true,
+        // Sensitive financial fields are stripped below unless the caller is the owner.
         hourlyWage: true, dailyPaymentAmount: true,
       },
       orderBy: { firstName: 'asc' },
     });
+    const user = (req as any).user;
+    return user.role === UserRole.OWNER ? workers : workers.map(omitSensitiveWorkerFinancials);
   });
 
   // Worker availability finder — ranks active workers best-fit first for a date.
@@ -279,7 +301,8 @@ export async function workersRoutes(app: FastifyInstance) {
       },
     });
     if (!worker) return reply.status(404).send({ error: 'Worker not found' });
-    return worker;
+    const user = (req as any).user;
+    return user.role === UserRole.OWNER ? worker : omitSensitiveWorkerFinancials(worker);
   });
 
   // Get own profile (worker)
@@ -321,7 +344,7 @@ export async function workersRoutes(app: FastifyInstance) {
     const worker = await prisma.worker.findUnique({ where: { userId: user.id } });
     if (!worker) return reply.status(404).send({ error: 'Worker profile not found' });
     const body = UpdateWorkerProfileSchema.parse(req.body);
-    const updated = await prisma.worker.update({ where: { id: worker.id }, data: body });
+    const updated = await prisma.worker.update({ where: { id: worker.id }, data: normalizeWorkerData(body) });
     const { hourlyWage, dailyPaymentAmount, internalNotes, ...safe } = updated;
     return safe;
   });
@@ -433,7 +456,7 @@ export async function workersRoutes(app: FastifyInstance) {
         },
       });
     }
-    const worker = await prisma.worker.create({ data: { ...body, userId } });
+    const worker = await prisma.worker.create({ data: { ...normalizeWorkerData(body), userId } });
     reply.status(201);
     return worker;
   });
@@ -441,7 +464,19 @@ export async function workersRoutes(app: FastifyInstance) {
   app.patch('/:id', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = UpdateWorkerSchema.parse(req.body);
-    return prisma.worker.update({ where: { id }, data: body as any });
+    const user = (req as any).user;
+    const includesSensitiveFinancials = [
+      'hourlyWage',
+      'dailyPaymentAmount',
+      'bankNumber',
+      'bankBranch',
+      'bankAccountNumber',
+      'bankAccountHolder',
+    ].some((field) => Object.prototype.hasOwnProperty.call(body, field));
+    if (user.role !== UserRole.OWNER && includesSensitiveFinancials) {
+      return reply.status(403).send({ error: 'Only the owner may update sensitive financial details' });
+    }
+    return prisma.worker.update({ where: { id }, data: normalizeWorkerData(body) as any });
   });
 
   // Admin: invite / link a worker to a login account by email.
