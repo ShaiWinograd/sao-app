@@ -138,8 +138,10 @@ test.describe('Dashboard urgent and workflow sections', () => {
           customerReportReady: 0,
           todayInReservation: 0,
           pastNotCompleted: 0,
+          missingExactAddress: 0,
           todayInReservationJobs: [],
           pastNotCompletedJobs: [],
+          missingExactAddressJobs: [],
         }),
       });
     });
@@ -155,6 +157,52 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await expect(page.getByRole('button', { name: 'יצירת עבודה', exact: true })).toHaveCount(0);
     await expect(page.getByTestId('dashboard-urgent-panel')).toHaveCount(0);
     await expect(page.getByTestId('owner-calendar-scroll')).toBeVisible();
+    await page.getByRole('button', { name: 'פעולות מהירות' }).click();
+    await expect(page.getByRole('button', { name: 'יצירת עבודה', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'הזמנת עובדת' })).toHaveAttribute('href', '/workers?action=invite');
+    await expect(page.getByRole('link', { name: 'ניהול עובדות וארכיון' })).toHaveAttribute('href', '/workers');
+    await expect(page.getByRole('link', { name: 'הגדרות התראות' })).toHaveAttribute('href', '/settings?section=notifications');
+  });
+
+  test('shows management actions with a 72-hour exact-address warning', async ({ page }) => {
+    await page.unroute('**/api/v1/admin/tasks');
+    await page.route('**/api/v1/admin/tasks', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          joinRequests: 0,
+          pendingAcceptance: 0,
+          replacementRequests: 0,
+          swapApprovals: 0,
+          attendanceReview: 0,
+          reportCorrections: 0,
+          customerReportReady: 0,
+          todayInReservation: 0,
+          pastNotCompleted: 0,
+          missingExactAddress: 1,
+          todayInReservationJobs: [],
+          pastNotCompletedJobs: [],
+          missingExactAddressJobs: [{
+            jobId: 'job-1',
+            date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+            plannedStart: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+            status: 'APPROVED',
+            customerName: 'נועה לוי',
+            jobType: 'PACKING',
+            address: 'תל אביב',
+          }],
+        }),
+      });
+    });
+
+    await page.goto('/dashboard');
+    await expect(page.getByText('פעולות ניהול', { exact: true })).toBeVisible();
+    const addressAction = page.getByTestId('attention-missingExactAddress');
+    await expect(addressAction.getByText('פעולה נדרשת', { exact: true })).toBeVisible();
+    await expect(addressAction.getByText('השלמת כתובת לפני העבודה', { exact: true })).toBeVisible();
+    await addressAction.getByRole('button').click();
+    await expect(page.getByRole('button', { name: /נועה לוי/ })).toBeVisible();
   });
 
   test('uses the full viewport and a navigation drawer on mobile', async ({ page }) => {
@@ -235,6 +283,12 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await expect(page.getByText('10:00–13:30', { exact: true })).toBeVisible();
     const calendarScroll = page.getByTestId('owner-calendar-scroll');
     expect(await calendarScroll.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+    await calendarScroll.evaluate((element) => {
+      element.scrollTop = 80;
+    });
+    await expect.poll(() => calendarScroll.evaluate((element) => element.scrollTop)).toBe(80);
+    await expect(calendarScroll).toHaveCSS('touch-action', 'pan-x pan-y');
+    await expect(page.getByText('סטטוס עבודות', { exact: true })).toBeVisible();
     const dateActions = page.getByRole('button', { name: `פעולות לתאריך ${tomorrow}` });
     await expect(dateActions).toBeVisible();
     await expect(page.getByRole('link', { name: 'החלפות משמרות' })).toBeVisible();
