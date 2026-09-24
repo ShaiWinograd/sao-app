@@ -31,6 +31,8 @@ az acr credential show --name <your-acr-name> --query "{username:username,passwo
 
 - Variable:
   - `CONTAINER_REGISTRY_SERVER` (e.g. `myacr.azurecr.io`)
+  - `NEXT_PUBLIC_APP_URL` (for example `https://app.spaceandorder.co`)
+  - `CORS_EXTRA_ORIGINS` (comma-separated browser origins; normally the same custom app URL)
 - Secrets:
   - `CONTAINER_REGISTRY_USERNAME`
   - `CONTAINER_REGISTRY_PASSWORD`
