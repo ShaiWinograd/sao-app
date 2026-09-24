@@ -50,6 +50,8 @@ jobs:
     environment: production
     env:
       CONTAINER_REGISTRY_SERVER: ${{ vars.CONTAINER_REGISTRY_SERVER }}
+      NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL != '' && vars.NEXT_PUBLIC_APP_URL || 'https://spaceorder-web-app-poc2.azurewebsites.net' }}
+      CORS_EXTRA_ORIGINS: ${{ vars.CORS_EXTRA_ORIGINS != '' && vars.CORS_EXTRA_ORIGINS || vars.NEXT_PUBLIC_APP_URL }}
     steps:
       - name: Validate deployment configuration
         env:
@@ -143,7 +145,6 @@ jobs:
         env:
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL != '' && vars.NEXT_PUBLIC_API_URL || 'https://spaceorder-api-app-poc-h7hef6a2gtd5euhq.israelcentral-01.azurewebsites.net/api/v1' }}
-          NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL != '' && vars.NEXT_PUBLIC_APP_URL || 'https://spaceorder-web-app-poc2.azurewebsites.net' }}
         run: |
           set -euo pipefail
           WEB_IMAGE="$CONTAINER_REGISTRY_SERVER/$IMAGE_NAME_PREFIX-web:$IMAGE_TAG"
@@ -362,7 +363,11 @@ jobs:
           az webapp config appsettings set \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_API_APP_NAME" \
-            --settings WEBSITES_PORT=3001 API_PORT=3001 >/dev/null
+            --settings \
+              WEBSITES_PORT=3001 \
+              API_PORT=3001 \
+              NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
+              CORS_EXTRA_ORIGINS="$CORS_EXTRA_ORIGINS" >/dev/null
 
           az webapp config set \
             --resource-group "$AZURE_RESOURCE_GROUP" \
