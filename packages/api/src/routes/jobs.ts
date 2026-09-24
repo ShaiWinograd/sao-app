@@ -426,6 +426,7 @@ export async function jobsRoutes(app: FastifyInstance) {
       .optional(),
     requiredWorkerCount: z.number().int().min(1),
     requiresTeamLeader: z.boolean().optional(),
+    staffingMode: z.enum(['AUTO_APPROVE', 'MANAGER_APPROVAL']).optional(),
     initialStatus: z.enum(['RESERVATION', 'APPROVED']).optional(),
     notes: z.string().optional(),
     traineeName: z.string().trim().min(1).optional(),
@@ -438,6 +439,18 @@ export async function jobsRoutes(app: FastifyInstance) {
 
   app.post('/quick', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const body = QuickJobSchema.parse(req.body);
+    const replay = body.idempotencyKey
+      ? await prisma.job.findFirst({ where: { idempotencyKey: body.idempotencyKey }, select: { id: true } })
+      : null;
+    if (!replay) {
+      const activeWorkerCount = await prisma.worker.count({ where: { isActive: true } });
+      if (body.requiredWorkerCount > activeWorkerCount) {
+        return reply.status(400).send({
+          error: 'WORKER_COUNT_EXCEEDS_ACTIVE',
+          message: `ניתן לבקש עד ${activeWorkerCount} עובדות פעילות.`,
+        });
+      }
+    }
 
     // ALL orchestration (fast-path replay → address resolution → in-transaction
     // customer/case/address/job creation after the idempotency lock) lives in the
