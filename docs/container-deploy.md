@@ -42,20 +42,24 @@ App Service platform CORS allowlist, then verifies a real browser preflight.
   - `AZURE_CREDENTIALS`
   - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` — must be the production `pk_live_...` key
 
-4. Configure the matching Clerk production secret on the API App Service:
+4. Configure the matching Clerk production secret on both App Services:
 
 ```bash
 read -s CLERK_SECRET_KEY
-az webapp config appsettings set \
-  --resource-group workforce-rg \
-  --name spaceorder-api-app-poc \
-  --settings CLERK_SECRET_KEY="$CLERK_SECRET_KEY"
+for app in spaceorder-api-app-poc spaceorder-web-app-poc2; do
+  az webapp config appsettings set \
+    --resource-group workforce-rg \
+    --name "$app" \
+    --settings CLERK_SECRET_KEY="$CLERK_SECRET_KEY"
+done
 unset CLERK_SECRET_KEY
 ```
 
 Use the `sk_live_...` key from the same Clerk production instance as the
-publishable key. The production deployment fails before building or deploying if
-either application is configured with Clerk development keys.
+publishable key. The web service needs it for Clerk middleware validation, while
+the API uses it for authenticated API requests. The production deployment reads
+the validated API key and applies that same value to the web service, preventing
+the two services from validating sessions against different Clerk instances.
 
 ## Deploy
 
