@@ -37,6 +37,7 @@ export interface QuickJobInput {
   address?: AddressInput;
   requiredWorkerCount: number;
   requiresTeamLeader?: boolean;
+  staffingMode?: 'AUTO_APPROVE' | 'MANAGER_APPROVAL';
   initialStatus?: 'RESERVATION' | 'APPROVED';
   notes?: string;
   traineeName?: string;
@@ -141,6 +142,7 @@ export async function createQuickJob(
         plannedStart,
         plannedEnd,
         requiredWorkerCount: body.requiredWorkerCount,
+        staffingMode: body.staffingMode ?? 'MANAGER_APPROVAL',
         jobNotes: body.notes ?? null,
         traineeName: body.traineeName?.trim() || null,
         traineeHourlyWage: body.traineeName ? body.traineeHourlyWage ?? 0 : null,

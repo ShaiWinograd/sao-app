@@ -102,6 +102,17 @@ test.describe('Dashboard urgent and workflow sections', () => {
         ]),
       });
     });
+    await page.route('**/api/v1/workers/availability*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          { id: 'worker-michal', name: 'מיכל כהן', available: true },
+          { id: 'worker-noa', name: 'נועה לוי', available: true },
+          { id: 'worker-dana', name: 'דנה בר', available: false, reason: 'לא זמינה' },
+        ]),
+      });
+    });
 
     await page.route('**/api/v1/workers/calendar-availability*', async (route) => {
       const availableBlockDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleDateString('en-CA');
@@ -383,7 +394,15 @@ test.describe('Dashboard urgent and workflow sections', () => {
   });
 
   test('creates a job with the server-signed geocoded address selection', async ({ page }) => {
-    const submitted: { payload?: { address?: unknown; cityOrAddress?: unknown; initialStatus?: unknown } } = {};
+    const submitted: {
+      payload?: {
+        address?: unknown;
+        cityOrAddress?: unknown;
+        initialStatus?: unknown;
+        requiredWorkerCount?: unknown;
+        staffingMode?: unknown;
+      };
+    } = {};
     await page.route('**/api/v1/geocode/suggest', async (route) => {
       await route.fulfill({
         status: 200,
@@ -416,10 +435,24 @@ test.describe('Dashboard urgent and workflow sections', () => {
     });
 
     await page.goto('/jobs/new');
+    const quickCreateForm = page.locator('.quick-create-form');
     await expect(page.getByRole('button', { name: 'יצירת העבודה' })).toHaveCount(0);
     await expect(page.getByText('סטטוס התחלתי', { exact: true })).toHaveCount(0);
     await expect(page.getByText('מתלמדת', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'אושר', exact: true }).click();
+    await expect(quickCreateForm.getByText('מיכל כהן', { exact: true })).toBeHidden();
+    await quickCreateForm.getByText('מספר עובדות נדרש', { exact: true }).click();
+    const workerCount = quickCreateForm.getByLabel('מספר עובדות נדרש');
+    await expect(workerCount.locator('option')).toHaveCount(3);
+    await quickCreateForm.getByText('אישור בקשות הצטרפות', { exact: true }).click();
+    await quickCreateForm.getByLabel('הצטרפות אוטומטית').check();
+    await quickCreateForm.getByText('הזמנת עובדות מראש', { exact: true }).click();
+    await expect(quickCreateForm.getByText('מיכל כהן', { exact: true })).toBeVisible();
+    await quickCreateForm.getByRole('checkbox', { name: 'מיכל כהן' }).check();
+    await expect(quickCreateForm.getByRole('checkbox', { name: 'נועה לוי' })).toBeDisabled();
+    await expect(quickCreateForm.getByRole('checkbox', { name: /דנה בר/ })).toBeDisabled();
+    await workerCount.selectOption('3');
+    await expect(quickCreateForm.getByRole('checkbox', { name: 'נועה לוי' })).toBeEnabled();
+    await quickCreateForm.getByRole('button', { name: 'אושר', exact: true }).click();
     await expect(page.getByPlaceholder('שם פרטי')).toHaveAttribute('aria-invalid', 'true');
     await expect(page.getByPlaceholder('טלפון')).toHaveAttribute('aria-invalid', 'true');
     await expect(page.getByPlaceholder('רחוב, מספר ועיר')).toHaveAttribute('aria-invalid', 'true');
@@ -436,6 +469,8 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await expect.poll(() => submitted.payload).toBeDefined();
     expect(submitted.payload?.address).toEqual({ mode: 'selected', token: 'signed-address-token' });
     expect(submitted.payload?.initialStatus).toBe('APPROVED');
+    expect(submitted.payload?.requiredWorkerCount).toBe(3);
+    expect(submitted.payload?.staffingMode).toBe('AUTO_APPROVE');
     expect(submitted.payload).not.toHaveProperty('cityOrAddress');
   });
 });

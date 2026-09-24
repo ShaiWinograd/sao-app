@@ -72,11 +72,14 @@ export function QuickCreateForm({
   const [cityOrAddress, setCityOrAddress] = useState('');
   const [addressSelection, setAddressSelection] = useState<AddressSelection | null>(null);
   const [manualAddressConfirmed, setManualAddressConfirmed] = useState(false);
-  const [workerCount, setWorkerCount] = useState('2');
+  const [workerCount, setWorkerCount] = useState('1');
   const [requiresTeamLeader, setRequiresTeamLeader] = useState(true);
+  const [staffingMode, setStaffingMode] = useState<'AUTO_APPROVE' | 'MANAGER_APPROVAL'>('MANAGER_APPROVAL');
   const [notes, setNotes] = useState('');
   const [selectedWorkerIds, setSelectedWorkerIds] = useState<string[]>([]);
   const [workerCandidates, setWorkerCandidates] = useState<WorkerCandidate[]>([]);
+  const [workersLoading, setWorkersLoading] = useState(true);
+  const [workersLoadFailed, setWorkersLoadFailed] = useState(false);
   const [hasTrainee, setHasTrainee] = useState(false);
   const [traineeName, setTraineeName] = useState('');
   const [traineeHourlyWage, setTraineeHourlyWage] = useState('50');
@@ -96,8 +99,9 @@ export function QuickCreateForm({
     startTime !== '09:00' ||
     endTime !== '14:00' ||
     Boolean(cityOrAddress || addressSelection || manualAddressConfirmed) ||
-    workerCount !== '2' ||
+    workerCount !== '1' ||
     !requiresTeamLeader ||
+    staffingMode !== 'MANAGER_APPROVAL' ||
     Boolean(notes || selectedWorkerIds.length || hasTrainee || traineeName) ||
     traineeHourlyWage !== '50';
 
@@ -107,6 +111,8 @@ export function QuickCreateForm({
 
   useEffect(() => {
     void (async () => {
+      setWorkersLoading(true);
+      setWorkersLoadFailed(false);
       try {
         const auth = await authHeaders(getToken);
         const res = await api.get<WorkerCandidate[]>(
@@ -114,12 +120,22 @@ export function QuickCreateForm({
           auth,
         );
         setWorkerCandidates(res.data ?? []);
+        setWorkerCount((current) => {
+          const maximum = res.data.length;
+          return maximum > 0 && Number(current) > maximum ? String(maximum) : current;
+        });
         setSelectedWorkerIds((ids) => ids.filter((id) => res.data.some((candidate) => candidate.id === id && candidate.available)));
       } catch {
         setWorkerCandidates([]);
+        setWorkersLoadFailed(true);
+      } finally {
+        setWorkersLoading(false);
       }
     })();
   }, [date, requiresTeamLeader, getToken]);
+
+  const activeWorkerCount = workerCandidates.length;
+  const selectedWorkerLimitReached = selectedWorkerIds.length >= Number(workerCount);
 
   const searchCustomers = useCallback(
     async (term: string) => {
@@ -194,8 +210,16 @@ export function QuickCreateForm({
     } else if (!addressSelection && !manualAddressConfirmed) {
       nextFieldErrors.address = 'יש לבחור כתובת מהרשימה או לאשר שמירה ידנית.';
     }
-    if (!Number.isFinite(Number(workerCount)) || Number(workerCount) < 1) {
-      nextFieldErrors.workerCount = 'יש להזין לפחות עובדת אחת.';
+    if (activeWorkerCount < 1) {
+      nextFieldErrors.workerCount = workersLoadFailed
+        ? 'לא ניתן לטעון את רשימת העובדות הפעילות.'
+        : 'אין עובדות פעילות שניתן לשבץ.';
+    } else if (
+      !Number.isInteger(Number(workerCount)) ||
+      Number(workerCount) < 1 ||
+      Number(workerCount) > activeWorkerCount
+    ) {
+      nextFieldErrors.workerCount = `יש לבחור מספר שלם בין 1 ל-${activeWorkerCount}.`;
     }
     if (hasTrainee && !traineeName.trim()) {
       nextFieldErrors.traineeName = 'יש להזין שם מלא למתלמדת.';
@@ -233,6 +257,7 @@ export function QuickCreateForm({
           : { mode: 'manual' as const, text: cityOrAddress.trim(), confirmedUnresolved: true as const },
         requiredWorkerCount: Math.max(1, Number(workerCount) || 1),
         requiresTeamLeader,
+        staffingMode,
         initialStatus: status,
         notes: notes.trim() || undefined,
         selectedWorkerIds: status === 'APPROVED' ? selectedWorkerIds : [],
@@ -266,7 +291,7 @@ export function QuickCreateForm({
     } finally {
       setBusy(false);
     }
-  }, [generalReservation, selectedCustomerId, custFirst, custLast, custPhone, custEmail, jobType, date, startTime, endTime, cityOrAddress, addressSelection, manualAddressConfirmed, workerCount, requiresTeamLeader, notes, selectedWorkerIds, hasTrainee, traineeName, traineeHourlyWage, getToken, onCreated]);
+  }, [generalReservation, selectedCustomerId, custFirst, custLast, custPhone, custEmail, jobType, date, startTime, endTime, cityOrAddress, addressSelection, manualAddressConfirmed, workerCount, activeWorkerCount, workersLoadFailed, requiresTeamLeader, staffingMode, notes, selectedWorkerIds, hasTrainee, traineeName, traineeHourlyWage, getToken, onCreated]);
 
   return (
     <div className="quick-create-form space-y-0" dir="rtl">
@@ -439,15 +464,6 @@ export function QuickCreateForm({
             </label>
           ) : null}
         </label>
-        <label className="text-sm">
-          <span className="block text-gray-600 mb-1">מספר עובדים</span>
-          <input type="number" min={1} value={workerCount} onChange={(e) => { clearFieldError('workerCount'); setWorkerCount(e.target.value); }} aria-invalid={Boolean(fieldErrors.workerCount)} className={`w-full rounded-lg border px-2.5 py-2 ${fieldErrors.workerCount ? 'border-danger' : 'border-gray-300'}`} />
-          {fieldErrors.workerCount && <span className="mt-1 block text-xs text-danger">{fieldErrors.workerCount}</span>}
-        </label>
-        <label className="text-sm flex items-end gap-2 pb-2">
-          <input type="checkbox" checked={requiresTeamLeader} onChange={(e) => setRequiresTeamLeader(e.target.checked)} />
-          <span className="text-gray-700">דרוש ראש צוות</span>
-        </label>
         <label className="text-sm sm:col-span-2">
           <span className="block text-gray-600 mb-1">הערות (אופציונלי)</span>
           <input value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2.5 py-2" />
@@ -455,30 +471,106 @@ export function QuickCreateForm({
       </section>
 
       <section className="border-b border-[var(--color-border)] py-6">
-        <h2 className="text-sm font-semibold text-gray-900">הזמנת עובדות זמינות</h2>
-        <p className="mt-1 text-xs text-gray-500">העובדות שתבחרי יקבלו שיבוץ רק אם העבודה תאושר.</p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {workerCandidates.map((candidate) => (
-            <label
-              key={candidate.id}
-              className={`flex items-center justify-between border px-3 py-2 text-sm ${
-                candidate.available ? 'border-[var(--color-border)]' : 'border-gray-200 text-gray-400'
-              }`}
-            >
-              <span>{candidate.name}{candidate.available ? '' : ' · לא זמינה'}</span>
-              <input
-                type="checkbox"
-                disabled={!candidate.available}
-                checked={selectedWorkerIds.includes(candidate.id)}
-                onChange={(event) =>
-                  setSelectedWorkerIds((ids) =>
-                    event.target.checked ? [...ids, candidate.id] : ids.filter((id) => id !== candidate.id),
-                  )
-                }
-              />
-            </label>
-          ))}
-          {workerCandidates.length === 0 && <p className="text-xs text-gray-500">לא נמצאו עובדות זמינות לתאריך זה.</p>}
+        <h2 className="text-sm font-semibold text-gray-900">צוות ושיבוץ</h2>
+
+        <div className="mt-3 divide-y divide-[var(--color-border)] border-y border-[var(--color-border)]">
+          <details>
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3 text-sm">
+              <span>
+                <span className="block font-medium text-gray-900">מספר עובדות נדרש</span>
+                <span className="block text-xs text-gray-500">בין 1 למספר העובדות הפעילות</span>
+              </span>
+              <span className="font-semibold text-[var(--color-calendar-sage)]">{workerCount}</span>
+            </summary>
+            <div className="pb-4">
+              <select
+                value={workerCount}
+                onChange={(event) => {
+                  clearFieldError('workerCount');
+                  setWorkerCount(event.target.value);
+                  setSelectedWorkerIds((ids) => ids.slice(0, Number(event.target.value)));
+                }}
+                disabled={workersLoading || activeWorkerCount === 0}
+                aria-label="מספר עובדות נדרש"
+                aria-invalid={Boolean(fieldErrors.workerCount)}
+                className={`w-full border bg-[var(--color-surface)] px-3 py-2 text-sm ${fieldErrors.workerCount ? 'border-danger' : 'border-[var(--color-border-strong)]'}`}
+              >
+                {Array.from({ length: activeWorkerCount }, (_, index) => index + 1).map((count) => (
+                  <option key={count} value={count}>{count}</option>
+                ))}
+              </select>
+              {workersLoading && <p className="mt-1 text-xs text-gray-500">טוענת עובדות פעילות…</p>}
+              {fieldErrors.workerCount && <span className="mt-1 block text-xs text-danger">{fieldErrors.workerCount}</span>}
+            </div>
+          </details>
+
+          <details>
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3 text-sm">
+              <span>
+                <span className="block font-medium text-gray-900">אישור בקשות הצטרפות</span>
+                <span className="block text-xs text-gray-500">
+                  {staffingMode === 'MANAGER_APPROVAL' ? 'כל בקשה תחכה לאישורך' : 'עובדות יצטרפו אוטומטית כל עוד יש מקום'}
+                </span>
+              </span>
+              <span className="text-xs font-semibold text-[var(--color-calendar-sage)]">
+                {staffingMode === 'MANAGER_APPROVAL' ? 'נדרש אישור' : 'אוטומטי'}
+              </span>
+            </summary>
+            <div className="grid gap-2 pb-4 sm:grid-cols-2">
+              <label className={`cursor-pointer border px-3 py-3 text-sm ${staffingMode === 'MANAGER_APPROVAL' ? 'border-[var(--color-calendar-sage)] bg-[var(--color-calendar-sage-soft)]' : 'border-[var(--color-border)]'}`}>
+                <input type="radio" name="staffing-mode" value="MANAGER_APPROVAL" checked={staffingMode === 'MANAGER_APPROVAL'} onChange={() => setStaffingMode('MANAGER_APPROVAL')} className="ml-2" />
+                אני מאשרת כל בקשה
+              </label>
+              <label className={`cursor-pointer border px-3 py-3 text-sm ${staffingMode === 'AUTO_APPROVE' ? 'border-[var(--color-calendar-sage)] bg-[var(--color-calendar-sage-soft)]' : 'border-[var(--color-border)]'}`}>
+                <input type="radio" name="staffing-mode" value="AUTO_APPROVE" checked={staffingMode === 'AUTO_APPROVE'} onChange={() => setStaffingMode('AUTO_APPROVE')} className="ml-2" />
+                הצטרפות אוטומטית
+              </label>
+            </div>
+          </details>
+
+          <details>
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3 text-sm">
+              <span>
+                <span className="block font-medium text-gray-900">הזמנת עובדות מראש</span>
+                <span className="block text-xs text-gray-500">אופציונלי · רק עובדות זמינות ניתנות לבחירה</span>
+              </span>
+              <span className="text-xs font-semibold text-[var(--color-calendar-sage)]">{selectedWorkerIds.length} נבחרו</span>
+            </summary>
+            <div className="grid gap-2 pb-4 sm:grid-cols-2">
+              {workerCandidates.map((candidate) => {
+                const selected = selectedWorkerIds.includes(candidate.id);
+                return (
+                  <label
+                    key={candidate.id}
+                    className={`flex items-center justify-between border px-3 py-2 text-sm ${
+                      candidate.available ? 'border-[var(--color-border)]' : 'border-gray-200 text-gray-400'
+                    }`}
+                  >
+                    <span>{candidate.name}{candidate.available ? '' : ' · לא זמינה'}</span>
+                    <input
+                      type="checkbox"
+                      disabled={!candidate.available || (!selected && selectedWorkerLimitReached)}
+                      checked={selected}
+                      onChange={(event) =>
+                        setSelectedWorkerIds((ids) =>
+                          event.target.checked ? [...ids, candidate.id] : ids.filter((id) => id !== candidate.id),
+                        )
+                      }
+                    />
+                  </label>
+                );
+              })}
+              {!workersLoading && workerCandidates.length === 0 && <p className="text-xs text-gray-500">לא נמצאו עובדות פעילות.</p>}
+            </div>
+          </details>
+
+          <label className="flex items-center justify-between gap-3 py-3 text-sm">
+            <span>
+              <span className="block font-medium text-gray-900">נדרשת ראש צוות</span>
+              <span className="block text-xs text-gray-500">שמירת מקום ייעודי לעובדת עם הרשאת ראש צוות</span>
+            </span>
+            <input type="checkbox" checked={requiresTeamLeader} onChange={(event) => setRequiresTeamLeader(event.target.checked)} />
+          </label>
         </div>
       </section>
 

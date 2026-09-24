@@ -15,6 +15,7 @@ import { changeShiftRole } from '../domain/roleChange.js';
 import { isWorkerVisibleJob, WORKER_VISIBLE_JOB_STATUS } from '../domain/workerJobVisibility.js';
 import { AppError } from '../lib/errors.js';
 import { findEligibleReplacementCandidates } from '../domain/replacementCandidates.js';
+import { resolveJoinRequestPolicy } from '../domain/joinRequestPolicy.js';
 
 // After removing `outgoingShiftId`'s worker from `job`, does a team leader remain?
 // True when the job needs no leader, the incoming worker is leader-eligible, or
@@ -75,58 +76,90 @@ export async function shiftsRoutes(app: FastifyInstance) {
     if (!job) return reply.status(404).send({ error: 'Job not found' });
     if (!isWorkerVisibleJob(job.status)) return reply.status(400).send({ error: 'Job is not open for applications' });
 
-    // All join requests require owner approval in Version 1 (§12.2). The pending
-    // request immediately blocks the worker's full date (§12.1) — enforced by the
-    // shared same-day commitment guard inside the transaction. A per-job lock keeps
-    // the full-job check race-safe.
+    // A pending or auto-approved request immediately blocks the worker's full date
+    // (§12.1). A per-job lock keeps the capacity and team-leader decision race-safe.
     const shift = await prisma.$transaction(async (tx) => {
       await lockJob(tx, job.id);
-      await assertWorkerFreeOnDate(tx, worker.id, job.date, { plannedStart: job.plannedStart, plannedEnd: job.plannedEnd });
+      const lockedJob = await tx.job.findUnique({ where: { id: job.id }, include: { slots: true } });
+      if (!lockedJob || !isWorkerVisibleJob(lockedJob.status)) {
+        throw new AppError(409, 'JOB_NOT_OPEN', 'העבודה אינה פתוחה להצטרפות');
+      }
+      await assertWorkerFreeOnDate(tx, worker.id, lockedJob.date, {
+        plannedStart: lockedJob.plannedStart,
+        plannedEnd: lockedJob.plannedEnd,
+      });
 
       // Full job (§12.3): once the required normal positions are filled with
       // approved workers, no NEW join requests may be submitted. Extra requests
       // already pending remain pending until the owner rejects or approves them
       // as backups.
       const approvedNormal = await tx.shift.count({
-        where: { jobId: job.id, joinRequestStatus: 'APPROVED', assignmentRole: { in: ['REGULAR', 'TEAM_LEADER'] } },
+        where: { jobId: lockedJob.id, joinRequestStatus: 'APPROVED', assignmentRole: { in: ['REGULAR', 'TEAM_LEADER'] } },
       });
-      if (approvedNormal >= job.requiredWorkerCount) {
+      if (approvedNormal >= lockedJob.requiredWorkerCount) {
         throw new AppError(409, 'JOB_FULL', 'העבודה מלאה ולא ניתן להגיש בקשת הצטרפות חדשה');
+      }
+
+      const approvedLeaderCount = await tx.shift.count({
+        where: { jobId: lockedJob.id, joinRequestStatus: 'APPROVED', assignmentRole: 'TEAM_LEADER' },
+      });
+      const policy = resolveJoinRequestPolicy({
+        staffingMode: lockedJob.staffingMode,
+        requiredWorkerCount: lockedJob.requiredWorkerCount,
+        requiresLeader: lockedJob.slots.some((slot) => slot.requiredSkill === MANAGER_SKILL),
+        approvedNormalCount: approvedNormal,
+        approvedLeaderCount,
+        workerLeaderEligible: ((worker.skills as string[]) ?? []).includes(MANAGER_SKILL),
+      });
+      if (!policy.ok) {
+        throw new AppError(409, policy.code, policy.message);
       }
 
       const created = await tx.shift.create({
         data: {
           workerId: worker.id,
-          jobId: job.id,
+          jobId: lockedJob.id,
           slotId: body.slotId ?? null,
-          scheduledStart: job.plannedStart,
-          scheduledEnd: job.plannedEnd,
-          joinRequestStatus: 'PENDING',
+          scheduledStart: lockedJob.plannedStart,
+          scheduledEnd: lockedJob.plannedEnd,
+          joinRequestStatus: policy.joinRequestStatus,
+          assignmentRole: policy.assignmentRole,
           attendanceStatus: 'SCHEDULED',
           hourlyWageSnapshot: worker.hourlyWage,
           dailyPaymentSnapshot: worker.dailyPaymentAmount,
           workerNameSnapshot: `${worker.firstName} ${worker.lastName}`,
         },
       });
-      await logAudit(user, 'CREATE', 'Shift', created.id, null, { joinRequestStatus: 'PENDING', jobId: job.id, workerId: worker.id }, 'join-request', tx);
+      await logAudit(
+        user,
+        'CREATE',
+        'Shift',
+        created.id,
+        null,
+        { joinRequestStatus: created.joinRequestStatus, assignmentRole: policy.assignmentRole, jobId: lockedJob.id, workerId: worker.id },
+        policy.joinRequestStatus === 'APPROVED' ? 'join-auto-approved' : 'join-request',
+        tx,
+      );
       return created;
     });
 
-    // Notify the owners that a decision is waiting (spec §12.2, §7).
-    const owners = await prisma.user.findMany({
-      where: { role: { in: [UserRole.OWNER, UserRole.ADMIN] }, isActive: true },
-      select: { id: true },
-    });
-    const dk = job.date.toISOString().slice(0, 10);
-    if (owners.length) {
-      await prisma.notification.createMany({
-        data: owners.map((o) => ({
-          userId: o.id,
-          title: 'בקשת הצטרפות חדשה',
-          body: `${worker.firstName} ${worker.lastName} ביקש/ה להצטרף לעבודה בתאריך ${dk}.`,
-          data: { type: 'JOIN_REQUEST', shiftId: shift.id, jobId: job.id } as any,
-        })),
+    if (shift.joinRequestStatus === 'PENDING') {
+      // Notify the owners only when a decision is waiting.
+      const owners = await prisma.user.findMany({
+        where: { role: { in: [UserRole.OWNER, UserRole.ADMIN] }, isActive: true },
+        select: { id: true },
       });
+      const dk = job.date.toISOString().slice(0, 10);
+      if (owners.length) {
+        await prisma.notification.createMany({
+          data: owners.map((o) => ({
+            userId: o.id,
+            title: 'בקשת הצטרפות חדשה',
+            body: `${worker.firstName} ${worker.lastName} ביקש/ה להצטרף לעבודה בתאריך ${dk}.`,
+            data: { type: 'JOIN_REQUEST', shiftId: shift.id, jobId: job.id } as any,
+          })),
+        });
+      }
     }
 
     reply.status(201);

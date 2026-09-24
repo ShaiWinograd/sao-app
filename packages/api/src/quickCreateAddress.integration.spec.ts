@@ -192,7 +192,13 @@ maybe('PR-A Quick Create orchestration — idempotency + orphan safety (real cre
   it('two concurrent inline-newCustomer submissions with the same key create exactly one customer/case/address/job + expected slots', async () => {
     const owner = await seedOwner();
     const key = 'idem-concurrent-newcust';
-    const body = baseBody({ requiredWorkerCount: 2, requiresTeamLeader: true, idempotencyKey: key, address: { mode: 'selected', token: token() } });
+    const body = baseBody({
+      requiredWorkerCount: 2,
+      requiresTeamLeader: true,
+      staffingMode: 'AUTO_APPROVE',
+      idempotencyKey: key,
+      address: { mode: 'selected', token: token() },
+    });
     const [a, b] = await Promise.all([
       run(prisma, body, { actor: { id: owner.id } }),
       run(prisma, body, { actor: { id: owner.id } }),
@@ -202,6 +208,7 @@ maybe('PR-A Quick Create orchestration — idempotency + orphan safety (real cre
     const slots = await prisma.jobSlot.findMany({ where: { jobId: a.job.id } });
     expect(slots).toHaveLength(2);
     expect(slots.filter((s) => s.requiredSkill === 'SHIFT_LEADER')).toHaveLength(1);
+    expect(a.job.staffingMode).toBe('AUTO_APPROVE');
   });
 
   it('a replay with an expired token and inline newCustomer returns the original job without creating another customer', async () => {
