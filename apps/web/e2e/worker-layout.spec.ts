@@ -338,9 +338,14 @@ test.describe('Worker desktop layout', () => {
         ]),
       }),
     );
-    await page.route('**/api/v1/shifts/swaps/mine', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
-    );
+    let releaseSecondaryLoad = () => {};
+    const secondaryLoadPending = new Promise<void>((resolve) => {
+      releaseSecondaryLoad = resolve;
+    });
+    await page.route('**/api/v1/shifts/swaps/mine', async (route) => {
+      await secondaryLoadPending;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    });
     await page.route('**/api/v1/shifts/replacement-requests/open', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
     );
@@ -372,6 +377,8 @@ test.describe('Worker desktop layout', () => {
     });
 
     await page.goto('/worker');
+    await expect(page.getByRole('heading', { name: 'יומן' })).toBeVisible();
+    releaseSecondaryLoad();
 
     const today = new Date();
     const calendarEnd = new Date(today);

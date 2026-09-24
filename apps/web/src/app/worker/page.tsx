@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useAuth } from '@clerk/nextjs';
 import { israeliNonWorkingDayName } from '@workforce/shared';
 import { api, authHeaders } from '../../lib/api';
 import { PageHeader } from '../../components/ui/PageHeader';
-import { InlineAddressMap } from '../../components/maps/InlineAddressMap';
 import {
   jobTypeLabel,
   jobTypeBorderColor,
@@ -16,7 +16,13 @@ import {
   formatScheduledTime,
 } from '../../lib/worker';
 
+const InlineAddressMap = dynamic(
+  () => import('../../components/maps/InlineAddressMap').then((module) => module.InlineAddressMap),
+  { ssr: false },
+);
+
 type MyStatus = 'NONE' | 'APPROVED' | 'AWAITING_WORKER' | 'PENDING';
+type AuthConfig = Awaited<ReturnType<typeof authHeaders>>;
 
 type BoardShift = {
   jobId: string;
@@ -148,9 +154,9 @@ export default function WorkerShiftsPage() {
   const queryReplacementOpened = useRef(false);
   const queryFocusOpened = useRef(false);
 
-  const loadBoard = useCallback(async () => {
+  const loadBoard = useCallback(async (authOverride?: AuthConfig) => {
     try {
-      const auth = await authHeaders(getToken);
+      const auth = authOverride ?? await authHeaders(getToken);
       const res = await api.get<BoardShift[]>('/jobs/board', auth);
       setBoard(res.data ?? []);
     } catch {
@@ -158,9 +164,9 @@ export default function WorkerShiftsPage() {
     }
   }, [getToken]);
 
-  const loadSwaps = useCallback(async () => {
+  const loadSwaps = useCallback(async (authOverride?: AuthConfig) => {
     try {
-      const auth = await authHeaders(getToken);
+      const auth = authOverride ?? await authHeaders(getToken);
       const res = await api.get<SwapMine[]>('/shifts/swaps/mine', auth);
       setSwaps(res.data ?? []);
     } catch {
@@ -168,9 +174,9 @@ export default function WorkerShiftsPage() {
     }
   }, [getToken]);
 
-  const loadReplacements = useCallback(async () => {
+  const loadReplacements = useCallback(async (authOverride?: AuthConfig) => {
     try {
-      const auth = await authHeaders(getToken);
+      const auth = authOverride ?? await authHeaders(getToken);
       const res = await api.get<OpenReplacement[]>('/shifts/replacement-requests/open', auth);
       setReplacements(res.data ?? []);
     } catch {
@@ -178,9 +184,9 @@ export default function WorkerShiftsPage() {
     }
   }, [getToken]);
 
-  const loadAvailability = useCallback(async () => {
+  const loadAvailability = useCallback(async (authOverride?: AuthConfig) => {
     try {
-      const auth = await authHeaders(getToken);
+      const auth = authOverride ?? await authHeaders(getToken);
       const res = await api.get<AvailabilityBlock[]>('/workers/me/availability', auth);
       setAvailability(res.data ?? []);
     } catch {
@@ -188,13 +194,13 @@ export default function WorkerShiftsPage() {
     }
   }, [getToken]);
 
-  const loadDailyInfo = useCallback(async () => {
+  const loadDailyInfo = useCallback(async (authOverride?: AuthConfig) => {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
     const end = new Date(start);
     end.setMonth(end.getMonth() + 2);
     try {
-      const auth = await authHeaders(getToken);
+      const auth = authOverride ?? await authHeaders(getToken);
       const res = await api.get<DailyInfo[]>(
         `/daily-info?start=${toDateKey(start)}&end=${toDateKey(end)}`,
         auth,
@@ -206,11 +212,24 @@ export default function WorkerShiftsPage() {
   }, [getToken]);
 
   useEffect(() => {
+    let cancelled = false;
     void (async () => {
-      await Promise.all([loadBoard(), loadSwaps(), loadReplacements(), loadAvailability(), loadDailyInfo()]);
-      setLoading(false);
+      const auth = await authHeaders(getToken);
+      if (cancelled) return;
+      const boardRequest = loadBoard(auth);
+      void Promise.all([
+        loadSwaps(auth),
+        loadReplacements(auth),
+        loadAvailability(auth),
+        loadDailyInfo(auth),
+      ]);
+      await boardRequest;
+      if (!cancelled) setLoading(false);
     })();
-  }, [loadAvailability, loadBoard, loadDailyInfo, loadSwaps, loadReplacements]);
+    return () => {
+      cancelled = true;
+    };
+  }, [getToken, loadAvailability, loadBoard, loadDailyInfo, loadSwaps, loadReplacements]);
 
   const volunteer = useCallback(
     async (requestId: string, has: boolean) => {
