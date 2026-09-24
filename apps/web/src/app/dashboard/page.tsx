@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useUser, useAuth } from '@clerk/nextjs';
 import { dashboardIssueActionLabel, orderDashboardWorkflowSections, caseStatusLabel, caseStatusTone, type CaseStatusValue, type StatusTone, workerRowBadge, fillsRequiredSlot, workerRowAssignments, getStaffingIssueBreakdown, formatBusinessDate } from '@workforce/shared';
 import {
@@ -23,13 +24,20 @@ import {
   WandSparkles,
 } from 'lucide-react';
 import { getNonWorkingDayLabel, isWorkCreationBlockedDay } from '../../lib/non-working-days';
-import { QuickCreateForm } from '../../components/jobs/QuickCreateForm';
 import { JoinRequestsPanel } from '../../components/owner/JoinRequestsPanel';
 import { SidePanel } from '../../components/ui/SidePanel';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { api, authHeaders } from '../../lib/api';
-import { OwnerJobDetail } from '../../components/jobs/OwnerJobDetail';
 import { StaffingGapSummary } from '../../components/jobs/StaffingStateSummary';
+
+const OwnerJobDetail = dynamic(
+  () => import('../../components/jobs/OwnerJobDetail').then((module) => module.OwnerJobDetail),
+  { ssr: false, loading: () => <p className="p-6 text-sm text-gray-400">טוען פרטי עבודה…</p> },
+);
+const QuickCreateForm = dynamic(
+  () => import('../../components/jobs/QuickCreateForm').then((module) => module.QuickCreateForm),
+  { ssr: false, loading: () => <p className="text-sm text-gray-400">טוען טופס…</p> },
+);
 
 type JobType = 'אריזה' | 'פריקה' | 'סידור';
 type StaffingMode = 'auto' | 'approval';
