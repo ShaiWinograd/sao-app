@@ -35,7 +35,22 @@ az acr credential show --name <your-acr-name> --query "{username:username,passwo
   - `CONTAINER_REGISTRY_USERNAME`
   - `CONTAINER_REGISTRY_PASSWORD`
   - `AZURE_CREDENTIALS`
-  - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+  - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` — must be the production `pk_live_...` key
+
+4. Configure the matching Clerk production secret on the API App Service:
+
+```bash
+read -s CLERK_SECRET_KEY
+az webapp config appsettings set \
+  --resource-group workforce-rg \
+  --name spaceorder-api-app-poc \
+  --settings CLERK_SECRET_KEY="$CLERK_SECRET_KEY"
+unset CLERK_SECRET_KEY
+```
+
+Use the `sk_live_...` key from the same Clerk production instance as the
+publishable key. The production deployment fails before building or deploying if
+either application is configured with Clerk development keys.
 
 ## Deploy
 
@@ -102,4 +117,3 @@ When you hit that failure, perform a reviewed one-time manual reconciliation:
 > Never add `--accept-data-loss` to the workflow, and never add a fallback that
 > ignores a failed migration step. Destructive changes are always an explicit,
 > reviewed, one-time decision.
-

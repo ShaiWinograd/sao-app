@@ -66,6 +66,10 @@ jobs:
             echo "::error::NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is not configured in production environment secrets."
             exit 1
           fi
+          if [[ "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" != pk_live_* ]]; then
+            echo "::error::NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY must be a Clerk production key (pk_live_...). Development keys cannot be deployed to production."
+            exit 1
+          fi
           if [ -z "${CONTAINER_REGISTRY_SERVER}" ]; then
             echo "::error::CONTAINER_REGISTRY_SERVER must be configured as a production environment variable."
             exit 1
@@ -95,6 +99,23 @@ jobs:
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Validate production Clerk API key
+        run: |
+          set -euo pipefail
+          clerk_secret_key="$(az webapp config appsettings list \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_API_APP_NAME" \
+            --query "[?name=='CLERK_SECRET_KEY'].value | [0]" -o tsv)"
+          if [ -z "$clerk_secret_key" ]; then
+            echo "::error::CLERK_SECRET_KEY is not configured on $AZURE_API_APP_NAME."
+            exit 1
+          fi
+          echo "::add-mask::$clerk_secret_key"
+          if [[ "$clerk_secret_key" != sk_live_* ]]; then
+            echo "::error::CLERK_SECRET_KEY on $AZURE_API_APP_NAME must be a Clerk production key (sk_live_...)."
+            exit 1
+          fi
 
       - name: Set image metadata
         run: |
