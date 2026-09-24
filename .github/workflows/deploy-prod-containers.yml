@@ -369,6 +369,17 @@ jobs:
               NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
               CORS_EXTRA_ORIGINS="$CORS_EXTRA_ORIGINS" >/dev/null
 
+          IFS=',' read -ra cors_origins <<< "$CORS_EXTRA_ORIGINS"
+          for origin in "${cors_origins[@]}"; do
+            origin="$(echo "$origin" | xargs)"
+            if [ -n "$origin" ]; then
+              az webapp cors add \
+                --resource-group "$AZURE_RESOURCE_GROUP" \
+                --name "$AZURE_API_APP_NAME" \
+                --allowed-origins "$origin" >/dev/null
+            fi
+          done
+
           az webapp config set \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_API_APP_NAME" \
@@ -391,6 +402,17 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --silent --show-error "$AZURE_API_HEALTH_URL"
+          primary_origin="${CORS_EXTRA_ORIGINS%%,*}"
+          primary_origin="$(echo "$primary_origin" | xargs)"
+          cors_headers="$(curl --fail --silent --show-error --dump-header - --output /dev/null \
+            --request OPTIONS "${AZURE_API_HEALTH_URL%/health}/api/v1/auth/me" \
+            --header "Origin: $primary_origin" \
+            --header "Access-Control-Request-Method: GET" \
+            --header "Access-Control-Request-Headers: authorization")"
+          if ! echo "$cors_headers" | grep -Fqi "access-control-allow-origin: $primary_origin"; then
+            echo "::error::Production API CORS preflight did not allow $primary_origin."
+            exit 1
+          fi
 
       - name: Create deployment release
         if: success() && github.event.inputs.target == 'all'

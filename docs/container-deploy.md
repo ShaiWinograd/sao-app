@@ -33,6 +33,9 @@ az acr credential show --name <your-acr-name> --query "{username:username,passwo
   - `CONTAINER_REGISTRY_SERVER` (e.g. `myacr.azurecr.io`)
   - `NEXT_PUBLIC_APP_URL` (for example `https://app.spaceandorder.co`)
   - `CORS_EXTRA_ORIGINS` (comma-separated browser origins; normally the same custom app URL)
+
+The deployment writes `CORS_EXTRA_ORIGINS` to both the API application and the
+App Service platform CORS allowlist, then verifies a real browser preflight.
 - Secrets:
   - `CONTAINER_REGISTRY_USERNAME`
   - `CONTAINER_REGISTRY_PASSWORD`
