@@ -11,6 +11,23 @@ describe('decideAuthorizedRole (trusted authorization rule)', () => {
     expect(decideAuthorizedRole({ metaRole: UserRole.OWNER, hasWorkerMatch: false })).toBe(UserRole.OWNER);
   });
 
+  it('restores an existing privileged account from its verified email match', () => {
+    expect(
+      decideAuthorizedRole({
+        metaRole: undefined,
+        existingUserRole: UserRole.OWNER,
+        hasWorkerMatch: false,
+      }),
+    ).toBe(UserRole.OWNER);
+    expect(
+      decideAuthorizedRole({
+        metaRole: undefined,
+        existingUserRole: UserRole.ADMIN,
+        hasWorkerMatch: false,
+      }),
+    ).toBe(UserRole.ADMIN);
+  });
+
   it('grants an invited admin only the ADMIN role', () => {
     expect(decideAuthorizedRole({ metaRole: UserRole.ADMIN, hasWorkerMatch: false })).toBe(UserRole.ADMIN);
   });
@@ -20,9 +37,9 @@ describe('decideAuthorizedRole (trusted authorization rule)', () => {
   });
 
   it('never becomes OWNER when metadata is missing', () => {
-    expect(decideAuthorizedRole({ metaRole: undefined, hasWorkerMatch: false })).toBeNull();
-    expect(decideAuthorizedRole({ metaRole: null, hasWorkerMatch: false })).toBeNull();
-    expect(decideAuthorizedRole({ metaRole: '', hasWorkerMatch: false })).toBeNull();
+    expect(decideAuthorizedRole({ metaRole: undefined, existingUserRole: undefined, hasWorkerMatch: false })).toBeNull();
+    expect(decideAuthorizedRole({ metaRole: null, existingUserRole: null, hasWorkerMatch: false })).toBeNull();
+    expect(decideAuthorizedRole({ metaRole: '', existingUserRole: '', hasWorkerMatch: false })).toBeNull();
   });
 
   it('returns null for an unknown authenticated identity (no metadata, no worker match)', () => {
@@ -32,6 +49,13 @@ describe('decideAuthorizedRole (trusted authorization rule)', () => {
   it('does not grant WORKER from bare worker metadata without a Worker match', () => {
     // Worker access must be backed by an admin-created Worker record.
     expect(decideAuthorizedRole({ metaRole: UserRole.WORKER, hasWorkerMatch: false })).toBeNull();
+    expect(
+      decideAuthorizedRole({
+        metaRole: undefined,
+        existingUserRole: UserRole.WORKER,
+        hasWorkerMatch: false,
+      }),
+    ).toBeNull();
   });
 
   it('never infers a role from a truthy-but-unrecognized metadata value', () => {

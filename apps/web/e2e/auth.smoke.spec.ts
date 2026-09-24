@@ -10,13 +10,14 @@ test.describe('Auth smoke flow', () => {
   test('sign-in page is reachable', async ({ page }) => {
     await page.goto('/sign-in');
     await expect(page.getByText('Space & Order', { exact: true })).toBeVisible();
-    await expect(page.getByText('מערכת ניהול כוח אדם ותזמון משמרות')).toBeVisible();
-    await expect(page.getByText('הכניסה מיועדת לעובדות ולמנהלות שהוזמנו למערכת')).toBeVisible();
+    await expect(page.getByText('ניהול צוות ולוח שנה')).toBeVisible();
+    await expect(page.getByText('הכניסה מיועדת לחשבונות צוות קיימים. עובדות חדשות מצטרפות באמצעות הזמנה.')).toBeVisible();
+    await expect(page.getByText('SAO', { exact: true })).toHaveCount(0);
   });
 
   test('sign-up page is reachable', async ({ page }) => {
     await page.goto('/sign-up');
-    await expect(page.getByText('Space & Order')).toBeVisible();
-    await expect(page.getByText('יצירת חשבון חדש למנהלי משמרות')).toBeVisible();
+    await expect(page.getByText('Space & Order', { exact: true })).toBeVisible();
+    await expect(page.getByText('פתיחת חשבון חדש מתבצעת באמצעות הזמנה.')).toBeVisible();
   });
 });

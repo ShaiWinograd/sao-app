@@ -4,6 +4,7 @@ import { UserRole } from '@workforce/shared';
  * Central, trusted authorization rule for the whole system.
  *
  * Access is granted ONLY from explicit, server-controlled ("trusted") data:
+ *   - an active Owner/Admin record whose email matches the verified Clerk email;
  *   - an explicit Owner/Admin role in Clerk `publicMetadata` (only settable via
  *     the Clerk backend API by an admin — a user cannot set their own); or
  *   - an email that matches a pre-registered Worker record (created by an admin).
@@ -23,8 +24,13 @@ export type AuthorizedRole = UserRole.OWNER | UserRole.ADMIN | UserRole.WORKER;
  */
 export function decideAuthorizedRole(input: {
   metaRole: unknown;
+  existingUserRole?: unknown;
   hasWorkerMatch: boolean;
 }): AuthorizedRole | null {
+  // Existing privileged accounts remain authoritative when the Clerk identity
+  // changes but the verified email stays the same.
+  if (input.existingUserRole === UserRole.OWNER) return UserRole.OWNER;
+  if (input.existingUserRole === UserRole.ADMIN) return UserRole.ADMIN;
   // Privileged roles come exclusively from explicit, admin-set Clerk metadata.
   if (input.metaRole === UserRole.OWNER) return UserRole.OWNER;
   if (input.metaRole === UserRole.ADMIN) return UserRole.ADMIN;

@@ -36,6 +36,12 @@ export async function authenticate(req: FastifyRequest, reply: FastifyReply) {
       try {
         const clerkUser = await clerk.users.getUser(payload.sub);
         const email = clerkUser.emailAddresses[0]?.emailAddress ?? '';
+        const existingEmailUser = email
+          ? await prisma.user.findUnique({ where: { email } })
+          : null;
+        if (existingEmailUser && !existingEmailUser.isActive) {
+          return reply.status(401).send({ error: 'User is inactive' });
+        }
         // If an admin already created a worker profile with this email, onboard
         // this login as that worker (role WORKER + link the profile to the Clerk
         // user so `/workers/me` resolves).
@@ -44,9 +50,14 @@ export async function authenticate(req: FastifyRequest, reply: FastifyReply) {
           : null;
         const metaRole = clerkUser.publicMetadata?.role as UserRole | undefined;
         // Authorization comes ONLY from trusted data: an explicit owner/admin
-        // role set in Clerk metadata by an admin, or a pre-registered Worker
-        // match. There is no fallback role — an unknown first login is blocked.
-        const role = decideAuthorizedRole({ metaRole, hasWorkerMatch: Boolean(matchedWorker) });
+        // role set in Clerk metadata by an admin, an existing active privileged
+        // account with the same verified email, or a pre-registered Worker match.
+        // There is no fallback role — an unknown first login is blocked.
+        const role = decideAuthorizedRole({
+          metaRole,
+          existingUserRole: existingEmailUser?.role,
+          hasWorkerMatch: Boolean(matchedWorker),
+        });
         if (!role) {
           // Authenticated but not authorized: never create a User/Worker record
           // and never expose data — respond 403. Log the bootstrap denial once
@@ -60,12 +71,26 @@ export async function authenticate(req: FastifyRequest, reply: FastifyReply) {
           return reply.status(403).send({ error: 'Not authorized' });
         }
 
+        if (
+          existingEmailUser &&
+          (existingEmailUser.role === UserRole.OWNER || existingEmailUser.role === UserRole.ADMIN)
+        ) {
+          dbUser = existingEmailUser;
+          await clerk.users
+            .updateUserMetadata(payload.sub, { publicMetadata: { role: existingEmailUser.role } })
+            .catch(() => undefined);
+          req.log.info(
+            { userId: payload.sub, role: existingEmailUser.role },
+            'Restored existing privileged user from verified email',
+          );
+        }
+
         // A worker added via the admin page has a placeholder user holding this
         // email (User.email is unique). Free that email so the real Clerk account
         // can claim it, otherwise the create below fails with a unique violation.
-        if (email) {
-          const placeholder = await prisma.user.findUnique({ where: { email }, select: { id: true } });
-          if (placeholder && placeholder.id !== payload.sub) {
+        if (!dbUser && existingEmailUser && existingEmailUser.id !== payload.sub) {
+          const placeholder = existingEmailUser;
+          if (placeholder.role === UserRole.WORKER) {
             await prisma.user.update({
               where: { id: placeholder.id },
               data: { email: `migrated+${placeholder.id}@spaceorder.local`, isActive: false },
@@ -73,18 +98,20 @@ export async function authenticate(req: FastifyRequest, reply: FastifyReply) {
           }
         }
 
-        dbUser = await prisma.user.upsert({
-          where: { id: payload.sub },
-          update: { email, firstName: clerkUser.firstName ?? '', lastName: clerkUser.lastName ?? '' },
-          create: {
-            id: payload.sub,
-            email,
-            firstName: clerkUser.firstName ?? '',
-            lastName: clerkUser.lastName ?? '',
-            role,
-            isActive: true,
-          },
-        });
+        if (!dbUser) {
+          dbUser = await prisma.user.upsert({
+            where: { id: payload.sub },
+            update: { email, firstName: clerkUser.firstName ?? '', lastName: clerkUser.lastName ?? '' },
+            create: {
+              id: payload.sub,
+              email,
+              firstName: clerkUser.firstName ?? '',
+              lastName: clerkUser.lastName ?? '',
+              role,
+              isActive: true,
+            },
+          });
+        }
         if (role === UserRole.WORKER && matchedWorker && matchedWorker.userId !== dbUser.id) {
           // Point the worker profile at the real Clerk user, then drop the now
           // orphaned placeholder user (best-effort; it has no other references).

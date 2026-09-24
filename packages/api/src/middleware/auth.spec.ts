@@ -135,6 +135,64 @@ describe('authenticate — provisioning authorization', () => {
     expect(req.user.role).toBe(UserRole.ADMIN);
   });
 
+  it('restores an existing owner when the Clerk identity changed but the verified email matches', async () => {
+    const owner = {
+      id: 'existing-owner',
+      email: 'owner@example.com',
+      firstName: 'O',
+      lastName: 'Wner',
+      role: UserRole.OWNER,
+      isActive: true,
+    };
+    verifyToken.mockResolvedValue({ sub: 'new-clerk-owner-id' });
+    prismaUser.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(owner);
+    getUser.mockResolvedValue({
+      emailAddresses: [{ emailAddress: owner.email }],
+      firstName: owner.firstName,
+      lastName: owner.lastName,
+      publicMetadata: {},
+    });
+    prismaWorker.findUnique.mockResolvedValue(null);
+    updateUserMetadata.mockResolvedValue(undefined);
+
+    const req = makeReq();
+    const reply = makeReply();
+    await authenticate(req, reply as any);
+
+    expect(reply.statusCode).toBe(0);
+    expect(prismaUser.upsert).not.toHaveBeenCalled();
+    expect(req.user).toEqual(owner);
+    expect(updateUserMetadata).toHaveBeenCalledWith('new-clerk-owner-id', {
+      publicMetadata: { role: UserRole.OWNER },
+    });
+  });
+
+  it('does not restore an inactive privileged account by email', async () => {
+    verifyToken.mockResolvedValue({ sub: 'new-clerk-owner-id' });
+    prismaUser.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'inactive-owner',
+        email: 'owner@example.com',
+        role: UserRole.OWNER,
+        isActive: false,
+      });
+    getUser.mockResolvedValue({
+      emailAddresses: [{ emailAddress: 'owner@example.com' }],
+      publicMetadata: {},
+    });
+
+    const req = makeReq();
+    const reply = makeReply();
+    await authenticate(req, reply as any);
+
+    expect(reply.statusCode).toBe(401);
+    expect(prismaUser.upsert).not.toHaveBeenCalled();
+    expect(req.user).toBeUndefined();
+  });
+
   it('keeps an existing OWNER working (role read fresh from the DB)', async () => {
     verifyToken.mockResolvedValue({ sub: 'owner-1' });
     prismaUser.findUnique.mockResolvedValue({ id: 'owner-1', role: UserRole.OWNER, isActive: true });
