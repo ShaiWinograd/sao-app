@@ -385,6 +385,12 @@ test.describe('Worker desktop layout', () => {
     const calendarEndKey = `${calendarEnd.getFullYear()}-${String(calendarEnd.getMonth() + 1).padStart(2, '0')}-${String(calendarEnd.getDate()).padStart(2, '0')}`;
     const nextDateKey = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
     const openDateKey = `${openDate.getFullYear()}-${String(openDate.getMonth() + 1).padStart(2, '0')}-${String(openDate.getDate()).padStart(2, '0')}`;
+    const selectedFutureDate = new Date(today);
+    selectedFutureDate.setDate(selectedFutureDate.getDate() + 30);
+    while (israeliNonWorkingDayName(selectedFutureDate)) {
+      selectedFutureDate.setDate(selectedFutureDate.getDate() + 1);
+    }
+    const selectedFutureDateKey = `${selectedFutureDate.getFullYear()}-${String(selectedFutureDate.getMonth() + 1).padStart(2, '0')}-${String(selectedFutureDate.getDate()).padStart(2, '0')}`;
     const nextSaturday = new Date(today);
     nextSaturday.setDate(today.getDate() + ((6 - today.getDay() + 7) % 7));
     const nextSaturdayKey = `${nextSaturday.getFullYear()}-${String(nextSaturday.getMonth() + 1).padStart(2, '0')}-${String(nextSaturday.getDate()).padStart(2, '0')}`;
@@ -396,6 +402,17 @@ test.describe('Worker desktop layout', () => {
     await expect(page.locator('[data-worker-indicator="shift"]').first()).toHaveClass(/h-1\.5 w-1\.5/);
     await expect(page.locator(`#worker-day-${nextDateKey}`)).toBeInViewport();
     await expect(page.locator(`[data-worker-date="${nextDateKey}"]`)).toBeInViewport();
+    await page.locator(`[data-worker-date="${selectedFutureDateKey}"]`).click();
+    await expect(page.locator(`#worker-day-${selectedFutureDateKey}`)).toBeInViewport();
+    await expect(page.locator(`[data-worker-date="${selectedFutureDateKey}"]`)).toHaveClass(/bg-primary-700/);
+    const selectedDayPosition = await page.locator(`#worker-day-${selectedFutureDateKey}`).evaluate((element) => {
+      const stickyCalendar = document.querySelector<HTMLElement>('[data-worker-calendar-sticky]')!;
+      return {
+        dayTop: element.getBoundingClientRect().top,
+        stickyBottom: stickyCalendar.getBoundingClientRect().bottom,
+      };
+    });
+    expect(Math.abs(selectedDayPosition.dayTop - selectedDayPosition.stickyBottom - 8)).toBeLessThan(3);
     await expect(page.getByRole('heading', { name: 'יומן' })).toBeVisible();
     await expect(page.getByText('העבודה הבאה')).toBeVisible();
     const nextJobRibbon = page.getByRole('button', { name: /העבודה הבאה/ });

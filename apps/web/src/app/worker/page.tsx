@@ -487,9 +487,18 @@ export default function WorkerShiftsPage() {
 
   const selectDate = useCallback((dateKey: string) => {
     setSelectedDate(dateKey);
-    window.setTimeout(() => {
-      document.getElementById(`worker-day-${dateKey}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 0);
+    const scrollContainer = document.querySelector<HTMLElement>('.app-main');
+    const target = document.getElementById(`worker-day-${dateKey}`);
+    const stickyCalendar = document.querySelector<HTMLElement>('[data-worker-calendar-sticky]');
+    if (!scrollContainer || !target) return;
+
+    const containerTop = scrollContainer.getBoundingClientRect().top;
+    const targetTop = target.getBoundingClientRect().top;
+    const stickyHeight = stickyCalendar?.getBoundingClientRect().height ?? 0;
+    scrollContainer.scrollTo({
+      top: Math.max(0, scrollContainer.scrollTop + targetTop - containerTop - stickyHeight - 8),
+      behavior: 'auto',
+    });
   }, []);
 
   useEffect(() => {
@@ -642,6 +651,7 @@ export default function WorkerShiftsPage() {
 
       <section
         className="sticky top-0 z-30 -mx-3 bg-[var(--color-background)] px-3 pb-3 pt-2 sm:-mx-6 sm:px-6"
+        data-worker-calendar-sticky
         data-swipe-navigation="ignore"
       >
         <div className="mx-auto mb-3 flex max-w-[900px] flex-wrap items-end justify-between gap-3">
