@@ -95,7 +95,11 @@ test.describe('Worker detail page', () => {
     });
     await page.route('**/api/v1/workers/worker-english/link-login', async (route) => {
       reinvited = true;
-      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true}' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '{"linked":true,"existingAccount":true}',
+      });
     });
     page.on('dialog', (dialog) => dialog.accept());
 
@@ -126,6 +130,7 @@ test.describe('Worker detail page', () => {
     await page.getByRole('button', { name: 'שליחת הזמנה מחדש' }).click();
     await page.getByRole('button', { name: 'אישור' }).click();
     await expect.poll(() => reinvited).toBe(true);
+    await expect(page.getByText('שי וינוגרד חוברה לחשבון הקיים ויכולה להיכנס לאפליקציה.')).toBeVisible();
 
     await page.getByRole('button', { name: 'ניהול צוות' }).click();
     await page.getByRole('button', { name: 'העברה לארכיון' }).click();

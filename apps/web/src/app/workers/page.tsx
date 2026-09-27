@@ -411,8 +411,12 @@ export default function WorkersPage() {
           setMessage('כתובת האימייל לא תקינה.');
           return;
         }
-        await api.post(`/workers/${selected.id}/link-login`, { email });
-        setMessage(`נשלחה הזמנה ל-${selected.name}.`);
+        const result = await api.post<{ linked?: boolean }>(`/workers/${selected.id}/link-login`, { email });
+        setMessage(
+          result.data.linked
+            ? `${selected.name} חוברה לחשבון הקיים ויכולה להיכנס לאפליקציה.`
+            : `נשלחה הזמנה ל-${selected.name}.`,
+        );
       } else if (teamAction === 'archive') {
         if (!window.confirm(`להעביר את ${selected.name} לארכיון עובדים?`)) return;
         await api.delete(`/workers/${selected.id}`);
