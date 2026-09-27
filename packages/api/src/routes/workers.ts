@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { createClerkClient } from '@clerk/clerk-sdk-node';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { findEligibleReplacementCandidates } from '../domain/replacementCandidates.js';
 import { authenticate, requireAdmin, requireAnyRole } from '../middleware/auth.js';
@@ -480,10 +481,8 @@ export async function workersRoutes(app: FastifyInstance) {
   });
 
   // Admin: invite / link a worker to a login account by email.
-  // - No account yet  → send a Clerk sign-up invitation (role WORKER) so the
-  //   worker gets an email with a sign-up link, and align the profile email so
-  //   first-login auto-links.
-  // - Account exists  → set it to role WORKER and relink the profile to it.
+  // - No Clerk account yet → replace any pending invitation and send a fresh one.
+  // - Clerk account exists → link the worker directly so the existing account can sign in.
   app.post('/:id/link-login', { preHandler: [authenticate, requireAdmin] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const email = String((req.body as any)?.email ?? '').trim().toLowerCase();
@@ -492,57 +491,106 @@ export async function workersRoutes(app: FastifyInstance) {
     const worker = await prisma.worker.findUnique({ where: { id } });
     if (!worker) return reply.status(404).send({ error: 'Worker not found' });
 
-    const loginUser = await prisma.user.findUnique({ where: { email } });
+    const emailWorker = await prisma.worker.findUnique({ where: { email } });
+    if (emailWorker && emailWorker.id !== worker.id) {
+      return reply.status(409).send({ error: 'Another worker already uses this email' });
+    }
 
-    if (!loginUser) {
-      // Align the profile email so the first sign-in links itself.
-      if (worker.email !== email) {
-        const emailTaken = await prisma.worker.findUnique({ where: { email } });
-        if (emailTaken && emailTaken.id !== worker.id) {
-          return reply.status(409).send({ error: 'Another worker already uses this email' });
+    if (!process.env.CLERK_SECRET_KEY) {
+      return reply.status(503).send({ error: 'Worker invitations are not configured' });
+    }
+
+    let clerkUser;
+    try {
+      const users = await clerk.users.getUserList({ emailAddress: [email], limit: 10 });
+      clerkUser = users.data.find((candidate) =>
+        candidate.emailAddresses.some((address) => address.emailAddress.toLowerCase() === email),
+      );
+    } catch (err) {
+      req.log.error({ err }, 'Failed to look up Clerk worker account');
+      return reply.status(502).send({ error: 'Could not check the worker login account' });
+    }
+
+    if (clerkUser) {
+      const [clerkDbUser, emailDbUser, linkedWorker] = await Promise.all([
+        prisma.user.findUnique({ where: { id: clerkUser.id } }),
+        prisma.user.findUnique({ where: { email } }),
+        prisma.worker.findUnique({ where: { userId: clerkUser.id } }),
+      ]);
+      if (linkedWorker && linkedWorker.id !== worker.id) {
+        return reply.status(409).send({ error: 'This login is already linked to another worker' });
+      }
+      const privilegedUser = [clerkDbUser, emailDbUser].find(
+        (candidate) =>
+          candidate &&
+          (candidate.role === UserRole.OWNER || candidate.role === UserRole.ADMIN),
+      );
+      if (privilegedUser) {
+        return reply.status(409).send({ error: 'This email belongs to an owner or administrator' });
+      }
+
+      const previousUserId = worker.userId;
+      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        if (previousUserId !== clerkUser.id) {
+          await tx.user.updateMany({
+            where: { id: previousUserId, email },
+            data: { email: `migrated+${previousUserId}@spaceorder.local`, isActive: false },
+          });
         }
-        await prisma.worker.update({ where: { id }, data: { email } });
-      }
-
-      // Send a Clerk invitation so the worker receives a sign-up link by email.
-      if (!process.env.CLERK_SECRET_KEY) {
-        return { invited: false, pendingFirstLogin: true };
-      }
-      try {
-        await clerk.invitations.createInvitation({
-          emailAddress: email,
-          publicMetadata: { role: UserRole.WORKER },
-          redirectUrl: process.env.NEXT_PUBLIC_APP_URL
-            ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')}/sign-up`
-            : undefined,
-          ignoreExisting: true,
+        await tx.user.upsert({
+          where: { id: clerkUser.id },
+          update: {
+            email,
+            firstName: clerkUser.firstName ?? worker.firstName,
+            lastName: clerkUser.lastName ?? worker.lastName,
+            role: UserRole.WORKER,
+            isActive: true,
+          },
+          create: {
+            id: clerkUser.id,
+            email,
+            firstName: clerkUser.firstName ?? worker.firstName,
+            lastName: clerkUser.lastName ?? worker.lastName,
+            role: UserRole.WORKER,
+            isActive: true,
+          },
         });
-        return { invited: true };
-      } catch (err) {
-        req.log.error({ err }, 'Failed to send Clerk worker invitation');
-        // A Clerk account may already exist without a DB user yet — she can just sign in.
-        return { invited: false, pendingFirstLogin: true };
+        await tx.worker.update({ where: { id }, data: { userId: clerkUser.id, email } });
+      });
+      await clerk.users.updateUserMetadata(clerkUser.id, {
+        publicMetadata: { role: UserRole.WORKER },
+      });
+      if (previousUserId !== clerkUser.id) {
+        await prisma.user.delete({ where: { id: previousUserId } }).catch(() => undefined);
       }
+      return { linked: true, existingAccount: true };
     }
 
-    // Make sure this login isn't already tied to a different worker.
-    const otherWorker = await prisma.worker.findUnique({ where: { userId: loginUser.id } });
-    if (otherWorker && otherWorker.id !== worker.id) {
-      return reply.status(409).send({ error: 'This login is already linked to another worker' });
+    if (worker.email !== email) {
+      await prisma.worker.update({ where: { id }, data: { email } });
     }
 
-    const previousUserId = worker.userId;
-    await prisma.worker.update({ where: { id }, data: { userId: loginUser.id, email } });
-    await prisma.user.update({ where: { id: loginUser.id }, data: { role: UserRole.WORKER } });
-    // Keep Clerk metadata in sync so the web app routes/guards this login as a worker.
-    await clerk.users
-      .updateUserMetadata(loginUser.id, { publicMetadata: { role: UserRole.WORKER } })
-      .catch(() => undefined);
-    // Remove the now-orphaned placeholder login (best-effort).
-    if (previousUserId && previousUserId !== loginUser.id) {
-      await prisma.user.delete({ where: { id: previousUserId } }).catch(() => undefined);
+    try {
+      const invitations = await clerk.invitations.getInvitationList({ status: 'pending', query: email });
+      const pendingForEmail = invitations.data.filter(
+        (invitation) => invitation.emailAddress.toLowerCase() === email,
+      );
+      await Promise.all(
+        pendingForEmail.map((invitation) => clerk.invitations.revokeInvitation(invitation.id)),
+      );
+      await clerk.invitations.createInvitation({
+        emailAddress: email,
+        publicMetadata: { role: UserRole.WORKER },
+        redirectUrl: process.env.NEXT_PUBLIC_APP_URL
+          ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')}/sign-up`
+          : undefined,
+        ignoreExisting: false,
+      });
+      return { invited: true };
+    } catch (err) {
+      req.log.error({ err }, 'Failed to resend Clerk worker invitation');
+      return reply.status(502).send({ error: 'Could not send the worker invitation' });
     }
-    return { linked: true };
   });
 
   // Update push token (worker self-service)
