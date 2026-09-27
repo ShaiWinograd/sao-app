@@ -1100,14 +1100,70 @@ export default function DashboardPage() {
         title="היום בעסק"
         description={mounted ? greetingText : '\u00A0'}
         icon={<CalendarDays className="h-6 w-6" />}
+        action={!quickCreateDate ? (
+          <div className="relative z-50 flex justify-end" dir="rtl">
+            {ownerToolsOpen && (
+              <div className="absolute left-0 top-full mt-2 w-56 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1.5 shadow-xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOwnerToolsOpen(false);
+                    setQuickCreateDate(todayDateKey);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-right text-xs font-medium text-gray-800 hover:bg-[var(--color-calendar-sage-soft)]"
+                >
+                  <BriefcaseBusiness className="h-4 w-4 text-[var(--color-calendar-sage)]" />
+                  יצירת עבודה
+                </button>
+                <Link
+                  href="/shifts/swaps"
+                  onClick={() => setOwnerToolsOpen(false)}
+                  className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-gray-800 hover:bg-[var(--color-calendar-sage-soft)]"
+                >
+                  <Repeat2 className="h-4 w-4 text-[var(--color-calendar-sage)]" />
+                  החלפות משמרות
+                </Link>
+                <Link
+                  href="/workers?action=invite"
+                  onClick={() => setOwnerToolsOpen(false)}
+                  className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-gray-800 hover:bg-[var(--color-calendar-sage-soft)]"
+                >
+                  <UserPlus className="h-4 w-4 text-[var(--color-calendar-sage)]" />
+                  הזמנת עובדת
+                </Link>
+                <Link
+                  href="/workers"
+                  onClick={() => setOwnerToolsOpen(false)}
+                  className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-gray-800 hover:bg-[var(--color-calendar-sage-soft)]"
+                >
+                  <Users className="h-4 w-4 text-[var(--color-calendar-sage)]" />
+                  ניהול עובדות וארכיון
+                </Link>
+                <Link
+                  href="/settings?section=notifications"
+                  onClick={() => setOwnerToolsOpen(false)}
+                  className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-gray-800 hover:bg-[var(--color-calendar-sage-soft)]"
+                >
+                  <Bell className="h-4 w-4 text-[var(--color-calendar-sage)]" />
+                  הגדרות התראות
+                </Link>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setOwnerToolsOpen((open) => !open)}
+              aria-label="פעולות מהירות"
+              aria-expanded={ownerToolsOpen}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--color-calendar-sage)] text-white shadow-lg transition-transform hover:scale-105"
+            >
+              {ownerToolsOpen ? <Settings className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+            </button>
+          </div>
+        ) : undefined}
       />
 
       {(priorityAttention.length > 0 || attentionItems.length > 0) && (
-        <section className="border-y border-[var(--color-border)] py-2.5" data-testid="requires-attention">
-          <div className="mb-2 flex items-center gap-2">
-            <span className="text-xs font-semibold text-gray-900">פעולות ניהול</span>
-            <span className="text-[10px] text-[var(--color-text-muted)]">הנושאים שמחכים לטיפולך</span>
-          </div>
+        <section data-testid="requires-attention">
           <div className="flex gap-2 overflow-x-auto pb-1">
             {priorityAttention.map((group) => (
               <div key={group.key} className="relative shrink-0" data-testid={`attention-${group.key}`}>
@@ -1274,18 +1330,10 @@ export default function DashboardPage() {
 
       <div id="owner-shift-grid" className="flex min-h-0 flex-col gap-2.5 scroll-mt-4 lg:flex-1">
         <div className="flex min-h-[430px] flex-1 flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] lg:min-h-0">
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+            <div className="border-b border-gray-100 px-4 py-3">
               <h2 className="font-semibold text-gray-900">
                 תצוגת משמרות {selectedRangeContextLabel} ({displayedWorks.length})
               </h2>
-              <Link
-                href="/shifts/swaps"
-                aria-label="החלפות משמרות"
-                title="החלפות משמרות"
-                className="inline-flex h-8 w-8 items-center justify-center text-[var(--color-calendar-sage)] hover:bg-[var(--color-calendar-sage-soft)]"
-              >
-                <Repeat2 className="h-4 w-4" />
-              </Link>
             </div>
 
             <div data-testid="owner-calendar-scroll" className="calendar-scroll min-h-0 flex-1 overflow-auto">
@@ -1744,57 +1792,6 @@ export default function DashboardPage() {
           onClick={() => setOwnerToolsOpen(false)}
         />
       )}
-      {!quickCreateDate && <div className="fixed bottom-5 left-5 z-50 flex flex-col items-end gap-2" dir="rtl">
-        {ownerToolsOpen && (
-          <div className="w-56 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1.5 shadow-xl">
-            <button
-              type="button"
-              onClick={() => {
-                setOwnerToolsOpen(false);
-                setQuickCreateDate(todayDateKey);
-              }}
-              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-right text-xs font-medium text-gray-800 hover:bg-[var(--color-calendar-sage-soft)]"
-            >
-              <BriefcaseBusiness className="h-4 w-4 text-[var(--color-calendar-sage)]" />
-              יצירת עבודה
-            </button>
-            <Link
-              href="/workers?action=invite"
-              onClick={() => setOwnerToolsOpen(false)}
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-gray-800 hover:bg-[var(--color-calendar-sage-soft)]"
-            >
-              <UserPlus className="h-4 w-4 text-[var(--color-calendar-sage)]" />
-              הזמנת עובדת
-            </Link>
-            <Link
-              href="/workers"
-              onClick={() => setOwnerToolsOpen(false)}
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-gray-800 hover:bg-[var(--color-calendar-sage-soft)]"
-            >
-              <Users className="h-4 w-4 text-[var(--color-calendar-sage)]" />
-              ניהול עובדות וארכיון
-            </Link>
-            <Link
-              href="/settings?section=notifications"
-              onClick={() => setOwnerToolsOpen(false)}
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-gray-800 hover:bg-[var(--color-calendar-sage-soft)]"
-            >
-              <Bell className="h-4 w-4 text-[var(--color-calendar-sage)]" />
-              הגדרות התראות
-            </Link>
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={() => setOwnerToolsOpen((open) => !open)}
-          aria-label="פעולות מהירות"
-          aria-expanded={ownerToolsOpen}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--color-calendar-sage)] text-white shadow-lg transition-transform hover:scale-105"
-        >
-          {ownerToolsOpen ? <Settings className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
-        </button>
-      </div>}
-
     </div>
   );
 }
