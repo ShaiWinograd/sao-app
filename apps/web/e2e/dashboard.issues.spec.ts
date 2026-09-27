@@ -364,7 +364,7 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await page.goto('/dashboard');
 
     const gapLine = page.getByTestId('staffing-gap-bottom-line');
-    await expect(gapLine).toHaveText('2/4 מאוישים · 2 חסרים');
+    await expect(gapLine).toHaveText('2/4 מאוישים');
     await expect(page.getByLabel('1 בקשות הצטרפות ממתינות')).toBeVisible();
     await expect(page.getByTestId('staffing-state-summary')).toHaveCount(0);
 

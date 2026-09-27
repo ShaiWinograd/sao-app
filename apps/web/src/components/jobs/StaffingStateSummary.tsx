@@ -81,7 +81,7 @@ export function StaffingGapSummary({
         data-testid="staffing-gap-bottom-line"
         title={hoverText}
       >
-        {summary.occupiedNames.length}/{summary.required} מאוישים · {summary.openSlots} חסרים
+        {summary.occupiedNames.length}/{summary.required} מאוישים
       </div>
       <div className="pointer-events-none absolute left-1 top-full z-50 mt-1 hidden w-56 border border-[var(--color-border-strong)] bg-[var(--color-background)] px-3 py-2 text-right text-[11px] leading-5 text-gray-700 shadow-lg group-hover/staffing:block group-focus-within/staffing:block">
         <p className="font-semibold text-gray-900">{summary.openSlots} חסרים</p>
