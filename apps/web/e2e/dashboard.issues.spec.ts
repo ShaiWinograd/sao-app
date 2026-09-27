@@ -170,6 +170,7 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await expect(page.getByTestId('owner-calendar-scroll')).toBeVisible();
     await page.getByRole('button', { name: 'פעולות מהירות' }).click();
     await expect(page.getByRole('button', { name: 'יצירת עבודה', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'החלפות משמרות' })).toHaveAttribute('href', '/shifts/swaps');
     await expect(page.getByRole('link', { name: 'הזמנת עובדת' })).toHaveAttribute('href', '/workers?action=invite');
     await expect(page.getByRole('link', { name: 'ניהול עובדות וארכיון' })).toHaveAttribute('href', '/workers');
     await expect(page.getByRole('link', { name: 'הגדרות התראות' })).toHaveAttribute('href', '/settings?section=notifications');
@@ -208,7 +209,9 @@ test.describe('Dashboard urgent and workflow sections', () => {
     });
 
     await page.goto('/dashboard');
-    await expect(page.getByText('פעולות ניהול', { exact: true })).toBeVisible();
+    await expect(page.getByText('פעולות ניהול', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('הנושאים שמחכים לטיפולך', { exact: true })).toHaveCount(0);
+    await expect(page.getByTestId('requires-attention')).not.toHaveClass(/border-y/);
     const addressAction = page.getByTestId('attention-missingExactAddress');
     await expect(addressAction.getByText('פעולה נדרשת', { exact: true })).toBeVisible();
     await expect(addressAction.getByText('השלמת כתובת לפני העבודה', { exact: true })).toBeVisible();
@@ -253,8 +256,12 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await expect(page.getByRole('button', { name: 'פתיחת תפריט' })).toBeHidden();
     const sidebarBounds = await page.locator('aside').first().boundingBox();
     const mainBounds = await page.locator('main').boundingBox();
+    const quickActionsBounds = await page.getByRole('button', { name: 'פעולות מהירות' }).boundingBox();
+    const calendarBounds = await page.getByTestId('owner-calendar-scroll').boundingBox();
     expect(sidebarBounds?.width).toBe(220);
     expect(mainBounds?.width).toBeGreaterThanOrEqual(1190);
+    expect(quickActionsBounds?.x ?? Infinity).toBeLessThan((mainBounds?.x ?? 0) + (mainBounds?.width ?? 0) / 2);
+    expect(quickActionsBounds?.y ?? Infinity).toBeLessThan(calendarBounds?.y ?? 0);
     expect(await page.locator('main').evaluate((element) => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
     await page.getByRole('button', { name: 'סגירת תפריט צד' }).click();
     await expect(page.getByRole('button', { name: 'פתיחת תפריט צד' })).toBeVisible();
@@ -302,7 +309,7 @@ test.describe('Dashboard urgent and workflow sections', () => {
     await expect(page.getByText('סטטוס עבודות', { exact: true })).toBeVisible();
     const dateActions = page.getByRole('button', { name: `פעולות לתאריך ${tomorrow}` });
     await expect(dateActions).toBeVisible();
-    await expect(page.getByRole('link', { name: 'החלפות משמרות' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'החלפות משמרות' })).toHaveCount(0);
     await dateActions.click();
     await page.getByRole('button', { name: 'יצירת עבודה', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'יצירת עבודה' })).toBeVisible();
